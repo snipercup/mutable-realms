@@ -274,6 +274,46 @@ A later infrastructure task may improve service supervision if the existing cont
 
 The initial Mutable Realms server should use one application worker. Expose its host port only on `127.0.0.1` during local development. Separate liveness from readiness: liveness means the process can answer, while readiness means the configured database is reachable and its schema version is supported.
 
+## Implementation progress
+
+Infrastructure preparation was completed and verified on 2026-08-01 before beginning the authoritative world slice.
+
+### Step 1 — Correct and tighten the plan — Complete
+
+The plan now treats the ward as a first proof scenario rather than the permanent domain model. Migrations, validation, events, transactional mutation services, revision checks, operation-ID idempotency, discharge semantics, the single-worker SQLite policy, and the live database and backup boundaries are defined as first-slice requirements.
+
+### Step 2 — Establish repository tooling — Complete
+
+The repository contains locked Python and Node manifests, shared command entry points, a minimal FastAPI application, a minimal TypeScript/Vite frontend, and immediately useful backend and test directories. The standard entry points are:
+
+```text
+npm test
+npm run lint
+npm run migrate
+npm run seed
+npm run validate
+npm run serve
+npm run frontend-build
+```
+
+`migrate`, `seed`, and `validate` are reserved interfaces that deliberately fail until the authoritative persistence slice implements them. They must be replaced with real behavior during the next phase rather than left as successful placeholders.
+
+### Step 3 — Update and rebuild the development image — Complete
+
+The rebuilt development image contains the SQLite CLI and dedicated locked Python and Node installations under `/opt`. Compose exposes Mutable Realms on localhost port 8790, supplies `MUTABLE_REALMS_DB_PATH=/var/lib/mutable-realms/world.sqlite3`, and bind-mounts persistent deployment state at `/var/lib/mutable-realms`.
+
+Post-restart verification as the `hermeswebui` user confirmed:
+
+* Python 3.12, Node.js 22, npm, `uv`, and SQLite 3.46 are available;
+* the dedicated image-installed Python and Node dependencies are present and executable;
+* the repository test, lint, TypeScript-check, and frontend-build commands pass;
+* the mounted state directory is owned by `hermeswebui`, is writable, and supports SQLite create, commit, close, reopen, read, and cleanup operations;
+* the configured live database path points into that mounted state directory.
+
+The Hermes runtime normalizes the interactive tool shell's `PATH` and currently reports `UV_PROJECT_ENVIRONMENT=venv`, so repository-local `venv/` and `node_modules/` remain the normal command environments even though the image-installed `/opt` toolchains were verified directly. These directories are bind-mounted, ignored by Git, and survive ordinary container restarts. Dependency manifest changes still require a locked install and an image rebuild before the updated environment can be considered reproducible.
+
+No infrastructure blocker remains before implementing the minimal authoritative world slice.
+
 ---
 
 # 5. Phase 1 — Minimal Authoritative World Slice
