@@ -2,7 +2,9 @@
 
 ## Purpose
 
-This document defines the initial implementation direction for Mutable Res actions through narration, an AI agent determines and narrates their consequences, and the resulting changes are written into authoritative world state. A lightweight web client visualizes that state.
+This document defines the initial implementation direction for Mutable Realms. Players describe actions through narration, an AI agent determines and narrates their consequences, and the resulting changes are written into authoritative world state. A lightweight web client visualizes that state.
+
+The long-term idea is broader than any one setting or mechanic: Mutable Realms should support open-ended narrative experiences in the spirit of AI-driven text adventures while grounding them in persistent, inspectable state. A ward and its patients are used only as the first concrete proof scenario. They must not become assumptions built into the platform as a whole.
 
 The first goal is not to build a general AI game engine. The first goal is to prove a reliable loop:
 
@@ -71,7 +73,7 @@ Implement enough generic concepts to support the current world. Add new infrastr
 
 Changes should persist.
 
-If six patients become five, future interactions should discover five patients unless another world event changes that number.
+If six occupied beds become five, future interactions should discover five occupied beds unless another world event changes that number.
 
 If a quest is completed, it should not silently reappear.
 
@@ -122,9 +124,17 @@ Reasons:
 * easily queried by agents and humans;
 * appropriate for a local single-container application.
 
-Enable foreign-key enforcement.
+Every database connection must enable foreign-key enforcement and a bounded busy timeout. Enable WAL mode during database initialization only after persistence and multi-connection tests confirm it behaves correctly on the mounted filesystem.
 
-Consider WAL mode once concurrent reads/writes are introduced and verify that it behaves correctly on the mounted filesystem before relying on it.
+Initially run one Mutable Realms application worker. SQLite remains appropriate for this local single-user prototype, but unnecessary concurrent writer processes should not be introduced before their behavior and need are understood.
+
+The live authoritative database must not be stored in the Git repository. The initial container deployment should use:
+
+```text
+/var/lib/mutable-realms/world.sqlite3
+```
+
+Configure this path through `MUTABLE_REALMS_DB_PATH` and bind-mount a dedicated host state directory at `/var/lib/mutable-realms`. Repository fixtures and examples may describe worlds, but mutable runtime state belongs in this separate state boundary. Backups, database sidecar files, and later world exports belong with this state boundary unless deliberately exported elsewhere.
 
 Do not use JSON files as the long-term authoritative database.
 
@@ -176,10 +186,11 @@ A reasonable initial structure is:
 
 ```text
 mutable-realms/
-├── README.md
-├── IMPLEMENTATION_PLAN.md
+├── readme.md
 ├── pyproject.toml
+├── uv.lock
 ├── package.json
+├── package-lock.json
 ├── backend/
 │   ├── app/
 │   │   ├── api/
@@ -194,13 +205,12 @@ mutable-realms/
 │   └── index.html
 ├── tools/
 │   └── world/
-├── data/
-│   └── worlds/
 ├── tests/
 │   ├── backend/
 │   ├── integration/
 │   └── fixtures/
 └── docs/
+    └── implementation-plan.md
 ```
 
 Do not create directories merely to match this proposal if they have no current purpose. Keep the actual repository smaller until functionality needs them.
@@ -212,6 +222,8 @@ The authoritative repository path inside the container is:
 ```
 
 The corresponding host directory is bind-mounted into the container. Project code should use container paths while running inside the container and should not encode host-specific absolute paths.
+
+Live world databases are deployment state rather than repository content. Do not place the authoritative database under `/workspace/mutable-realms`, even though that directory is persistent on the host. Keep fixtures under `tests/fixtures/` and use temporary databases for automated tests.
 
 ---
 
@@ -260,20 +272,36 @@ Keep startup commands explicit and ensure failure of the Mutable Realms service 
 
 A later infrastructure task may improve service supervision if the existing container startup mechanism becomes unreliable.
 
+The initial Mutable Realms server should use one application worker. Expose its host port only on `127.0.0.1` during local development. Separate liveness from readiness: liveness means the process can answer, while readiness means the configured database is reachable and its schema version is supported.
+
 ---
 
-# 5. Phase 1 — Minimal Persistent World
+# 5. Phase 1 — Minimal Authoritative World Slice
 
-Implement the smallest possible authoritative world before integrating an LLM.
+Implement the smallest possible authoritative world before integrating an LLM. This phase must establish the infrastructure rules that make the stored world genuinely authoritative: versioned schema, constraints, validation, transactional application services, event recording, and persistence across application recreation.
 
-Create one world containing:
+The first database schema should model only the small set of general concepts required by the prototype, such as worlds, locations, stable entities, characters, current placement, scenario-specific state, and events. Ward-specific concepts such as beds and medical conditions may use focused relational tables without implying that every Mutable Realms world contains them.
+
+Do not build a universal entity-component system at this stage. Prefer a straightforward relational schema with application-generated stable text IDs. Display names are mutable attributes and must not be used as identity.
+
+Create migrations from the first schema. Application startup must apply pending migrations deterministically and fail visibly if migration or schema validation fails. Reapplying startup to an up-to-date database must be safe.
+
+Every meaningful mutation must go through one authoritative application service layer shared by future HTTP, CLI, and Hermes interfaces. The first mutation must validate preconditions, enforce database and domain invariants, update normalized current state, increment the world's revision, and append an event in one transaction. If any part fails, none of the mutation may persist.
+
+The first mutation interface must accept a caller-generated operation ID and enforce its uniqueness so a retry cannot apply the same action twice. It must also accept an expected world revision and reject stale requests. These guarantees belong in the first persistent slice, not only in later agent or HTTP integration.
+
+Provide baseline world validation in this phase. At minimum, references must resolve, stable IDs must be unique, placement must be coherent, and scenario-specific occupancy constraints must be enforced. Later phases can expand validation as new capabilities are introduced.
+
+### First proof scenario
+
+Create one example world containing:
 
 * one player;
 * one location;
 * six beds;
 * six patients.
 
-The location should represent a small ward.
+The location should represent a small ward. This is a compact integration fixture chosen because its state transition is visible and easy to verify; it is not the default shape of all future worlds.
 
 At minimum, support persistent entities with stable IDs and enough relationships to answer:
 
@@ -284,13 +312,25 @@ At minimum, support persistent entities with stable IDs and enough relationships
 * who occupies each bed?
 * what is each patient's current condition?
 
-Do not build a universal entity-component system at this stage.
+The fixture should use deterministic IDs so tests and debugging commands can address known entities without depending on generated display names.
 
-Choose a straightforward relational schema.
+### Treatment and discharge semantics
+
+For this proof scenario, reducing six occupied beds to five is explicitly a compound domain transition rather than an implied consequence of changing a medical label. A successful `treat_and_discharge_patient` operation means:
+
+1. the patient is verified to exist and occupy the specified bed;
+2. the patient's condition becomes `recovered`;
+3. the bed becomes unoccupied;
+4. the recovered character remains in the world but is moved out of the ward's current contents and marked as discharged;
+5. a meaningful event records the transition and affected entities;
+6. the world revision increments;
+7. all changes commit atomically.
+
+Other worlds and future medical scenarios may separate treatment, recovery, movement, and discharge. This combined operation exists only to make the first persistent-causality test precise. The application should not delete the recovered character or encode healing as a universal reason for removing an entity from a location.
 
 ### Initial success condition
 
-A deterministic command or API operation can heal one patient and persist the result.
+A deterministic application operation can treat and discharge one patient and persist the result.
 
 Before:
 
@@ -304,7 +344,7 @@ After:
 Ward: 5 occupied beds
 ```
 
-Restarting the application must preserve the five-patient state.
+Closing all database connections and recreating the application must preserve the five-occupied-bed state, the recovered character, the event, and the incremented world revision.
 
 This is the first important milestone.
 
@@ -351,11 +391,11 @@ Database state changes independently of the frontend, and the frontend correctly
 
 ---
 
-# 7. Phase 3 — Controlled World Mutation API
+# 7. Phase 3 — Expand Controlled World Mutations
 
-Move common mutations behind explicit application services.
+Expand the authoritative application service layer established in Phase 1 as actual scenarios require more operations.
 
-Initial operations might include:
+Possible operations include:
 
 ```text
 move_entity
@@ -368,16 +408,19 @@ update_relationship
 create_event
 ```
 
-Implement only operations required by actual prototype scenarios.
+Implement only operations required by actual prototype scenarios. Prefer domain-level operations that complete a valid transition over exposing low-level setters that let a caller create partial or contradictory state. Low-level primitives may remain internal implementation details.
 
-Each operation should:
+Each operation must:
 
 1. validate input;
 2. verify referenced entities;
 3. enforce relevant invariants;
 4. perform all related writes transactionally;
 5. record a meaningful world event;
-6. return the resulting authoritative state.
+6. increment the world's monotonic revision;
+7. return the resulting authoritative state.
+
+Mutating interfaces must accept a caller-generated operation ID protected by a uniqueness constraint so retries do not apply the same action twice. They should also accept an expected world revision when the caller is acting on previously retrieved context. A revision mismatch must reject the mutation and require fresh context rather than applying a decision to stale state.
 
 Do not allow the narration agent to construct arbitrary SQL.
 
@@ -387,14 +430,14 @@ Ordinary world interaction should use controlled tools.
 
 ---
 
-# 8. Phase 4 — Event History
+# 8. Phase 4 — Expand Event History
 
-Introduce an append-oriented event history.
+Expand the append-oriented event history introduced with the first mutation.
 
 Examples:
 
 ```text
-patient_healed
+patient_treated_and_discharged
 entity_moved
 quest_completed
 item_transferred
@@ -416,7 +459,7 @@ The current normalized world state remains directly queryable.
 
 Store enough information to understand what changed without duplicating the entire database on every action.
 
-Meaningful operations should ideally expose:
+Meaningful operations should record:
 
 ```text
 who caused the change
@@ -424,6 +467,8 @@ what changed
 which entities were affected
 when it occurred
 optional narrative summary
+operation ID
+world revision produced by the change
 ```
 
 ---
@@ -539,13 +584,15 @@ The narration agent must distinguish between:
 
 ```text
 PLAYER INTENT
-"I heal the patient."
+"I treat the patient and help arrange her discharge."
 
 WORLD RESULT
-"The treatment succeeds."
+"The treatment succeeds, and the recovered patient is discharged."
 
 STATE CHANGE
-patient.status = recovered
+patient.condition = recovered
+patient.disposition = discharged
+patient.location = outside ward
 bed.occupant = null
 ```
 
@@ -555,9 +602,9 @@ The narration agent must not claim state changes that it failed to persist.
 
 ---
 
-# 12. Phase 8 — Consistency Validation
+# 12. Phase 8 — Expand Consistency Validation
 
-Add validation before increasing world complexity.
+Expand the baseline validation established in Phase 1 before increasing world complexity.
 
 Validate invariants such as:
 
@@ -577,7 +624,7 @@ world validate
 
 The infrastructure agent should be able to run this after migrations or suspicious world changes.
 
-Where practical, reject invalid writes rather than attempting to repair them afterward.
+Where practical, reject invalid writes rather than attempting to repair them afterward. Validation added for a new capability should normally arrive with that capability rather than being postponed to this phase; this phase is a deliberate system-wide review before broader gameplay expansion.
 
 ---
 
@@ -604,8 +651,8 @@ retrieve ward state
 → identify the patient
 → interpret the action
 → determine the outcome
-→ persist the recovery
-→ update occupancy
+→ persist the recovery and discharge
+→ clear the patient's occupancy and move her out of the ward
 → record the event
 → narrate the result
 → update the web view
@@ -613,7 +660,7 @@ retrieve ward state
 
 The player then performs unrelated actions and later returns.
 
-The narrator must discover that the ward contains five patients rather than generating six new patients from the generic concept of "a ward."
+The narrator must discover that the ward contains five current patients and that the recovered character exists elsewhere, rather than generating six new patients from the generic concept of "a ward."
 
 This is the primary proof of concept.
 
@@ -867,11 +914,15 @@ Test sequences such as:
 ```text
 create patient
 → assign bed
-→ heal patient
-→ clear bed
-→ reload world
-→ verify patient remains recovered
+→ treat and discharge patient transactionally
+→ close every database connection
+→ recreate the application against the same database file
+→ verify the patient remains recovered and discharged
+→ verify the bed remains empty
+→ verify the event and world revision remain present
 ```
+
+Also test migration idempotency, foreign-key enforcement on every connection, constraint failures, transaction rollback, stale revision rejection, and duplicate operation-ID handling. Persistence tests must use temporary database files rather than the live world database.
 
 ### Regression fixtures
 
@@ -887,9 +938,9 @@ The deterministic world layer should be testable without Hermes or an external m
 
 # 22. Database Migration Standard
 
-Once persistent worlds matter, schema changes must be versioned.
+Schema changes must be versioned from the first schema, before persistent worlds become valuable.
 
-Use a lightweight migration system appropriate to the selected Python persistence approach.
+Initially use a lightweight migration system appropriate to the selected Python persistence approach. Versioned SQL files and a schema-version table are sufficient unless demonstrated complexity justifies a larger migration framework.
 
 Never depend on developers manually editing production world databases.
 
@@ -904,6 +955,8 @@ backup
 ```
 
 Database backups and world export/import should become supported operations before worlds become valuable.
+
+The initial backup boundary is the configured state directory containing `world.sqlite3` and any SQLite WAL/SHM sidecar files. Backup procedures must use a SQLite-safe snapshot method rather than copying only the main database file while writes may be active. After restoration or migration, run world validation before resuming mutations.
 
 ---
 
@@ -924,7 +977,7 @@ agent operation failures
 
 Avoid logging huge prompts or complete world state by default.
 
-Provide a health endpoint that verifies application startup and basic database access.
+Provide separate liveness and readiness endpoints. Liveness verifies that the process can answer; readiness verifies basic database access and a supported schema version. Full world validation should remain a separate diagnostic because it may be more expensive and represents a different condition.
 
 Eventually distinguish:
 
@@ -998,13 +1051,13 @@ Prefer the smallest architecture that supports persistent causality correctly.
 
 Work toward these milestones in order.
 
-### Milestone A — Persistent State
+### Milestone A — Authoritative Persistent State
 
-A ward with six patients exists in SQLite.
+A versioned SQLite database contains a deterministic example ward with six occupied beds. The live database resides in the dedicated deployment state directory rather than the Git repository.
 
-One deterministic operation heals/removes one patient.
+One tested application service performs an invariant-preserving, transactional treatment-and-discharge operation. It recovers and relocates the character without deleting them, clears the bed, records an event, and increments the world revision.
 
-Restarting preserves five patients.
+The operation is idempotent when retried with the same operation ID and rejects stale expected revisions. Closing all connections and recreating the application preserves five occupied beds and passes world validation.
 
 ### Milestone B — Visualization
 
@@ -1021,7 +1074,7 @@ Hermes can inspect the ward and perform the same mutation using a controlled Mut
 A player tells Hermes:
 
 ```text
-I heal the patient in the first bed.
+I treat the patient in the first bed and help arrange her discharge.
 ```
 
 Hermes retrieves state, resolves the action, mutates the world, and narrates a result consistent with the stored state.
@@ -1030,7 +1083,7 @@ Hermes retrieves state, resolves the action, mutates the world, and narrates a r
 
 The player leaves the ward, performs another interaction, and returns.
 
-The ward still contains five patients.
+The ward still contains five current patients, and the discharged character still exists elsewhere in the world.
 
 ### Milestone F — Social Consequences
 
