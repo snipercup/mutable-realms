@@ -138,3 +138,26 @@ Mutable Realms explores whether modern AI agents can support a world that is:
 
 The project is experimental. Its purpose is not to generate an infinite quantity of interchangeable content, but to investigate whether AI can help maintain a world where player actions meaningfully change what exists and what can happen next.
 
+## Development
+
+Mutable Realms uses Python 3.12 with `uv` for the backend and Node.js 22 with npm for the frontend. Install the locked dependencies from the repository root:
+
+```sh
+uv sync --frozen
+npm ci
+```
+
+The npm scripts are the common project entry points:
+
+| Command | Purpose |
+| --- | --- |
+| `npm test` | Run the backend test suite. |
+| `npm run lint` | Run Ruff and TypeScript checks. |
+| `npm run serve` | Start one backend worker on port 8790 by default. |
+| `npm run frontend-build` | Build the frontend into `frontend/dist/`. |
+| `npm run migrate` | Reserved for the authoritative persistence slice. |
+| `npm run seed` | Reserved for deterministic world fixtures. |
+| `npm run validate` | Reserved for world consistency validation. |
+
+The three reserved persistence commands deliberately exit with status 2 until their real implementations are added. They must not report success before they can perform the requested operation.
+
