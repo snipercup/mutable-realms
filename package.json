@@ -9,6 +9,7 @@
     "migrate": "uv run python -m backend.cli migrate",
     "seed": "uv run python -m backend.cli seed",
     "validate": "uv run python -m backend.cli validate",
+    "move-entity": "uv run python -m backend.cli move-entity",
     "serve": "uv run uvicorn backend.app.main:app --host 0.0.0.0 --port ${MUTABLE_REALMS_PORT:-8790} --workers 1",
     "frontend-check": "tsc --noEmit",
     "frontend-build": "vite build frontend"

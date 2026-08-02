@@ -1,0 +1,125 @@
+:root {
+  color: #e8edf5;
+  background: #0b1018;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  color-scheme: dark;
+  --surface: #121a26;
+  --surface-raised: #182231;
+  --border: #29364a;
+  --muted: #91a0b5;
+  --accent: #6be7c8;
+  --accent-dim: #1c5a50;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: radial-gradient(circle at 15% -10%, #213752 0, transparent 38rem), #0b1018;
+}
+button, select { font: inherit; }
+
+.app-shell {
+  width: min(1280px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 28px 0 20px;
+}
+.topbar, .controls, .location-heading, .entity-heading, .badges {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.topbar { margin-bottom: 24px; }
+.eyebrow {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--accent);
+  font-size: .72rem;
+  font-weight: 750;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+h1, h2, h3, p { margin: 0; }
+.brand-title { font-size: clamp(1.35rem, 2.2vw, 2rem); letter-spacing: -.025em; }
+.controls { justify-content: flex-end; flex-wrap: wrap; }
+.world-control { display: grid; gap: 4px; color: var(--muted); font-size: .72rem; }
+.world-control select {
+  min-width: 220px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #e8edf5;
+  background: var(--surface);
+}
+.freshness { color: var(--muted); font-size: .82rem; }
+.refresh-button {
+  border: 1px solid var(--accent-dim);
+  border-radius: 9px;
+  padding: 10px 14px;
+  color: var(--accent);
+  background: #11251f;
+  cursor: pointer;
+}
+.refresh-button:disabled { cursor: wait; opacity: .55; }
+.status-banner {
+  margin-bottom: 18px;
+  border: 1px solid #713b44;
+  border-radius: 10px;
+  padding: 13px 16px;
+  color: #ffd1d5;
+  background: #351d24;
+}
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, .82fr);
+  gap: 20px;
+}
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 24%);
+}
+.location-panel { padding: clamp(20px, 3vw, 32px); }
+.location-name { font-size: clamp(1.5rem, 3vw, 2.2rem); letter-spacing: -.035em; }
+.location-description { max-width: 680px; margin-top: 8px; color: var(--muted); line-height: 1.55; }
+.revision-block { min-width: 100px; border-left: 1px solid var(--border); padding-left: 20px; text-align: right; }
+.revision-block strong, .revision-block span { display: block; }
+.revision-block strong { color: var(--accent); font-size: 1.4rem; }
+.revision-block span { color: var(--muted); font-size: .7rem; }
+.player-presence {
+  margin: 22px 0;
+  border: 1px solid #294c61;
+  border-radius: 9px;
+  padding: 10px 13px;
+  color: #badff3;
+  background: #102331;
+  font-size: .86rem;
+}
+.section-title { margin-bottom: 14px; font-size: 1.05rem; }
+.entity-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.entity-card { border: 1px solid var(--border); border-radius: 12px; padding: 15px; background: var(--surface-raised); }
+.entity-name { font-size: .95rem; }
+.badges { justify-content: flex-end; gap: 6px; }
+.badge { border-radius: 999px; padding: 4px 8px; color: #c9d4e4; background: #29364a; font-size: .66rem; text-transform: capitalize; }
+.badge.player { color: var(--accent); background: #173a33; }
+.entity-id { display: block; margin-top: 10px; color: var(--muted); font-size: .72rem; }
+.entity-details { margin-top: 8px; color: #c8d1df; font-size: .8rem; text-transform: capitalize; }
+.events-panel { padding: 22px; }
+.event-list { margin: 0; padding: 0; list-style: none; }
+.event-item { border-top: 1px solid var(--border); padding: 14px 0; }
+.event-summary { line-height: 1.4; }
+.event-meta { display: block; margin-top: 6px; color: var(--muted); font-size: .7rem; text-transform: capitalize; }
+.empty-state { color: var(--muted); line-height: 1.5; }
+
+@media (max-width: 800px) {
+  .topbar, .location-heading { align-items: flex-start; flex-direction: column; }
+  .controls { width: 100%; justify-content: flex-start; }
+  .world-control, .world-control select { width: 100%; }
+  .content-grid { grid-template-columns: 1fr; }
+  .entity-grid { grid-template-columns: 1fr; }
+  .revision-block { border-left: 0; padding-left: 0; text-align: left; }
+}

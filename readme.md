@@ -8,17 +8,16 @@ The goal is to create open-ended experiences where actions can leave lasting, vi
 
 ## The Idea
 
-In a conventional AI storytelling game, a player might enter a hospital ward, find six patients, and heal one of them. The story can remember that the patient was healed, but the underlying concept of the ward may remain unchanged. Returning later can cause the AI to generate more patients simply because it still understands the location as a hospital ward.
+In a conventional AI storytelling game, a player might change a place and then return later to find that generated narration has silently restored its original assumptions. A repaired bridge may be broken again, transferred property may return to its former owner, or a flock may replenish itself without an event that explains why.
 
 Mutable Realms instead represents relevant facts as persistent world state.
 
-After healing one patient:
+After any meaningful action:
 
-* the ward contains five patients rather than six;
-* the healed character can leave or move elsewhere;
-* that character can remember the player's actions;
-* related quests can change or disappear;
-* the visual representation of the ward can reflect the newly empty bed.
+* affected entities retain their new state and location;
+* later actions begin from those persisted consequences;
+* related goals, relationships, or resources can change when the scenario supports them;
+* the visual representation reflects current authoritative state.
 
 The AI does not have to reconstruct these consequences from narrative memory. It can inspect what is currently true about the world.
 
@@ -38,9 +37,9 @@ The primary interaction can remain as flexible as a text adventure.
 
 A player describes an action:
 
-> I spend the afternoon treating the woman with a fever in the first bed.
+> I move the chicken coop into the pressure dome before the current gets stronger.
 
-The AI interprets the action using the current scene, relevant world state, character information, and recent events. It narrates what happens and applies the resulting changes to the persistent world.
+The AI interprets the action using the current scene, relevant world state, character information, and recent events. Whether the character is an adventurer, a merchant, or a chicken farmer on the ocean floor, it narrates what happens and applies resulting changes through controlled operations.
 
 The world state then becomes the starting point for future interactions.
 
@@ -84,6 +83,8 @@ The same principles could support very different scenarios:
 * or scenarios created during play.
 
 Different worlds may require different kinds of state and interaction. The system should be extensible rather than assuming that concepts such as combat, character classes, enemies, or quests must exist in every world.
+
+The framework core currently models worlds, revisions, locations, stable entities, placement, characters, operations, and events. Scenario concepts are optional capabilities layered on that core. The deterministic recovery ward remains an end-to-end compatibility fixture under `backend/scenarios/ward/`; beds, patients, and discharge are not required by generic world reads or the browser.
 
 ## Agents and Tools
 
@@ -155,9 +156,61 @@ The npm scripts are the common project entry points:
 | `npm run lint` | Run Ruff and TypeScript checks. |
 | `npm run serve` | Start one backend worker on port 8790 by default. |
 | `npm run frontend-build` | Build the frontend into `frontend/dist/`. |
-| `npm run migrate` | Reserved for the authoritative persistence slice. |
-| `npm run seed` | Reserved for deterministic world fixtures. |
-| `npm run validate` | Reserved for world consistency validation. |
+| `npm run migrate` | Apply pending checksummed SQLite migrations. |
+| `npm run seed` | Create the optional deterministic ward example if absent. |
+| `npm run validate` | Check foreign keys and cross-table world invariants. |
+| `npm run move-entity -- …` | Apply an idempotent, revision-checked local character move. |
 
-The three reserved persistence commands deliberately exit with status 2 until their real implementations are added. They must not report success before they can perform the requested operation.
+Persistence commands and application startup use `MUTABLE_REALMS_DB_PATH`. The development container configures it as `/var/lib/mutable-realms/world.sqlite3`. For an isolated local database, set a different path before running the commands:
+
+```sh
+export MUTABLE_REALMS_DB_PATH=/tmp/mutable-realms/world.sqlite3
+npm run migrate
+npm run seed
+npm run validate
+```
+
+`migrate` is idempotent and rejects modified or unsupported migration history. Migration `0002_generalize_entities` preserves existing ward databases while allowing scenario-defined entity kinds and character roles. `seed` is a deterministic ward example command retained for development compatibility; it is not required to create every world. `validate` is read-only and exits nonzero when authoritative state violates a supported invariant.
+
+Build the browser interface before starting the API when you want the backend to serve the complete application:
+
+```sh
+npm run frontend-build
+npm run serve
+```
+
+The interface is then available at `http://localhost:8790/`. It discovers available worlds, lets the player select one, and renders that world's current location, arbitrary entity kinds, revision, and recent events. Selection is reflected in the `?world=...` URL parameter. It refreshes authoritative state every five seconds or when **Refresh state** is selected. If `frontend/dist/` is absent, the backend still starts with its API, health, and OpenAPI routes available.
+
+The API applies pending migrations during startup and fails startup if migration history is invalid. Its health endpoints are:
+
+* `GET /health/live` — the process can answer requests;
+* `GET /health/ready` — the configured database is reachable and has exactly the supported schema history.
+
+The initial read-only world API is documented interactively at `GET /docs` and in the generated schema at `GET /openapi.json`:
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/worlds` | List available worlds for selection. |
+| `GET /api/worlds/{world_id}/player` | Read the world's current player and placement. |
+| `GET /api/worlds/{world_id}/locations/current` | Read the current player's location and generic entity contents. |
+| `GET /api/worlds/{world_id}/locations/{location_id}` | Read a specific location and its current contents. |
+| `GET /api/worlds/{world_id}/entities/{entity_id}` | Read generic entity details and optional character state. |
+| `GET /api/worlds/{world_id}/events?limit=20` | Read newest-first persistent world events; limit must be 1–100. |
+| `GET /api/worlds/{world_id}/capabilities/ward/locations/{location_id}` | Read optional ward bed occupancy without adding it to generic location contracts. |
+
+These endpoints are presentation reads only. Authoritative mutations continue to pass through controlled backend application services rather than arbitrary HTTP writes or frontend state.
+
+The first Phase 3 operation moves a character between existing locations through the local CLI. It requires a caller-generated operation ID and the world revision on which the decision was based. The destination must already be provisioned through trusted world setup or import tooling.
+
+```sh
+npm run move-entity -- \
+  --world-id "$WORLD_ID" \
+  --operation-id "$OPERATION_ID" \
+  --expected-revision "$EXPECTED_REVISION" \
+  --entity-id "$ENTITY_ID" \
+  --destination-location-id "$DESTINATION_LOCATION_ID" \
+  --actor-entity-id "$ACTOR_ENTITY_ID"
+```
+
+The command emits a JSON result containing the committed world revision and whether the request was an idempotent replay. It rejects stale revisions, cross-world locations, discharged characters, bed entities, and characters currently occupying a bed. The destination must already exist. The move, operation record, revision increment, and event are committed atomically. This is a trusted local administration/agent interface; the browser and HTTP API remain read-only pending an authenticated mutation design.
 
