@@ -107,7 +107,7 @@ def test_context_uses_one_read_only_sqlite_snapshot(
         return connection
 
     monkeypatch.setattr(context_module, "connect_readonly_database", traced_connect)
-    monkeypatch.setattr(queries_module, "connect_database", traced_connect)
+    monkeypatch.setattr(queries_module, "connect_readonly_database", traced_connect)
 
     build_world_context(database_path, world_id=GENERAL_WORLD_ID)
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from backend.persistence.database import connect_database
+from backend.persistence.database import connect_readonly_database
 
 
 @dataclass(frozen=True)
@@ -16,7 +16,7 @@ class ValidationIssue:
 def validate_worlds(database_path: str | Path) -> list[ValidationIssue]:
     """Return deterministic integrity and domain-invariant violations."""
     issues: list[ValidationIssue] = []
-    with connect_database(database_path) as connection:
+    with connect_readonly_database(database_path) as connection:
         for row in connection.execute("PRAGMA foreign_key_check"):
             issues.append(
                 ValidationIssue(

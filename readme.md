@@ -161,6 +161,7 @@ The npm scripts are the common project entry points:
 | `npm run validate` | Check foreign keys and cross-table world invariants. |
 | `npm run move-entity -- …` | Apply an idempotent, revision-checked local character move. |
 | `npm run world-context -- …` | Build deterministic, read-only context for one world. |
+| `npm run world-tools` | Run the Phase 6 Hermes MCP tool server over stdio. |
 
 Persistence commands and application startup use `MUTABLE_REALMS_DB_PATH`. The development container configures it as `/var/lib/mutable-realms/world.sqlite3`. For an isolated local database, set a different path before running the commands:
 
@@ -180,6 +181,37 @@ npm run world-context -- --world-id "$WORLD_ID" --event-limit 10
 ```
 
 Context generation opens the existing database in SQLite read-only/query-only mode and does not make narration or presentation output authoritative. SQLite may maintain its normal `-wal` and `-shm` coordination files; these are database-engine artifacts, not a second authoritative store. The builder intentionally remains WAL-aware so it does not omit committed state that has not yet been checkpointed into the main database file.
+
+### Hermes world tools
+
+Phase 6 exposes the authoritative application services as a local stdio MCP server. Hermes receives structured tools rather than database credentials or arbitrary SQL:
+
+| Tool | Purpose |
+| --- | --- |
+| `world_status` | Read world identity, revision, and currently supported mutation tools. |
+| `world_context` | Build the bounded Phase 5 context snapshot. |
+| `world_inspect_entity` | Read one generic entity and its optional character state. |
+| `world_events` | Read a newest-first event window bounded to 1–100 rows. |
+| `world_move_entity` | Invoke the generic revision-checked, idempotent move operation. |
+| `world_treat_and_discharge_patient` | Invoke the ward capability's atomic treatment/discharge operation. |
+| `world_validate` | Run deterministic database and world-invariant validation. |
+
+The MCP process is bound to exactly one existing database through `MUTABLE_REALMS_DB_PATH`. Tool callers cannot supply another path, missing databases are not created, and every query path opens SQLite in read-only/query-only mode. Context and event limits are enforced as 1–100 in both MCP schemas and application services. Mutation tools retain their application-service validation, expected-revision, operation-ID, transaction, and event guarantees.
+
+From the repository root, register the server with the installed Hermes profile using the supported CLI. Replace the database path with the absolute path visible to the Hermes process:
+
+```sh
+export MUTABLE_REALMS_DB_PATH=/absolute/path/to/world.sqlite3
+hermes mcp add mutable-realms \
+  --command uv \
+  --env "MUTABLE_REALMS_DB_PATH=$MUTABLE_REALMS_DB_PATH" \
+  --args --directory "$(pwd)" run python -m backend.world.mcp_server
+hermes mcp test mutable-realms
+```
+
+Start a new Hermes session after registration so tool discovery includes the server. `npm run world-tools` is available for direct stdio-server debugging, but it is not an interactive command and should normally be started by Hermes.
+
+There is intentionally no generic `world_update` tool. Arbitrary field updates would bypass scenario rules. Add a named application operation and expose a correspondingly narrow MCP tool when a scenario requires a new mutation.
 
 Build the browser interface before starting the API when you want the backend to serve the complete application:
 

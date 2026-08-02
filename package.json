@@ -11,6 +11,7 @@
     "validate": "uv run python -m backend.cli validate",
     "move-entity": "uv run python -m backend.cli move-entity",
     "world-context": "uv run python -m backend.cli world-context",
+    "world-tools": "uv run python -m backend.world.mcp_server",
     "serve": "uv run uvicorn backend.app.main:app --host 0.0.0.0 --port ${MUTABLE_REALMS_PORT:-8790} --workers 1",
     "frontend-check": "tsc --noEmit",
     "frontend-build": "vite build frontend"

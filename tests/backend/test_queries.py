@@ -142,14 +142,14 @@ def test_location_read_uses_one_sqlite_snapshot(
     statements: list[str] = []
     from backend.world import queries
 
-    original_connect = queries.connect_database
+    original_connect = queries.connect_readonly_database
 
     def traced_connect(path: Any):
         connection = original_connect(path)
         connection.set_trace_callback(statements.append)
         return connection
 
-    monkeypatch.setattr(queries, "connect_database", traced_connect)
+    monkeypatch.setattr(queries, "connect_readonly_database", traced_connect)
 
     get_location(database_path, WARD_WORLD_ID, "ward")
 
@@ -162,7 +162,7 @@ def test_current_location_uses_one_database_connection(
     database_path = _seeded_database(tmp_path)
     from backend.world import queries
 
-    original_connect = queries.connect_database
+    original_connect = queries.connect_readonly_database
     connection_count = 0
 
     def counted_connect(path: Any):
@@ -170,7 +170,7 @@ def test_current_location_uses_one_database_connection(
         connection_count += 1
         return original_connect(path)
 
-    monkeypatch.setattr(queries, "connect_database", counted_connect)
+    monkeypatch.setattr(queries, "connect_readonly_database", counted_connect)
 
     get_current_location(database_path, WARD_WORLD_ID)
 

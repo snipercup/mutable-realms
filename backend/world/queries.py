@@ -6,7 +6,7 @@ from contextlib import closing, nullcontext
 from pathlib import Path
 from typing import Any
 
-from backend.persistence.database import connect_database
+from backend.persistence.database import connect_readonly_database
 
 WorldRecord = dict[str, Any]
 
@@ -33,7 +33,7 @@ class EntityNotFound(WorldQueryError):
 
 def list_worlds(database_path: str | Path) -> list[WorldRecord]:
     """Return available worlds in stable name/ID order."""
-    with connect_database(database_path) as connection:
+    with connect_readonly_database(database_path) as connection:
         rows = connection.execute(
             "SELECT id, name, revision FROM worlds ORDER BY name, id"
         ).fetchall()
@@ -47,7 +47,7 @@ def get_player(
     _connection: sqlite3.Connection | None = None,
 ) -> WorldRecord:
     connection_context = (
-        closing(connect_database(database_path))
+        closing(connect_readonly_database(database_path))
         if _connection is None
         else nullcontext(_connection)
     )
@@ -72,7 +72,7 @@ def get_player(
 
 
 def get_current_location(database_path: str | Path, world_id: str) -> WorldRecord:
-    with closing(connect_database(database_path)) as connection:
+    with closing(connect_readonly_database(database_path)) as connection:
         connection.execute("BEGIN")
         player = get_player(database_path, world_id, _connection=connection)
         location_id = player["location_id"]
@@ -93,7 +93,7 @@ def get_location(
     _connection: sqlite3.Connection | None = None,
 ) -> WorldRecord:
     connection_context = (
-        closing(connect_database(database_path))
+        closing(connect_readonly_database(database_path))
         if _connection is None
         else nullcontext(_connection)
     )
@@ -135,9 +135,18 @@ def get_location(
 
 
 def get_entity(
-    database_path: str | Path, world_id: str, entity_id: str
+    database_path: str | Path,
+    world_id: str,
+    entity_id: str,
+    *,
+    _connection: sqlite3.Connection | None = None,
 ) -> WorldRecord:
-    with connect_database(database_path) as connection:
+    connection_context = (
+        closing(connect_readonly_database(database_path))
+        if _connection is None
+        else nullcontext(_connection)
+    )
+    with connection_context as connection:
         row = connection.execute(
             """
             SELECT e.id, e.world_id, e.kind, e.name,
@@ -164,8 +173,10 @@ def list_recent_events(
     limit: int = 20,
     _connection: sqlite3.Connection | None = None,
 ) -> list[WorldRecord]:
+    if not 1 <= limit <= 100:
+        raise ValueError("recent event limit must be between 1 and 100")
     connection_context = (
-        closing(connect_database(database_path))
+        closing(connect_readonly_database(database_path))
         if _connection is None
         else nullcontext(_connection)
     )

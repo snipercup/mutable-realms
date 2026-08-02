@@ -613,6 +613,10 @@ This service becomes one of the key boundaries between the persistent world and 
 
 Create a small agent-facing tool layer.
 
+Implementation status: complete. A local stdio MCP server now exposes seven structured Hermes tools: `world_status`, `world_context`, `world_inspect_entity`, `world_events`, `world_move_entity`, `world_treat_and_discharge_patient`, and `world_validate`. The adapter is bound to one existing `MUTABLE_REALMS_DB_PATH`; callers cannot redirect a tool to another database. All query paths use SQLite read-only/query-only connections and cannot create a missing database. Context and event limits are enforced as 1–100 in both MCP input schemas and application services. Writes delegate to the existing generic movement and ward treatment/discharge application operations. Revision checks, operation IDs, idempotency, transactions, invariant checks, events, and validation remain in the authoritative service layer rather than the MCP transport. Real stdio protocol tests cover initialization, discovery, structured reads, rejected invalid bounds, a committed mutation, resulting event retrieval, and post-mutation validation.
+
+The initially suggested generic `world update` has deliberately not become an arbitrary field-update operation. New persistent effects require a named, validated application operation and a narrow tool. This keeps the MCP server scenario-neutral at its core while allowing explicit scenario-capability tools such as ward treatment/discharge. Hermes registration and verification commands are documented in `readme.md`; the narration profile and complete player-turn policy remain Phase 7 work.
+
 Hermes should be able to perform operations such as:
 
 ```text
@@ -1155,7 +1159,7 @@ The browser discovers worlds and renders generic current-location and entity sta
 
 ### Milestone C — Agent Tools
 
-Hermes can inspect the selected world and invoke controlled operations without direct SQL or scenario-infrastructure knowledge.
+Implemented: Hermes can inspect the configured world database and invoke controlled generic or explicitly capability-scoped operations through a local MCP server without direct SQL or caller-selected database paths. Selecting/binding a world for each narrated player session remains part of the Phase 7 narration profile.
 
 ### Milestone D — Narrated Turn
 
