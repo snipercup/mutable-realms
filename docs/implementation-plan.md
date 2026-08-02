@@ -728,6 +728,18 @@ The infrastructure agent should be able to run this after migrations or suspicio
 
 Where practical, reject invalid writes rather than attempting to repair them afterward. Validation added for a new capability should normally arrive with that capability rather than being postponed to this phase; this phase is a deliberate system-wide review before broader gameplay expansion.
 
+### Phase 8 audit — Complete
+
+Completed and verified on 2026-08-02. The deterministic `validate_worlds` service and schema constraints were reviewed against the invariant list above:
+
+* unique IDs and single placement per entity — primary keys on every table;
+* references resolve — foreign keys plus `PRAGMA foreign_key_check`;
+* incompatible simultaneous placement — one placement row per entity, cross-world placement and bed-placement coherence checks;
+* single bed occupant — `beds.occupant_entity_id UNIQUE` plus occupancy-coherence checks;
+* history and revision coherence — one operation and one event per world revision, event/operation agreement, cross-world event actors, and operation/event revisions that never exceed the authoritative world revision.
+
+Quantities, quest availability, and relationship targets are not yet modeled, so their invariants are deferred until those capabilities arrive, per this phase's guidance. A candidate "missing bed state" check was considered during the audit and deliberately rejected: kind strings are scenario-local after `0002_generalize_entities`, and the regression fixture `test_generic_validation_does_not_infer_capabilities_from_labels` guarantees validation never infers ward semantics from a `bed`-kind label in a non-ward world. Ward-scenario coherence remains validated on existing `beds` rows only.
+
 ---
 
 # 13. Phase 9 — First Complete Gameplay Loop
@@ -767,6 +779,18 @@ The narrator must discover that the ward contains five current patients and that
 This is the primary proof of concept.
 
 Do not expand scope substantially until this behavior is reliable.
+
+### Phase 9 status — Complete
+
+Completed and verified on 2026-08-02 with the deterministic ward:
+
+1. a live narrated turn through the Hermes narration profile treated and discharged patient-1, incrementing the world revision from 0 to 1 and recording `patient_treated_and_discharged`;
+2. an unrelated read-only turn returned `no_mutation` with the revision unchanged;
+3. a later return to the ward presented exactly five admitted patients, and the discharged patient remained persisted and absent from ward placement — the narrator-visible working set never regenerated six patients;
+4. `tests/backend/test_phase9_acceptance.py` automates the complete loop (treatment → persistence → unrelated turn → return → browser/API readback) and passes with the full suite;
+5. state persisted across a close/reopen validation in a fresh Python process, with revision 1, one event, and an empty `bed-1` occupant row. A full container-rebuild persistence run is a deployment-level follow-up because this repository does not contain the container/Compose definition.
+
+The primary proof of concept is now reliable, so scope may expand toward Phase 10.
 
 ---
 
