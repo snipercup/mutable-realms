@@ -158,9 +158,18 @@ def get_entity(
 
 
 def list_recent_events(
-    database_path: str | Path, world_id: str, *, limit: int = 20
+    database_path: str | Path,
+    world_id: str,
+    *,
+    limit: int = 20,
+    _connection: sqlite3.Connection | None = None,
 ) -> list[WorldRecord]:
-    with connect_database(database_path) as connection:
+    connection_context = (
+        closing(connect_database(database_path))
+        if _connection is None
+        else nullcontext(_connection)
+    )
+    with connection_context as connection:
         world = connection.execute(
             "SELECT 1 FROM worlds WHERE id = ?", (world_id,)
         ).fetchone()

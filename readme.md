@@ -160,6 +160,7 @@ The npm scripts are the common project entry points:
 | `npm run seed` | Create the optional deterministic ward example if absent. |
 | `npm run validate` | Check foreign keys and cross-table world invariants. |
 | `npm run move-entity -- …` | Apply an idempotent, revision-checked local character move. |
+| `npm run world-context -- …` | Build deterministic, read-only context for one world. |
 
 Persistence commands and application startup use `MUTABLE_REALMS_DB_PATH`. The development container configures it as `/var/lib/mutable-realms/world.sqlite3`. For an isolated local database, set a different path before running the commands:
 
@@ -171,6 +172,14 @@ npm run validate
 ```
 
 `migrate` is idempotent and rejects modified or unsupported migration history. Migration `0002_generalize_entities` preserves existing ward databases while allowing scenario-defined entity kinds and character roles. `seed` is a deterministic ward example command retained for development compatibility; it is not required to create every world. `validate` is read-only and exits nonzero when authoritative state violates a supported invariant.
+
+The Phase 5 Context Builder reads the world, player, current location, nearby generic entities, and bounded recent events from one SQLite snapshot. It returns strict scenario-neutral JSON; optional capabilities such as ward occupancy remain separate projections. The event limit defaults to 10 and must be between 1 and 100:
+
+```sh
+npm run world-context -- --world-id "$WORLD_ID" --event-limit 10
+```
+
+Context generation opens the existing database in SQLite read-only/query-only mode and does not make narration or presentation output authoritative. SQLite may maintain its normal `-wal` and `-shm` coordination files; these are database-engine artifacts, not a second authoritative store. The builder intentionally remains WAL-aware so it does not omit committed state that has not yet been checkpointed into the main database file.
 
 Build the browser interface before starting the API when you want the backend to serve the complete application:
 

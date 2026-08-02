@@ -570,6 +570,8 @@ world revision produced by the change
 
 Create a deterministic context-building service.
 
+Initial implementation status: the scenario-neutral `build_world_context` application service now returns strict structured world, player, current-location, generic entity, and newest-first event data from one explicit SQLite read transaction. The connection is opened in SQLite read-only/query-only mode while remaining WAL-aware, so committed but uncheckpointed authoritative state is not omitted; SQLite's `-wal` and `-shm` coordination files are operational artifacts rather than world-state mutations. Recent events default to 10 and are bounded to 1–100. The trusted local `world-context` CLI exposes deterministic JSON for agent integration and debugging without adding an HTTP mutation surface. Ward occupancy and other optional capability projections remain outside the generic contract and should be added only when an actual narration scenario requires them.
+
 Given the player and current location, it should assemble a compact structured representation containing only information likely to matter for the next interaction.
 
 For example:

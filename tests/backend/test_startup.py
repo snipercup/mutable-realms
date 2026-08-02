@@ -27,9 +27,10 @@ def test_startup_migrates_database_and_readiness_checks_schema(tmp_path: Path) -
     assert status_code == 200
     assert body == {"status": "ready"}
     with connect_database(database_path) as connection:
-        assert connection.execute(
-            "SELECT version FROM schema_migrations"
-        ).fetchone()[0] == 1
+        versions = connection.execute(
+            "SELECT version FROM schema_migrations ORDER BY version"
+        ).fetchall()
+        assert [row[0] for row in versions] == [1, 2]
 
 
 def test_startup_fails_visibly_for_changed_applied_migration(tmp_path: Path) -> None:

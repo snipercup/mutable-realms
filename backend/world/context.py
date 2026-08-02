@@ -1,0 +1,118 @@
+from __future__ import annotations
+
+from contextlib import closing
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from backend.persistence.database import connect_readonly_database
+from backend.world.queries import (
+    LocationNotFound,
+    WorldNotFound,
+    get_location,
+    get_player,
+    list_recent_events,
+)
+
+
+class ContextModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ContextWorld(ContextModel):
+    id: str
+    name: str
+    revision: int = Field(ge=0)
+
+
+class ContextPlayer(ContextModel):
+    id: str
+    world_id: str
+    kind: str
+    name: str
+    role: str
+    condition: str | None
+    disposition: str
+    location_id: str | None
+
+
+class ContextEntity(ContextModel):
+    id: str
+    kind: str
+    name: str
+    role: str | None
+    condition: str | None
+    disposition: str | None
+
+
+class ContextLocation(ContextModel):
+    id: str
+    world_id: str
+    name: str
+    description: str | None
+    revision: int = Field(ge=0)
+    entities: list[ContextEntity]
+
+
+class ContextEvent(ContextModel):
+    id: str
+    world_id: str
+    operation_id: str
+    event_type: str
+    actor_entity_id: str | None
+    summary: str
+    payload: dict[str, Any]
+    world_revision: int = Field(ge=1)
+    occurred_at: str
+
+
+class WorldContext(ContextModel):
+    world: ContextWorld
+    player: ContextPlayer
+    current_location: ContextLocation
+    recent_events: list[ContextEvent]
+
+
+def build_world_context(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    recent_event_limit: int = 10,
+) -> WorldContext:
+    """Build compact, scenario-neutral context from one SQLite snapshot."""
+    if not 1 <= recent_event_limit <= 100:
+        raise ValueError("recent event limit must be between 1 and 100")
+
+    with closing(connect_readonly_database(database_path)) as connection:
+        connection.execute("BEGIN")
+        world = connection.execute(
+            "SELECT id, name, revision FROM worlds WHERE id = ?", (world_id,)
+        ).fetchone()
+        if world is None:
+            raise WorldNotFound(f"World {world_id!r} was not found")
+
+        player = get_player(database_path, world_id, _connection=connection)
+        location_id = player["location_id"]
+        if location_id is None:
+            raise LocationNotFound(
+                f"Player in world {world_id!r} has no current location"
+            )
+        location = get_location(
+            database_path, world_id, location_id, _connection=connection
+        )
+        events = list_recent_events(
+            database_path,
+            world_id,
+            limit=recent_event_limit,
+            _connection=connection,
+        )
+
+    return WorldContext.model_validate(
+        {
+            "world": dict(world),
+            "player": player,
+            "current_location": location,
+            "recent_events": events,
+        }
+    )

@@ -10,10 +10,12 @@ from pathlib import Path
 
 from backend.persistence.migrations import MigrationError, migrate_database
 from backend.scenarios.ward.seed import seed_ward_world
+from backend.world.context import build_world_context
 from backend.world.mutations import MutationError, move_entity
+from backend.world.queries import WorldQueryError
 from backend.world.validation import validate_worlds
 
-_COMMANDS = ("migrate", "seed", "validate", "move-entity")
+_COMMANDS = ("migrate", "seed", "validate", "move-entity", "world-context")
 
 
 def _database_path(value: str | None) -> Path:
@@ -35,6 +37,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--entity-id")
     parser.add_argument("--destination-location-id")
     parser.add_argument("--actor-entity-id")
+    parser.add_argument("--event-limit", type=int, default=10)
     args = parser.parse_args(argv)
 
     try:
@@ -90,6 +93,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 0
 
+        if args.command == "world-context":
+            if args.world_id is None:
+                raise ValueError("world-context requires --world-id")
+            context = build_world_context(
+                database_path,
+                world_id=args.world_id,
+                recent_event_limit=args.event_limit,
+            )
+            print(json.dumps(context.model_dump(), sort_keys=True))
+            return 0
+
         issues = validate_worlds(database_path)
         if not issues:
             print("World validation passed")
@@ -98,7 +112,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             entity = f" [{issue.entity_id}]" if issue.entity_id else ""
             print(f"{issue.code}{entity}: {issue.message}", file=sys.stderr)
         return 1
-    except (MigrationError, MutationError, sqlite3.Error, OSError, ValueError) as error:
+    except (
+        MigrationError,
+        MutationError,
+        WorldQueryError,
+        sqlite3.Error,
+        OSError,
+        ValueError,
+    ) as error:
         print(f"mutable-realms: {error}", file=sys.stderr)
         return 2
 

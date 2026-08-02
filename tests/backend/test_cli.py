@@ -8,6 +8,8 @@ import pytest
 
 from backend.cli import main
 from backend.persistence.database import connect_database
+from backend.persistence.migrations import migrate_database
+from tests.backend.general_world import GENERAL_WORLD_ID, seed_general_world
 
 
 def test_migrate_seed_and_validate_commands(
@@ -149,3 +151,80 @@ def test_move_entity_command_reports_stale_revision_without_changes(
             "SELECT revision FROM worlds WHERE id = 'ward-world'"
         ).fetchone()[0] == 0
         assert connection.execute("SELECT COUNT(*) FROM operations").fetchone()[0] == 0
+
+
+def test_world_context_command_returns_deterministic_json(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    database_path = tmp_path / "world.sqlite3"
+    migrate_database(database_path)
+    seed_general_world(database_path)
+
+    arguments = [
+        "--db-path",
+        str(database_path),
+        "world-context",
+        "--world-id",
+        GENERAL_WORLD_ID,
+        "--event-limit",
+        "1",
+    ]
+    exit_code = main(arguments)
+
+    assert exit_code == 0
+    first_capture = capsys.readouterr()
+    output = first_capture.out
+    assert first_capture.err == ""
+    payload = json.loads(output)
+    assert output == json.dumps(payload, sort_keys=True) + "\n"
+    assert payload["world"] == {
+        "id": GENERAL_WORLD_ID,
+        "name": "Open World",
+        "revision": 0,
+    }
+    assert payload["player"]["id"] == "farmer"
+    assert payload["current_location"]["id"] == "ocean-farm"
+    assert payload["recent_events"] == []
+
+    assert main(arguments) == 0
+    second_capture = capsys.readouterr()
+    assert second_capture.out == output
+    assert second_capture.err == ""
+
+
+@pytest.mark.parametrize(
+    ("world_id", "event_limit", "message"),
+    [
+        ("missing-world", "10", "was not found"),
+        (GENERAL_WORLD_ID, "0", "event limit must be between 1 and 100"),
+    ],
+)
+def test_world_context_command_reports_controlled_failures(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    world_id: str,
+    event_limit: str,
+    message: str,
+) -> None:
+    database_path = tmp_path / "world.sqlite3"
+    migrate_database(database_path)
+    seed_general_world(database_path)
+
+    exit_code = main(
+        [
+            "--db-path",
+            str(database_path),
+            "world-context",
+            "--world-id",
+            world_id,
+            "--event-limit",
+            event_limit,
+        ]
+    )
+
+    capture = capsys.readouterr()
+    assert exit_code == 2
+    assert capture.out == ""
+    assert capture.err.startswith("mutable-realms: ")
+    assert message in capture.err
+    assert "Traceback" not in capture.err

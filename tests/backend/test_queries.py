@@ -7,6 +7,7 @@ import pytest
 
 from backend.persistence.migrations import migrate_database
 from backend.scenarios.ward.queries import get_ward_bed, get_ward_location_state
+from backend.scenarios.ward.seed import WARD_WORLD_ID, seed_ward_world
 from backend.world.queries import (
     EntityNotFound,
     LocationNotFound,
@@ -18,7 +19,6 @@ from backend.world.queries import (
     get_player,
     list_recent_events,
 )
-from backend.scenarios.ward.seed import WARD_WORLD_ID, seed_ward_world
 from tests.backend.general_world import GENERAL_WORLD_ID, seed_general_world
 
 
