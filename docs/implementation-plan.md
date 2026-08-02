@@ -4,7 +4,7 @@
 
 This document defines the initial implementation direction for Mutable Realms. Players describe actions through narration, an AI agent determines and narrates their consequences, and the resulting changes are written into authoritative world state. A lightweight web client visualizes that state.
 
-The long-term idea is broader than any one setting or mechanic: Mutable Realms should support open-ended narrative experiences in the spirit of AI-driven text adventures while grounding them in persistent, inspectable state. A ward and its patients are used only as the first concrete proof scenario. They must not become assumptions built into the platform as a whole.
+The long-term idea is broader than any one setting or mechanic: Mutable Realms should support open-ended narrative experiences in the spirit of AI-driven text adventures while grounding them in persistent, inspectable state. A character may be an adventurer, ruler, starship captain, or chicken farmer on the ocean floor. No setting, entity kind, occupation, quest system, or ward mechanic is mandatory. The recovery ward is retained only as the first deterministic proof scenario.
 
 The first goal is not to build a general AI game engine. The first goal is to prove a reliable loop:
 
@@ -296,7 +296,7 @@ npm run serve
 npm run frontend-build
 ```
 
-`migrate`, `seed`, and `validate` are reserved interfaces that deliberately fail until the authoritative persistence slice implements them. They must be replaced with real behavior during the next phase rather than left as successful placeholders.
+`migrate`, `seed`, and `validate` were initially reserved interfaces. Milestone A replaced all three placeholders with operational commands.
 
 ### Step 3 — Update and rebuild the development image — Complete
 
@@ -313,6 +313,48 @@ Post-restart verification as the `hermeswebui` user confirmed:
 The Hermes runtime normalizes the interactive tool shell's `PATH` and currently reports `UV_PROJECT_ENVIRONMENT=venv`, so repository-local `venv/` and `node_modules/` remain the normal command environments even though the image-installed `/opt` toolchains were verified directly. These directories are bind-mounted, ignored by Git, and survive ordinary container restarts. Dependency manifest changes still require a locked install and an image rebuild before the updated environment can be considered reproducible.
 
 No infrastructure blocker remains before implementing the minimal authoritative world slice.
+
+### Phase 1 / Milestone A — Minimal Authoritative World Slice — Complete
+
+Completed and verified on 2026-08-01:
+
+* migration `0001_initial_world_schema` creates strict relational tables for worlds, locations, stable entities, placement, characters, beds, completed operations, and events;
+* migration history records ordered versions, names, SHA-256 checksums, and application times; applying an up-to-date schema is safe, while changed, missing, noncontiguous, or unsupported migrations fail visibly;
+* every project SQLite connection enables foreign keys and a five-second busy timeout;
+* the deterministic ward seed creates one world, one ward, one player, six beds, and six admitted patients with stable IDs and does not rewrite an existing world;
+* whole-world validation reports foreign-key failures, cross-world placement, entity subtype mismatches, incoherent bed placement or occupancy, character placement/disposition conflicts, noncontiguous operation/event history, event/operation disagreement, cross-world event actors, and history revisions inconsistent with the authoritative world revision;
+* `treat_and_discharge_patient` verifies the world, patient, bed, placement, optional actor, and expected revision before atomically recovering and discharging the patient, clearing the bed, removing the patient from current location contents, incrementing the world revision, and recording an event;
+* canonical operation requests and results are stored transactionally; caller operation IDs support exact idempotent retries and reject reuse for a different request;
+* migration, seed, and validation commands are operational, and application startup applies pending migrations before reporting database readiness.
+
+The persistence tests confirm the proof transition from six occupied beds to five after closing and reopening the database. They also cover migration rollback and checksum rejection, invalid-world reporting, stale revisions, wrong or missing entities, duplicate operation IDs, and complete transaction rollback when event insertion fails.
+
+This authoritative foundation now supports higher-level read and presentation layers. The first mutation remains an internal application service rather than an HTTP or agent-facing operation; exposing controlled mutation interfaces belongs to the later integration phases.
+
+### Phase 2 — Read API and Visualization — Complete
+
+Completed and verified on 2026-08-01:
+
+* a read-only query layer returns the current player, player-derived current location, generic location contents from one SQLite read snapshot, entity details, and newest-first world events without exposing SQL to callers;
+* conventional FastAPI routes expose those reads under `/api/worlds/{world_id}` with bounded event-history requests, consistent missing-resource responses, and generated OpenAPI documentation;
+* the browser discovers and selects worlds, then renders current location, arbitrary entity kinds, world revision, and recent persistent events entirely from generic API responses;
+* the browser refreshes authoritative state on demand and every five seconds, reports read failures visibly, and keeps no independent world-state store;
+* the FastAPI application serves `frontend/dist/` when a production frontend build is present while preserving API, OpenAPI, and health routes.
+
+Focused read API tests cover both the ward fixture and a world with a farmer, animal, item, and no medical state. Ward occupancy remains available through an explicit optional capability route. TypeScript checking and a production frontend build verify the scenario-neutral presentation bundle.
+
+### Scenario-neutrality correction — Complete
+
+Completed and verified on 2026-08-02:
+
+* additive migration `0002_generalize_entities` rebuilds constrained entity tables without resetting data, preserving existing IDs, placements, operations, events, and ward records while allowing non-empty scenario-defined entity kinds and character roles;
+* a minimal automated world contains ordinary locations, a player character, an animal, and an item, with no patients or beds; generic querying, movement, revision increments, event recording, and whole-world validation all work there;
+* deterministic ward seeding, treatment/discharge, bed queries, and ward read models live under `backend/scenarios/ward/` rather than defining generic world modules;
+* generic location reads contain entities but no bed projection; ward occupancy is exposed separately under `/capabilities/ward/`;
+* `GET /api/worlds` and the browser world selector remove the hardcoded `ward-world` presentation assumption;
+* the browser renders arbitrary entity kinds and current authoritative location state without patient or bed components.
+
+This is deliberately not a plugin framework or universal entity-component system. The current boundary is a small relational core plus focused optional scenario modules. Future capabilities should earn core abstractions through reuse rather than making quests, wards, inventories, combat, or any other scenario concept mandatory.
 
 ---
 
@@ -390,7 +432,7 @@ This is the first important milestone.
 
 ---
 
-# 6. Phase 2 — Read API and Visualization
+# 6. Phase 2 — Read API and Visualization — Complete
 
 Expose read-only application endpoints.
 
@@ -406,9 +448,9 @@ GET recent world events
 
 Exact routes can follow conventional REST naming and should be documented through FastAPI's generated OpenAPI schema.
 
-Build a small browser interface displaying the ward.
+Build a small browser interface displaying authoritative current-location state. The first ward visualization may prove API-derived presentation, but the lasting generic interface must not require beds, patients, or a particular world ID.
 
-Initial visualization can be extremely simple:
+An initial scenario view can be extremely simple:
 
 ```text
 WARD
@@ -429,11 +471,22 @@ Then add lightweight automatic refreshing or push updates only if useful. Pollin
 
 Database state changes independently of the frontend, and the frontend correctly renders those changes.
 
+This condition is covered by query and HTTP tests that mutate authoritative SQLite state without using the frontend and then observe the updated location through the same generic read model consumed by the browser. Capability-specific views may add derived presentation without becoming authoritative or expanding every generic response.
+
 ---
 
 # 7. Phase 3 — Expand Controlled World Mutations
 
 Expand the authoritative application service layer established in Phase 1 as actual scenarios require more operations.
+
+The first Phase 3 slice is now implemented:
+
+* `move_entity` moves a character between existing locations through a narrow application service;
+* each move requires an expected world revision and world-scoped operation ID, supports exact idempotent replay, and rejects reuse with a different request;
+* the transition rejects cross-world destinations, non-character entities, discharged characters, and current bed occupants;
+* placement, revision, operation record, and `entity_moved` event commit in one `BEGIN IMMEDIATE` transaction and roll back together;
+* the trusted local `move-entity` CLI returns resulting authoritative state as JSON, while HTTP and browser surfaces remain read-only pending authentication;
+* tests cover successful persistence, event payloads, retries, conflicts, stale revisions, cross-world resources, occupied patients, rollback, CLI behavior, and whole-world validation.
 
 Possible operations include:
 
@@ -523,12 +576,11 @@ For example:
 
 ```text
 PLAYER
-Current location: ward
+Current location: current-location-id
 
 LOCATION
-Ward
-6 beds
-5 occupied
+Current location name
+Nearby entities grouped by relevant capability
 
 NEARBY CHARACTERS
 ...
@@ -1093,45 +1145,31 @@ Work toward these milestones in order.
 
 ### Milestone A — Authoritative Persistent State
 
-A versioned SQLite database contains a deterministic example ward with six occupied beds. The live database resides in the dedicated deployment state directory rather than the Git repository.
+A versioned SQLite database contains stable worlds, locations, entities, placement, operations, events, and optional capability state. The live database resides outside Git. Tested mutations are atomic, idempotent, expected-revision checked, traceable, and invariant-safe across restart. The deterministic ward is one compatibility fixture for this milestone, not its domain boundary.
 
-One tested application service performs an invariant-preserving, transactional treatment-and-discharge operation. It recovers and relocates the character without deleting them, clears the bed, records an event, and increments the world revision.
+### Milestone B — Scenario-neutral Reads and Visualization
 
-The operation is idempotent when retried with the same operation ID and rejects stale expected revisions. Closing all connections and recreating the application preserves five occupied beds and passes world validation.
-
-### Milestone B — Visualization
-
-The browser renders six occupied beds from API data.
-
-Changing the database through the supported application operation causes the browser to render five.
+The browser discovers worlds and renders generic current-location and entity state from the API. Worlds with no ward or quest concepts work without empty scenario fields leaking into generic contracts. Optional capability views remain derived from the same authoritative SQLite state.
 
 ### Milestone C — Agent Tools
 
-Hermes can inspect the ward and perform the same mutation using a controlled Mutable Realms tool.
+Hermes can inspect the selected world and invoke controlled operations without direct SQL or scenario-infrastructure knowledge.
 
 ### Milestone D — Narrated Turn
 
-A player tells Hermes:
-
-```text
-I treat the patient in the first bed and help arrange her discharge.
-```
-
-Hermes retrieves state, resolves the action, mutates the world, and narrates a result consistent with the stored state.
+A player describes an open-ended action in the current scenario. Hermes retrieves relevant state, resolves the action into supported operations, commits validated consequences, and narrates a result consistent with stored state.
 
 ### Milestone E — Persistent Return
 
-The player leaves the ward, performs another interaction, and returns.
-
-The ward still contains five current patients, and the discharged character still exists elsewhere in the world.
+The player leaves a location, performs another interaction, and returns. Prior entity, location, relationship, resource, or capability changes remain true unless another recorded operation changed them.
 
 ### Milestone F — Social Consequences
 
-The recovered patient exists elsewhere and remembers being helped.
+Characters persist across locations and can retain relevant relationships or memories when that capability is introduced.
 
-### Milestone G — Quest Consequences
+### Milestone G — Optional Goal Consequences
 
-A persistent quest can be accepted and completed, after which it disappears from the quest board.
+When a scenario introduces quests, contracts, tasks, or another goal model, accepted and completed goals persist correctly. A quest board is not required in worlds that do not use one.
 
 ### Milestone H — Location Transformation
 
