@@ -10,7 +10,13 @@ from mcp.client.stdio import stdio_client
 from backend.persistence.database import connect_database
 from backend.persistence.migrations import migrate_database
 from backend.scenarios.ward.seed import seed_ward_world
-from backend.world.mcp_server import get_database_path, mcp
+from backend.world.mcp_server import (
+    get_database_path,
+    get_session_binding,
+    mcp,
+    resolve_actor_entity_id,
+    resolve_world_id,
+)
 
 
 def test_mcp_exposes_only_controlled_world_tools_without_database_arguments() -> None:
@@ -76,6 +82,42 @@ def test_mcp_read_tool_uses_configured_database(
     assert get_database_path() == database_path.resolve()
 
 
+def test_mcp_optional_session_binding_rejects_world_and_actor_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MUTABLE_REALMS_WORLD_ID", "ward-world")
+    monkeypatch.setenv("MUTABLE_REALMS_PLAYER_ID", "player")
+
+    assert get_session_binding() == ("ward-world", "player")
+    assert resolve_world_id("ward-world") == "ward-world"
+    assert resolve_actor_entity_id(None) == "player"
+    with pytest.raises(RuntimeError, match="outside the trusted"):
+        resolve_world_id("other-world")
+    with pytest.raises(RuntimeError, match="outside the trusted"):
+        resolve_actor_entity_id("other-actor")
+
+
+def test_mcp_session_binding_requires_both_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MUTABLE_REALMS_WORLD_ID", "ward-world")
+    monkeypatch.delenv("MUTABLE_REALMS_PLAYER_ID", raising=False)
+
+    with pytest.raises(RuntimeError, match="configured together"):
+        get_session_binding()
+
+
+def test_bound_session_restricts_all_reads_and_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MUTABLE_REALMS_WORLD_ID", "ward-world")
+    monkeypatch.setenv("MUTABLE_REALMS_PLAYER_ID", "player")
+
+    from backend.world import mcp_server
+
+    monkeypatch.setattr(mcp_server, "ensure_bound_player", lambda _world_id: None)
+    with pytest.raises(RuntimeError, match="unbound administration"):
+        mcp_server.world_validate()
+
+
 def test_stdio_server_supports_real_tool_discovery_and_calls(tmp_path: Path) -> None:
     database_path = tmp_path / "world.sqlite3"
     migrate_database(database_path)
@@ -136,11 +178,19 @@ def test_stdio_server_applies_and_reports_controlled_mutation(tmp_path: Path) ->
             command="uv",
             args=["run", "python", "-m", "backend.world.mcp_server"],
             cwd=Path(__file__).parents[2],
-            env={"MUTABLE_REALMS_DB_PATH": str(database_path)},
+            env={
+                "MUTABLE_REALMS_DB_PATH": str(database_path),
+                "MUTABLE_REALMS_WORLD_ID": "ward-world",
+                "MUTABLE_REALMS_PLAYER_ID": "player",
+            },
         )
         async with stdio_client(parameters) as (reader, writer):
             async with ClientSession(reader, writer) as session:
                 await session.initialize()
+                rejected_world = await session.call_tool(
+                    "world_status", {"world_id": "other-world"}
+                )
+                assert rejected_world.isError is True
                 mutation = await session.call_tool(
                     "world_treat_and_discharge_patient",
                     {
@@ -166,6 +216,8 @@ def test_stdio_server_applies_and_reports_controlled_mutation(tmp_path: Path) ->
                 )
 
                 validation = await session.call_tool("world_validate", {})
-                assert validation.structuredContent == {"issues": [], "valid": True}
+                assert validation.isError is True
+                assert validation.content
+                assert "unbound administration" in str(validation.content[0])
 
     asyncio.run(exercise_server())

@@ -663,6 +663,8 @@ Do not independently implement world-changing logic in both the HTTP API and age
 
 # 11. Phase 7 — Narration Agent Prototype
 
+Implementation status: complete for the first narrow vertical slice. `backend.world.turns.run_turn` now provides the model-independent orchestration boundary: it binds a trusted world/player, validates one structured decision, checks advertised capabilities, generates an operation ID, supplies the observed revision and trusted actor to the existing mutation services, retries one stale revision with fresh context, maps failures to explicit outcomes, and rereads authoritative context after every turn. The live MCP narration registration additionally binds `MUTABLE_REALMS_WORLD_ID` and `MUTABLE_REALMS_PLAYER_ID` in trusted subprocess configuration; status, context, entity, event, and mutation tools enforce that binding, while the all-world validation diagnostic is restricted to the unbound administration server. `docs/narration-agent-contract.md` defines the Hermes WebUI session contract, decision schema, outcome handling, and acceptance scenario. `world-turn` provides a deterministic CLI seam for testing the same policy without an external model, returning nonzero status for failed mutation outcomes. Hermes remains the interpreter and narrator through the existing MCP tools; no custom in-game input UI is added in this phase.
+
 Once deterministic world operations work reliably, integrate the narration profile.
 
 For each player turn:
@@ -697,6 +699,8 @@ bed.occupant = null
 Player statements are attempts or declarations of intent unless the scenario establishes that the player has authority to make them automatically true.
 
 The narration agent must not claim state changes that it failed to persist.
+
+The first Phase 7 implementation deliberately limits each message to one supported operation. Multi-step consequences must use one named atomic application operation, such as ward treatment/discharge, rather than model-assembled low-level writes. A later Phase 9 acceptance run should exercise the full Hermes WebUI → MCP → SQLite → browser loop using this contract.
 
 ---
 

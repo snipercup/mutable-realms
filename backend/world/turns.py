@@ -1,0 +1,315 @@
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path
+from typing import Literal
+from uuid import uuid4
+
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+
+from backend.world.agent_tools import (
+    move_world_entity,
+    read_world_status,
+    treat_and_discharge_world_patient,
+)
+from backend.world.context import WorldContext, build_world_context
+from backend.world.mutations import (
+    MutationConflict,
+    MutationNotFound,
+    StaleWorldRevision,
+)
+
+
+class DecisionKind(StrEnum):
+    NARRATE = "narrate_without_mutation"
+    PERFORM_OPERATION = "perform_one_supported_operation"
+    CLARIFICATION = "request_clarification"
+    CAPABILITY_GAP = "capability_gap"
+
+
+OperationType = Literal[
+    "world_move_entity",
+    "world_treat_and_discharge_patient",
+]
+
+
+class OperationDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    operation_type: OperationType
+    entity_id: str | None = None
+    destination_location_id: str | None = None
+    patient_id: str | None = None
+    bed_id: str | None = None
+
+    @model_validator(mode="after")
+    def require_operation_arguments(self) -> OperationDecision:
+        if self.operation_type == "world_move_entity":
+            if self.patient_id is not None or self.bed_id is not None:
+                raise ValueError("move operation cannot include ward arguments")
+            if not self.entity_id or not self.destination_location_id:
+                raise ValueError(
+                    "world_move_entity requires entity_id and destination_location_id"
+                )
+        else:
+            if self.entity_id is not None or self.destination_location_id is not None:
+                raise ValueError("ward operation cannot include movement arguments")
+            if not self.patient_id or not self.bed_id:
+                raise ValueError(
+                    "world_treat_and_discharge_patient requires patient_id and bed_id"
+                )
+        return self
+
+
+class TurnDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: DecisionKind
+    operation: OperationDecision | None = None
+    message: str | None = None
+
+    @model_validator(mode="after")
+    def require_decision_shape(self) -> TurnDecision:
+        if self.kind is DecisionKind.PERFORM_OPERATION and self.operation is None:
+            raise ValueError("perform_one_supported_operation requires operation")
+        if self.kind is not DecisionKind.PERFORM_OPERATION and self.operation is not None:
+            raise ValueError("only operation decisions may include an operation")
+        return self
+
+
+class TurnOutcome(StrEnum):
+    NO_MUTATION = "no_mutation"
+    SUCCESS = "success"
+    IDEMPOTENT_REPLAY = "idempotent_replay"
+    CLARIFICATION = "clarification"
+    CAPABILITY_GAP = "capability_gap"
+    INVALID_ACTION = "invalid_action"
+    MISSING_RESOURCE = "missing_resource"
+    MUTATION_REJECTED = "mutation_rejected"
+    STALE_REVISION = "stale_revision"
+    TOOL_FAILURE = "tool_failure"
+
+
+@dataclass(frozen=True)
+class TurnResult:
+    outcome: TurnOutcome
+    before: WorldContext
+    after: WorldContext
+    decision: TurnDecision
+    mutation: dict[str, object] | None
+    message: str | None
+    attempts: int
+
+
+DecisionProvider = Callable[[str, WorldContext], TurnDecision | dict[str, object]]
+OperationIdFactory = Callable[[], str]
+
+
+def _result(
+    outcome: TurnOutcome,
+    before: WorldContext,
+    after: WorldContext,
+    decision: TurnDecision,
+    *,
+    mutation: dict[str, object] | None = None,
+    message: str | None = None,
+    attempts: int,
+) -> TurnResult:
+    return TurnResult(
+        outcome=outcome,
+        before=before,
+        after=after,
+        decision=decision,
+        mutation=mutation,
+        message=message or decision.message,
+        attempts=attempts,
+    )
+
+
+def _execute_operation(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    player_id: str,
+    operation_id: str,
+    expected_revision: int,
+    operation: OperationDecision,
+) -> dict[str, object]:
+    if operation.operation_type == "world_move_entity":
+        assert operation.entity_id is not None
+        assert operation.destination_location_id is not None
+        result = move_world_entity(
+            database_path,
+            world_id=world_id,
+            operation_id=operation_id,
+            expected_revision=expected_revision,
+            entity_id=operation.entity_id,
+            destination_location_id=operation.destination_location_id,
+            actor_entity_id=player_id,
+        )
+        return {
+            "already_applied": result["already_applied"],
+            "entity_id": result["entity_id"],
+            "location_id": result["location_id"],
+            "world_revision": result["world_revision"],
+        }
+
+    assert operation.patient_id is not None
+    assert operation.bed_id is not None
+    result = treat_and_discharge_world_patient(
+        database_path,
+        world_id=world_id,
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        patient_id=operation.patient_id,
+        bed_id=operation.bed_id,
+        actor_entity_id=player_id,
+    )
+    return {
+        "already_applied": result["already_applied"],
+        "world_revision": result["world_revision"],
+    }
+
+
+def run_turn(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    player_id: str,
+    player_action: str,
+    decide: DecisionProvider,
+    operation_id_factory: OperationIdFactory | None = None,
+) -> TurnResult:
+    """Execute one structured narrated turn without giving model code storage access.
+
+    ``decide`` is the model-facing seam: it receives trusted context and untrusted
+    player text, and must return a validated ``TurnDecision``. This function owns
+    session binding, capability checks, operation identity, stale-revision retry,
+    mutation dispatch, and authoritative post-turn rereading.
+    """
+    operation_id = (operation_id_factory or (lambda: f"turn-{uuid4()}"))()
+    before = build_world_context(database_path, world_id=world_id)
+    if before.player.id != player_id:
+        raise ValueError("player_id does not match the world's bound player")
+
+    attempts = 0
+    while True:
+        attempts += 1
+        status = read_world_status(database_path, world_id=world_id)
+        try:
+            decision = TurnDecision.model_validate(decide(player_action, before))
+        except ValidationError as error:
+            after = build_world_context(database_path, world_id=world_id)
+            return _result(
+                TurnOutcome.INVALID_ACTION,
+                before,
+                after,
+                TurnDecision(
+                    kind=DecisionKind.CAPABILITY_GAP,
+                    message=f"decision output was invalid: {error}",
+                ),
+                message="decision output was invalid",
+                attempts=attempts,
+            )
+
+        if decision.kind is DecisionKind.NARRATE:
+            after = build_world_context(database_path, world_id=world_id)
+            return _result(TurnOutcome.NO_MUTATION, before, after, decision, attempts=attempts)
+        if decision.kind is DecisionKind.CLARIFICATION:
+            after = build_world_context(database_path, world_id=world_id)
+            return _result(TurnOutcome.CLARIFICATION, before, after, decision, attempts=attempts)
+        if decision.kind is DecisionKind.CAPABILITY_GAP:
+            after = build_world_context(database_path, world_id=world_id)
+            return _result(TurnOutcome.CAPABILITY_GAP, before, after, decision, attempts=attempts)
+
+        assert decision.operation is not None
+        if decision.operation.operation_type not in status["available_mutations"]:
+            after = build_world_context(database_path, world_id=world_id)
+            return _result(
+                TurnOutcome.CAPABILITY_GAP,
+                before,
+                after,
+                decision,
+                message="requested operation is not advertised for this world",
+                attempts=attempts,
+            )
+
+        try:
+            mutation = _execute_operation(
+                database_path,
+                world_id=world_id,
+                player_id=player_id,
+                operation_id=operation_id,
+                expected_revision=before.world.revision,
+                operation=decision.operation,
+            )
+        except StaleWorldRevision as error:
+            if attempts >= 2:
+                after = build_world_context(database_path, world_id=world_id)
+                return _result(
+                    TurnOutcome.STALE_REVISION,
+                    before,
+                    after,
+                    decision,
+                    message=str(error),
+                    attempts=attempts,
+                )
+            before = build_world_context(database_path, world_id=world_id)
+            continue
+        except MutationNotFound as error:
+            after = build_world_context(database_path, world_id=world_id)
+            return _result(
+                TurnOutcome.MISSING_RESOURCE,
+                before,
+                after,
+                decision,
+                message=str(error),
+                attempts=attempts,
+            )
+        except MutationConflict as error:
+            after = build_world_context(database_path, world_id=world_id)
+            return _result(
+                TurnOutcome.MUTATION_REJECTED,
+                before,
+                after,
+                decision,
+                message=str(error),
+                attempts=attempts,
+            )
+        except (AssertionError, ValueError) as error:
+            after = build_world_context(database_path, world_id=world_id)
+            return _result(
+                TurnOutcome.INVALID_ACTION,
+                before,
+                after,
+                decision,
+                message=str(error),
+                attempts=attempts,
+            )
+        except Exception as error:
+            after = build_world_context(database_path, world_id=world_id)
+            return _result(
+                TurnOutcome.TOOL_FAILURE,
+                before,
+                after,
+                decision,
+                message=str(error),
+                attempts=attempts,
+            )
+
+        after = build_world_context(database_path, world_id=world_id)
+        outcome = (
+            TurnOutcome.IDEMPOTENT_REPLAY
+            if mutation["already_applied"]
+            else TurnOutcome.SUCCESS
+        )
+        return _result(
+            outcome,
+            before,
+            after,
+            decision,
+            mutation=mutation,
+            attempts=attempts,
+        )

@@ -161,6 +161,7 @@ The npm scripts are the common project entry points:
 | `npm run validate` | Check foreign keys and cross-table world invariants. |
 | `npm run move-entity -- …` | Apply an idempotent, revision-checked local character move. |
 | `npm run world-context -- …` | Build deterministic, read-only context for one world. |
+| `npm run world-turn -- …` | Execute one validated structured turn decision and reread authoritative state. |
 | `npm run world-tools` | Run the Phase 6 Hermes MCP tool server over stdio. |
 
 Persistence commands and application startup use `MUTABLE_REALMS_DB_PATH`. The development container configures it as `/var/lib/mutable-realms/world.sqlite3`. For an isolated local database, set a different path before running the commands:
@@ -209,9 +210,39 @@ hermes mcp add mutable-realms \
 hermes mcp test mutable-realms
 ```
 
+For a narrated session, also bind the MCP subprocess to the trusted world and player. These values are process configuration, not player-controlled tool arguments:
+
+```sh
+hermes mcp add mutable-realms-narration \
+  --command uv \
+  --env "MUTABLE_REALMS_DB_PATH=$MUTABLE_REALMS_DB_PATH" \
+  --env "MUTABLE_REALMS_WORLD_ID=ward-world" \
+  --env "MUTABLE_REALMS_PLAYER_ID=player" \
+  --args --directory "$(pwd)" run python -m backend.world.mcp_server
+```
+
+When this binding is present, every MCP read rejects another world, every world/entity/event read verifies the configured player against that world's context, every mutation uses the configured player as actor, and `world_validate` is disabled because it is an all-world administration diagnostic. Use the unbound registration for validation and other trusted Phase 6 inspection/administration; do not use it as the narration session's gameplay server.
+
 Start a new Hermes session after registration so tool discovery includes the server. `npm run world-tools` is available for direct stdio-server debugging, but it is not an interactive command and should normally be started by Hermes.
 
 There is intentionally no generic `world_update` tool. Arbitrary field updates would bypass scenario rules. Add a named application operation and expose a correspondingly narrow MCP tool when a scenario requires a new mutation.
+
+### Narrated turn contract
+
+Phase 7 adds the model-independent turn policy in `backend.world.turns` and documents the Hermes-facing contract in `docs/narration-agent-contract.md`. A narration session must be trusted-bound to one world and player. For each player message, Hermes reads `world_status` and `world_context`, returns exactly one structured decision kind, invokes at most one advertised mutation with the observed revision and a fresh operation ID, rereads context, and narrates only the persisted result. A stale revision causes one fresh-context reevaluation; rejected, missing, unsupported, and failed operations must never be narrated as successful.
+
+The deterministic CLI seam exercises the same policy without an external model. It accepts a validated decision JSON while preserving the original player action for the model-facing contract:
+
+```sh
+npm run world-turn -- \
+  --world-id ward-world \
+  --player-id player \
+  --player-action "Treat the patient in the first bed." \
+  --turn-operation-id turn-treatment-1 \
+  --decision-json '{"kind":"perform_one_supported_operation","operation":{"operation_type":"world_treat_and_discharge_patient","patient_id":"patient-1","bed_id":"bed-1"}}'
+```
+
+This command is a deterministic acceptance/debugging seam, not a replacement for Hermes interpretation. Use the existing `hermes mcp add` registration above for live narration through the WebUI and keep the browser visualization in a separate tab.
 
 Build the browser interface before starting the API when you want the backend to serve the complete application:
 

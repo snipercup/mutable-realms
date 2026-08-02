@@ -228,3 +228,85 @@ def test_world_context_command_reports_controlled_failures(
     assert capture.err.startswith("mutable-realms: ")
     assert message in capture.err
     assert "Traceback" not in capture.err
+
+
+def test_world_turn_command_runs_structured_ward_turn(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    database_path = tmp_path / "world.sqlite3"
+    migrate_database(database_path)
+    from backend.scenarios.ward.seed import seed_ward_world
+
+    assert seed_ward_world(database_path)
+
+    exit_code = main(
+        [
+            "--db-path",
+            str(database_path),
+            "world-turn",
+            "--world-id",
+            "ward-world",
+            "--player-id",
+            "player",
+            "--player-action",
+            "Treat the patient in the first bed.",
+            "--turn-operation-id",
+            "cli-turn-1",
+            "--decision-json",
+            json.dumps(
+                {
+                    "kind": "perform_one_supported_operation",
+                    "operation": {
+                        "operation_type": "world_treat_and_discharge_patient",
+                        "patient_id": "patient-1",
+                        "bed_id": "bed-1",
+                    },
+                }
+            ),
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["outcome"] == "success"
+    assert payload["mutation"] == {"already_applied": False, "world_revision": 1}
+    assert payload["after"]["world"]["revision"] == 1
+    assert payload["after"]["recent_events"][0]["operation_id"] == "cli-turn-1"
+
+
+def test_world_turn_command_returns_failure_status_for_rejected_mutation(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    database_path = tmp_path / "world.sqlite3"
+    migrate_database(database_path)
+    from backend.scenarios.ward.seed import seed_ward_world
+
+    assert seed_ward_world(database_path)
+    exit_code = main(
+        [
+            "--db-path",
+            str(database_path),
+            "world-turn",
+            "--world-id",
+            "ward-world",
+            "--player-id",
+            "player",
+            "--player-action",
+            "Treat the wrong bed.",
+            "--decision-json",
+            json.dumps(
+                {
+                    "kind": "perform_one_supported_operation",
+                    "operation": {
+                        "operation_type": "world_treat_and_discharge_patient",
+                        "patient_id": "patient-1",
+                        "bed_id": "bed-2",
+                    },
+                }
+            ),
+        ]
+    )
+
+    assert exit_code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["outcome"] == "mutation_rejected"
