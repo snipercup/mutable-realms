@@ -42,7 +42,7 @@ Use deterministic software for:
 * quantities;
 * inventory transfers;
 * entity movement;
-* quest transitions;
+* quest consequence effects (rewards, relationship changes, resource transfers);
 * validation;
 * identifiers;
 * timestamps;
@@ -58,7 +58,7 @@ Agents should receive only the relevant working set, such as:
 * player state;
 * current location;
 * nearby entities;
-* relevant quests;
+* relevant quest effects reflected in recent events (quests themselves are narration-only);
 * relevant NPC memories;
 * recent events;
 * concise broader-world summaries.
@@ -75,7 +75,7 @@ Changes should persist.
 
 If six occupied beds become five, future interactions should discover five occupied beds unless another world event changes that number.
 
-If a quest is completed, it should not silently reappear.
+If a quest is completed, its persisted effects (rewards, relationship changes, world changes) must not silently reappear or be undone. Quests themselves may be narration-only when a scenario does not track goals as state; their effects still persist.
 
 If a district develops into something new, its current state should become the basis of future narration.
 
@@ -532,7 +532,7 @@ Examples:
 ```text
 patient_treated_and_discharged
 entity_moved
-quest_completed
+quest_reward_granted
 item_transferred
 relationship_changed
 location_changed
@@ -585,9 +585,6 @@ Current location name
 Nearby entities grouped by relevant capability
 
 NEARBY CHARACTERS
-...
-
-ACTIVE LOCAL QUESTS
 ...
 
 RELEVANT MEMORIES
@@ -715,7 +712,7 @@ Validate invariants such as:
 * an entity cannot occupy incompatible locations simultaneously;
 * a bed cannot have multiple occupants;
 * quantities cannot become invalid;
-* completed quests do not remain available;
+* completed-quest availability — not applicable by design (quests are narration-only; only their effects persist);
 * relationships point to valid entities.
 
 Provide:
@@ -738,7 +735,7 @@ Completed and verified on 2026-08-02. The deterministic `validate_worlds` servic
 * single bed occupant — `beds.occupant_entity_id UNIQUE` plus occupancy-coherence checks;
 * history and revision coherence — one operation and one event per world revision, event/operation agreement, cross-world event actors, and operation/event revisions that never exceed the authoritative world revision.
 
-Quantities, quest availability, and relationship targets are not yet modeled, so their invariants are deferred until those capabilities arrive, per this phase's guidance. A candidate "missing bed state" check was considered during the audit and deliberately rejected: kind strings are scenario-local after `0002_generalize_entities`, and the regression fixture `test_generic_validation_does_not_infer_capabilities_from_labels` guarantees validation never infers ward semantics from a `bed`-kind label in a non-ward world. Ward-scenario coherence remains validated on existing `beds` rows only.
+Quantities and relationship targets are not yet modeled, so their invariants are deferred until those capabilities arrive, per this phase's guidance. Quest availability is not an invariant by design: after the Phase 11 revision, quests are narration-only and are not tracked as world state. A candidate "missing bed state" check was considered during the audit and deliberately rejected: kind strings are scenario-local after `0002_generalize_entities`, and the regression fixture `test_generic_validation_does_not_infer_capabilities_from_labels` guarantees validation never infers ward semantics from a `bed`-kind label in a non-ward world. Ward-scenario coherence remains validated on existing `beds` rows only.
 
 ---
 
@@ -835,27 +832,20 @@ Live-verified on 2026-08-02 through the narration profile: the agent performed `
 
 ---
 
-# 15. Phase 11 — Quests
+# 15. Phase 11 — Narration-Only Goals with Persistent Effects
 
-Add quests after characters and locations are persistent.
+Quests are not tracked as world state. Quest acceptance, progress, and completion are narration, exactly like any other scene: the narrator may describe picking up a job, working toward it, and finishing it, and the world records none of it. Quest continuity therefore lives in narration memory and may be inconsistent across turns; this is a deliberate design decision, not a gap.
 
-Quest state should be explicit:
+What must persist are the consequences a quest leaves behind. When a completed quest changes the world, each change goes through a named, atomic, idempotent, expected-revision-checked application operation, exactly like any other mutation:
 
-```text
-available
-active
-completed
-failed
-cancelled
-```
+* a favorable relationship with the quest giver uses `world_record_social_interaction` (Phase 10);
+* monetary or item rewards use a resource/currency operation from the `add_item`/`remove_item`/`transfer_item` family anticipated in Phase 3;
+* removing or adding world objects (for example clearing rodents from a basement) uses an entity or location effect operation; a location condition change is a Phase 12 capability;
+* the quest itself produces no quest-state event; only its effects produce events, revision increments, and operation records.
 
-A quest board should query current quest state.
+Because quests are not tracked, there is no quest-state anchor that prevents a quest from being narrated as available again or completed twice. The project accepts this trade-off: narration may err, but every persisted effect remains causally safe and auditable. If double rewards or resurrected quest effects ever become a real problem in play, the smallest extension is a minimal completed-goal ledger (quest identifier plus completion event, without a lifecycle or board); that extension is deferred until play demands it.
 
-Completing a quest must therefore naturally remove it from the available board without relying on narration memory.
-
-Quest objectives should reference world entities or conditions wherever practical.
-
-This allows quests to reflect actual world changes instead of remaining detached story text.
+The Phase 8 invariant "completed quests do not remain available" is therefore permanently inapplicable by design, and the context builder carries quest effects only through recent events, not quest state.
 
 ---
 
@@ -934,7 +924,7 @@ Potential additions:
 * scene transitions;
 * small animations;
 * contextual panels;
-* quest board UI;
+* goal/reward UI (only for worlds that track goals as state);
 * character information;
 * inventory views.
 
@@ -1211,9 +1201,9 @@ The player leaves a location, performs another interaction, and returns. Prior e
 
 Characters persist across locations and can retain relevant relationships or memories when that capability is introduced. Implemented with Phase 10: `0003_social_state` plus the atomic `world_record_social_interaction` operation, scoped working-set retrieval, coherence validation, and live verification on 2026-08-02.
 
-### Milestone G — Optional Goal Consequences
+### Milestone G — Quest Effects Persist
 
-When a scenario introduces quests, contracts, tasks, or another goal model, accepted and completed goals persist correctly. A quest board is not required in worlds that do not use one.
+Quests themselves are narration-only and are not tracked as world state; their world-changing consequences persist through the same named atomic operations as every other mutation (relationship changes, rewards/resources, entity and location effects). Persisted effects must never silently reappear or be undone.
 
 ### Milestone H — Location Transformation
 

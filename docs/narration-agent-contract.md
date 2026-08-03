@@ -93,6 +93,10 @@ The narration agent must preserve these distinctions:
 
 The browser is derived from the HTTP API. After a successful mutation, refresh or wait for its existing polling cycle; do not send narration-generated state to the renderer.
 
+## Narration-only goals
+
+Quests and other narrative goals are not tracked as world state in this design. The narrator may freely describe accepting, progressing, and completing quests; none of that is persisted. Only quest consequences persist, through the supported operations (`world_record_social_interaction`, and future reward/transfer and location-effect operations). The narrator must never claim an effect ("you earned 50 gold", "the owner now trusts you") unless the corresponding operation committed and the post-turn read confirms it. Quest continuity is narration memory and may be inconsistent across turns; that is an accepted design trade-off, not a persistence failure.
+
 ## Deterministic implementation seam
 
 `backend.world.turns.run_turn` implements the policy without an external model. Its `decide` callback is the model-facing seam, and its result contains:

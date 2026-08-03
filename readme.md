@@ -57,13 +57,13 @@ World state is authoritative.
 
 Narration and visualization should reflect that state rather than independently defining it.
 
-This is intended to reduce common problems in generative storytelling such as forgotten changes, resurrected quests, duplicated characters, replenished problems, and locations that repeatedly return to their original description.
+This is intended to reduce common problems in generative storytelling such as forgotten changes, duplicated characters, replenished problems, resurrected rewards or relationships, and locations that repeatedly return to their original description.
 
 ## World Visualization
 
 The world can be represented visually without requiring a conventional game engine or detailed graphics.
 
-A location might be displayed using simple web technologies, markup, shapes, icons, sprites, or other lightweight representations. A street could consist of roads, buildings, characters, and labels. A hospital could show beds and their occupants. A quest board could display the quests that currently exist.
+A location might be displayed using simple web technologies, markup, shapes, icons, sprites, or other lightweight representations. A street could consist of roads, buildings, characters, and labels. A hospital could show beds and their occupants. A quest board could display the quests that currently exist when a world tracks goals as state; worlds that treat goals as narration-only need no board.
 
 The purpose of visualization is not graphical realism. It provides a persistent visual window into the state of the generated world.
 
@@ -95,7 +95,7 @@ Rather than requiring the language model to perform every operation through pros
 * querying locations and characters;
 * moving entities;
 * transferring items;
-* updating quests;
+* applying quest consequences (rewards, relationship changes);
 * changing relationships or conditions;
 * creating new world entities;
 * validating persistent state.
@@ -241,6 +241,9 @@ Migration `0003_social_state` adds generic, optional social state without changi
 
 The trusted narration MCP binding exposes the social operation with the configured player as actor. Worlds with fewer than two characters do not advertise it. Social state is read from SQLite, survives process restart, and remains separate from generated narration and browser presentation.
 
+## Narration-only goals
+
+Quests are not tracked as world state. Accepting, progressing, and completing a quest is narration; quest continuity lives in narration memory and may be inconsistent across turns by design. What persists are a quest's effects, applied through the same named atomic operations as any other mutation: relationships (`world_record_social_interaction`), rewards and resources (item/currency transfers), and entity or location changes. An effect must never be narrated as applied unless its operation committed. No quest board or goal lifecycle is required; a minimal completed-goal ledger may be added later only if play demands deduplication of rewards.
 
 Phase 7 adds the model-independent turn policy in `backend.world.turns` and documents the Hermes-facing contract in `docs/narration-agent-contract.md`. A narration session must be trusted-bound to one world and player. For each player message, Hermes reads `world_status` and `world_context`, returns exactly one structured decision kind, invokes at most one advertised mutation with the observed revision and a fresh operation ID, rereads context, and narrates only the persisted result. A stale revision causes one fresh-context reevaluation; rejected, missing, unsupported, and failed operations must never be narrated as successful.
 
