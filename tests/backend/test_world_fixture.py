@@ -66,9 +66,7 @@ def test_validation_reports_incoherent_bed_occupancy(tmp_path: Path) -> None:
     seed_ward_world(database_path)
 
     with connect_database(database_path) as connection:
-        connection.execute(
-            "DELETE FROM entity_locations WHERE entity_id = 'patient-1'"
-        )
+        connection.execute("DELETE FROM entity_locations WHERE entity_id = 'patient-1'")
         connection.commit()
 
     issues = validate_worlds(database_path)

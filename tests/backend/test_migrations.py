@@ -16,7 +16,7 @@ def test_migrate_creates_versioned_schema_and_is_idempotent(tmp_path: Path) -> N
     first = migrate_database(database_path)
     second = migrate_database(database_path)
 
-    assert first == [1, 2]
+    assert first == [1, 2, 3]
     assert second == []
 
     with connect_database(database_path) as connection:
@@ -33,6 +33,7 @@ def test_migrate_creates_versioned_schema_and_is_idempotent(tmp_path: Path) -> N
     assert [tuple(row) for row in applied] == [
         (1, "initial_world_schema"),
         (2, "generalize_entities"),
+        (3, "social_state"),
     ]
     assert {
         "worlds",
@@ -58,7 +59,7 @@ def test_generalization_migration_preserves_existing_ward_data(tmp_path: Path) -
     migrate_database(database_path, migrations_path=migration_one_path)
     seed_ward_world(database_path)
 
-    assert migrate_database(database_path) == [2]
+    assert migrate_database(database_path) == [2, 3]
 
     with connect_database(database_path) as connection:
         assert connection.execute("SELECT COUNT(*) FROM beds").fetchone()[0] == 6
@@ -89,9 +90,10 @@ def test_generalized_schema_accepts_scenario_defined_entity_kinds_and_roles(
         connection.commit()
 
     with connect_database(database_path) as connection:
-        assert connection.execute(
-            "SELECT kind FROM entities WHERE id = 'quest'"
-        ).fetchone()[0] == "quest"
+        assert (
+            connection.execute("SELECT kind FROM entities WHERE id = 'quest'").fetchone()[0]
+            == "quest"
+        )
         assert tuple(
             connection.execute(
                 "SELECT role, disposition FROM characters WHERE entity_id = 'farmer'"
@@ -139,9 +141,7 @@ def test_failed_migration_rolls_back_schema_and_version_record(tmp_path: Path) -
         table = connection.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'should_rollback'"
         ).fetchone()
-        versions = connection.execute(
-            "SELECT COUNT(*) FROM schema_migrations"
-        ).fetchone()[0]
+        versions = connection.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0]
 
     assert table is None
     assert versions == 0

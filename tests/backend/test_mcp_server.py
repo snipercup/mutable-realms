@@ -29,6 +29,7 @@ def test_mcp_exposes_only_controlled_world_tools_without_database_arguments() ->
         "world_events",
         "world_move_entity",
         "world_treat_and_discharge_patient",
+        "world_record_social_interaction",
         "world_validate",
     ]
     for tool in tools:
@@ -140,9 +141,7 @@ def test_stdio_server_supports_real_tool_discovery_and_calls(tmp_path: Path) -> 
                 tools = await session.list_tools()
                 assert "world_status" in [tool.name for tool in tools.tools]
 
-                result = await session.call_tool(
-                    "world_status", {"world_id": "protocol-world"}
-                )
+                result = await session.call_tool("world_status", {"world_id": "protocol-world"})
                 assert result.isError is False
                 assert result.structuredContent == {
                     "available_mutations": ["world_move_entity"],
@@ -207,12 +206,31 @@ def test_stdio_server_applies_and_reports_controlled_mutation(tmp_path: Path) ->
                     "world_revision": 1,
                 }
 
+                social = await session.call_tool(
+                    "world_record_social_interaction",
+                    {
+                        "world_id": "ward-world",
+                        "operation_id": "mcp-social-patient-1",
+                        "expected_revision": 1,
+                        "subject_entity_id": "player",
+                        "object_entity_id": "patient-2",
+                        "relationship_category": "trusted",
+                        "relationship_delta": 10,
+                        "memory": "The player supported Patient 2 during the ward round.",
+                    },
+                )
+                assert social.isError is False
+                assert social.structuredContent == {
+                    "already_applied": False,
+                    "world_revision": 2,
+                }
+
                 events = await session.call_tool(
-                    "world_events", {"world_id": "ward-world", "limit": 1}
+                    "world_events", {"world_id": "ward-world", "limit": 2}
                 )
                 assert events.structuredContent is not None
                 assert events.structuredContent["events"][0]["event_type"] == (
-                    "patient_treated_and_discharged"
+                    "social_interaction_recorded"
                 )
 
                 validation = await session.call_tool("world_validate", {})

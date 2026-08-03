@@ -50,9 +50,7 @@ def _treat_first_patient() -> TurnDecision:
 def _patient_ids(context: WorldContext) -> list[str]:
     """Entities in the ward's current contents that the narrator sees as patients."""
     return sorted(
-        entity.id
-        for entity in context.current_location.entities
-        if entity.role == "patient"
+        entity.id for entity in context.current_location.entities if entity.role == "patient"
     )
 
 
@@ -164,12 +162,8 @@ def test_phase9_browser_readback_matches_authoritative_state(tmp_path: Path) -> 
         return response.status_code, response.json()
 
     player_status, player = asyncio.run(_get(f"/api/worlds/{WARD_WORLD_ID}/player"))
-    location_status, location = asyncio.run(
-        _get(f"/api/worlds/{WARD_WORLD_ID}/locations/current")
-    )
-    events_status, events = asyncio.run(
-        _get(f"/api/worlds/{WARD_WORLD_ID}/events?limit=10")
-    )
+    location_status, location = asyncio.run(_get(f"/api/worlds/{WARD_WORLD_ID}/locations/current"))
+    events_status, events = asyncio.run(_get(f"/api/worlds/{WARD_WORLD_ID}/events?limit=10"))
     ward_status, ward = asyncio.run(
         _get(f"/api/worlds/{WARD_WORLD_ID}/capabilities/ward/locations/ward")
     )
@@ -180,9 +174,13 @@ def test_phase9_browser_readback_matches_authoritative_state(tmp_path: Path) -> 
     assert location["revision"] == 1
     assert len(location["entities"]) == 12  # 6 beds + 5 patients + player
     assert "patient-1" not in {entity["id"] for entity in location["entities"]}
-    assert {
-        entity["id"] for entity in location["entities"] if entity["role"] == "patient"
-    } == {"patient-2", "patient-3", "patient-4", "patient-5", "patient-6"}
+    assert {entity["id"] for entity in location["entities"] if entity["role"] == "patient"} == {
+        "patient-2",
+        "patient-3",
+        "patient-4",
+        "patient-5",
+        "patient-6",
+    }
     assert events_status == 200
     assert events[0]["event_type"] == "patient_treated_and_discharged"
     assert events[0]["world_revision"] == 1

@@ -14,6 +14,7 @@ from backend.world.queries import (
     get_player,
     list_recent_events,
 )
+from backend.world.social import read_social_context
 
 
 class ContextModel(BaseModel):
@@ -72,6 +73,8 @@ class WorldContext(ContextModel):
     player: ContextPlayer
     current_location: ContextLocation
     recent_events: list[ContextEvent]
+    relationships: list[dict[str, Any]]
+    memories: list[dict[str, Any]]
 
 
 def build_world_context(
@@ -95,16 +98,19 @@ def build_world_context(
         player = get_player(database_path, world_id, _connection=connection)
         location_id = player["location_id"]
         if location_id is None:
-            raise LocationNotFound(
-                f"Player in world {world_id!r} has no current location"
-            )
-        location = get_location(
-            database_path, world_id, location_id, _connection=connection
-        )
+            raise LocationNotFound(f"Player in world {world_id!r} has no current location")
+        location = get_location(database_path, world_id, location_id, _connection=connection)
         events = list_recent_events(
             database_path,
             world_id,
             limit=recent_event_limit,
+            _connection=connection,
+        )
+        social = read_social_context(
+            database_path,
+            world_id=world_id,
+            viewer_entity_id=player["id"],
+            related_entity_ids=[entity["id"] for entity in location["entities"]],
             _connection=connection,
         )
 
@@ -114,5 +120,6 @@ def build_world_context(
             "player": player,
             "current_location": location,
             "recent_events": events,
+            **social,
         }
     )

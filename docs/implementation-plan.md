@@ -823,6 +823,16 @@ Do not store full chat transcripts as NPC memory.
 
 Retrieve only memories relevant to the current interaction.
 
+### Phase 10 status — Complete
+
+Migration `0003_social_state` adds generic `relationships` and `memories` tables. The first vertical slice is the atomic `world_record_social_interaction` operation: it updates one directed character relationship by a bounded delta, records one concise memory linked to the resulting event, increments the world revision once, and supports exact idempotent replay. The model-independent turn runner and trusted MCP server expose the operation only when the selected world has at least two characters; the configured narration player is always the actor.
+
+World context retrieves only social facts involving the player and entities in the player's current location. It does not load all-world social state, store full transcripts, or derive memory from narration. Validation covers social endpoint/world coherence and memory/event coherence. Tests cover migration compatibility, transactional persistence, idempotency, invalid inputs, context retrieval, turn orchestration, MCP registration, and restart-safe reads.
+
+The initial social slice intentionally defers factions, disposition taxonomies, multi-party interactions, memory relevance ranking, NPC-owned memories beyond the selected working set, and social visualization. Those belong in later capability-specific phases if a concrete scenario requires them.
+
+Live-verified on 2026-08-02 through the narration profile: the agent performed `world_record_social_interaction` against the ward world, committing revision 1 → 2 with the `grateful (+10)` relationship and its event-linked memory, confirmed by the post-turn context reread, browser API readback (`social_interaction_recorded` at revision 2), and whole-world validation.
+
 ---
 
 # 15. Phase 11 — Quests
@@ -1199,7 +1209,7 @@ The player leaves a location, performs another interaction, and returns. Prior e
 
 ### Milestone F — Social Consequences
 
-Characters persist across locations and can retain relevant relationships or memories when that capability is introduced.
+Characters persist across locations and can retain relevant relationships or memories when that capability is introduced. Implemented with Phase 10: `0003_social_state` plus the atomic `world_record_social_interaction` operation, scoped working-set retrieval, coherence validation, and live verification on 2026-08-02.
 
 ### Milestone G — Optional Goal Consequences
 

@@ -8,6 +8,7 @@ from backend.persistence.database import connect_readonly_database
 from backend.scenarios.ward.mutations import treat_and_discharge_patient
 from backend.world.mutations import move_entity
 from backend.world.queries import WorldNotFound, get_entity, list_recent_events
+from backend.world.social import record_social_interaction
 from backend.world.validation import validate_worlds
 
 
@@ -32,16 +33,25 @@ def read_world_status(database_path: str | Path, *, world_id: str) -> dict[str, 
             ).fetchone()
             is not None
         )
+        has_social_state = (
+            connection.execute(
+                """SELECT 1 FROM characters c
+            JOIN entities e ON e.id = c.entity_id
+            WHERE e.world_id = ? LIMIT 1 OFFSET 1""",
+                (world_id,),
+            ).fetchone()
+            is not None
+        )
 
     mutations = ["world_move_entity"]
     if has_ward_state:
         mutations.append("world_treat_and_discharge_patient")
+    if has_social_state:
+        mutations.append("world_record_social_interaction")
     return {"world": dict(world), "available_mutations": mutations}
 
 
-def inspect_entity(
-    database_path: str | Path, *, world_id: str, entity_id: str
-) -> dict[str, Any]:
+def inspect_entity(database_path: str | Path, *, world_id: str, entity_id: str) -> dict[str, Any]:
     """Inspect one generic entity through the authoritative read service."""
     return get_entity(database_path, world_id, entity_id)
 
@@ -105,6 +115,34 @@ def treat_and_discharge_world_patient(
         "already_applied": result.already_applied,
         "world_revision": result.world_revision,
     }
+
+
+def record_world_social_interaction(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    actor_entity_id: str,
+    subject_entity_id: str,
+    object_entity_id: str,
+    relationship_category: str,
+    relationship_delta: int,
+    memory: str,
+) -> dict[str, Any]:
+    """Atomically persist one relationship change and concise event-linked memory."""
+    return record_social_interaction(
+        database_path,
+        world_id=world_id,
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        actor_entity_id=actor_entity_id,
+        subject_entity_id=subject_entity_id,
+        object_entity_id=object_entity_id,
+        relationship_category=relationship_category,
+        relationship_delta=relationship_delta,
+        memory=memory,
+    )
 
 
 def validate_world_state(database_path: str | Path) -> dict[str, Any]:

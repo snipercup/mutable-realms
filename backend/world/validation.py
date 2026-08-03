@@ -232,4 +232,104 @@ def validate_worlds(database_path: str | Path) -> list[ValidationIssue]:
                 )
             )
 
+        for row in connection.execute(
+            """
+            SELECT r.world_id, r.subject_entity_id, r.object_entity_id
+            FROM relationships r
+            JOIN entities subject ON subject.id = r.subject_entity_id
+            JOIN entities object ON object.id = r.object_entity_id
+            WHERE subject.world_id <> r.world_id
+               OR object.world_id <> r.world_id
+               OR r.subject_entity_id = r.object_entity_id
+            ORDER BY r.world_id, r.subject_entity_id, r.object_entity_id
+            """
+        ):
+            issues.append(
+                ValidationIssue(
+                    "relationship_world_mismatch",
+                    "Relationship endpoints do not belong to its world",
+                    row["subject_entity_id"],
+                )
+            )
+
+        for row in connection.execute(
+            """
+            SELECT r.subject_entity_id, r.object_entity_id
+            FROM relationships r
+            LEFT JOIN characters subject ON subject.entity_id = r.subject_entity_id
+            LEFT JOIN characters object ON object.entity_id = r.object_entity_id
+            WHERE subject.entity_id IS NULL OR object.entity_id IS NULL
+            ORDER BY r.world_id, r.subject_entity_id, r.object_entity_id
+            """
+        ):
+            issues.append(
+                ValidationIssue(
+                    "relationship_endpoint_not_character",
+                    "Relationship endpoint is missing character state",
+                    (
+                        row["subject_entity_id"]
+                        if row["subject_entity_id"]
+                        else row["object_entity_id"]
+                    ),
+                )
+            )
+
+        for row in connection.execute(
+            """
+            SELECT m.id
+            FROM memories m
+            JOIN events ev ON ev.id = m.event_id
+            WHERE m.world_id <> ev.world_id
+            ORDER BY m.world_id, m.id
+            """
+        ):
+            issues.append(
+                ValidationIssue(
+                    "memory_event_world_mismatch",
+                    "Memory and linked event belong to different worlds",
+                    row["id"],
+                )
+            )
+
+        for row in connection.execute(
+            """
+            SELECT r.world_id, r.subject_entity_id, r.object_entity_id,
+                   r.updated_event_id, ev.world_id AS event_world_id,
+                   ev.world_revision
+            FROM relationships r
+            LEFT JOIN events ev ON ev.id = r.updated_event_id
+            WHERE ev.id IS NULL
+               OR ev.world_id <> r.world_id
+               OR ev.event_type <> 'social_interaction_recorded'
+               OR ev.world_revision > (SELECT revision FROM worlds WHERE id = r.world_id)
+               OR json_extract(ev.payload_json, '$.relationship_score') <> r.score
+               OR json_extract(ev.payload_json, '$.relationship_category') <> r.category
+            ORDER BY r.world_id, r.subject_entity_id, r.object_entity_id
+            """
+        ):
+            issues.append(
+                ValidationIssue(
+                    "relationship_updated_event_mismatch",
+                    "Relationship update event is missing or belongs to another revision/world",
+                    row["subject_entity_id"],
+                )
+            )
+
+        for row in connection.execute(
+            """
+            SELECT m.id, m.world_id, entity.world_id AS entity_world_id
+            FROM memories m
+            JOIN entities entity ON entity.id = m.entity_id
+            WHERE entity.world_id <> m.world_id
+            ORDER BY m.world_id, m.id
+            """
+        ):
+            issues.append(
+                ValidationIssue(
+                    "memory_entity_world_mismatch",
+                    "Memory owner belongs to another world",
+                    row["id"],
+                )
+            )
+
     return issues

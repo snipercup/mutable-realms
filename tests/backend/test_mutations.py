@@ -53,12 +53,18 @@ def test_move_entity_works_in_a_world_without_ward_state(tmp_path: Path) -> None
 
     assert result.world_revision == 1
     with connect_database(database_path) as connection:
-        assert connection.execute(
-            "SELECT location_id FROM entity_locations WHERE entity_id = 'farmer'"
-        ).fetchone()[0] == "kelp-market"
-        assert connection.execute(
-            "SELECT event_type FROM events WHERE world_id = ?", (GENERAL_WORLD_ID,)
-        ).fetchone()[0] == "entity_moved"
+        assert (
+            connection.execute(
+                "SELECT location_id FROM entity_locations WHERE entity_id = 'farmer'"
+            ).fetchone()[0]
+            == "kelp-market"
+        )
+        assert (
+            connection.execute(
+                "SELECT event_type FROM events WHERE world_id = ?", (GENERAL_WORLD_ID,)
+            ).fetchone()[0]
+            == "entity_moved"
+        )
     assert validate_worlds(database_path) == []
 
 
@@ -207,9 +213,12 @@ def test_move_entity_rejects_stale_and_invariant_breaking_moves(tmp_path: Path) 
     with connect_database(database_path) as connection:
         assert connection.execute("SELECT revision FROM worlds").fetchone()[0] == 0
         assert connection.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 0
-        assert connection.execute(
-            "SELECT location_id FROM entity_locations WHERE entity_id = 'player'"
-        ).fetchone()[0] == "ward"
+        assert (
+            connection.execute(
+                "SELECT location_id FROM entity_locations WHERE entity_id = 'player'"
+            ).fetchone()[0]
+            == "ward"
+        )
 
 
 def test_move_entity_rejects_character_entity_without_character_state(
@@ -223,8 +232,7 @@ def test_move_entity_rejects_character_entity_without_character_state(
             "VALUES ('incomplete', 'ward-world', 'character', 'Incomplete')"
         )
         connection.execute(
-            "INSERT INTO entity_locations(entity_id, location_id) "
-            "VALUES ('incomplete', 'ward')"
+            "INSERT INTO entity_locations(entity_id, location_id) VALUES ('incomplete', 'ward')"
         )
         connection.commit()
 
@@ -272,9 +280,12 @@ def test_move_entity_history_failure_rolls_back_placement(tmp_path: Path) -> Non
     with connect_database(database_path) as connection:
         assert connection.execute("SELECT revision FROM worlds").fetchone()[0] == 0
         assert connection.execute("SELECT COUNT(*) FROM operations").fetchone()[0] == 0
-        assert connection.execute(
-            "SELECT location_id FROM entity_locations WHERE entity_id = 'player'"
-        ).fetchone()[0] == "ward"
+        assert (
+            connection.execute(
+                "SELECT location_id FROM entity_locations WHERE entity_id = 'player'"
+            ).fetchone()[0]
+            == "ward"
+        )
 
 
 def test_treat_and_discharge_persists_complete_transition(tmp_path: Path) -> None:
@@ -412,9 +423,12 @@ def test_stale_revision_and_wrong_occupant_do_not_mutate(tmp_path: Path) -> None
     with connect_database(database_path) as connection:
         assert connection.execute("SELECT revision FROM worlds").fetchone()[0] == 0
         assert connection.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 0
-        assert connection.execute(
-            "SELECT COUNT(*) FROM beds WHERE occupant_entity_id IS NOT NULL"
-        ).fetchone()[0] == 6
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM beds WHERE occupant_entity_id IS NOT NULL"
+            ).fetchone()[0]
+            == 6
+        )
 
 
 def test_event_failure_rolls_back_all_state_changes(tmp_path: Path) -> None:
@@ -442,15 +456,24 @@ def test_event_failure_rolls_back_all_state_changes(tmp_path: Path) -> None:
 
     with connect_database(database_path) as connection:
         assert connection.execute("SELECT revision FROM worlds").fetchone()[0] == 0
-        assert connection.execute(
-            "SELECT condition FROM characters WHERE entity_id = 'patient-1'"
-        ).fetchone()[0] == "untreated"
-        assert connection.execute(
-            "SELECT occupant_entity_id FROM beds WHERE entity_id = 'bed-1'"
-        ).fetchone()[0] == "patient-1"
-        assert connection.execute(
-            "SELECT location_id FROM entity_locations WHERE entity_id = 'patient-1'"
-        ).fetchone()[0] == "ward"
+        assert (
+            connection.execute(
+                "SELECT condition FROM characters WHERE entity_id = 'patient-1'"
+            ).fetchone()[0]
+            == "untreated"
+        )
+        assert (
+            connection.execute(
+                "SELECT occupant_entity_id FROM beds WHERE entity_id = 'bed-1'"
+            ).fetchone()[0]
+            == "patient-1"
+        )
+        assert (
+            connection.execute(
+                "SELECT location_id FROM entity_locations WHERE entity_id = 'patient-1'"
+            ).fetchone()[0]
+            == "ward"
+        )
 
 
 def test_validation_requires_one_operation_and_event_per_world_revision(

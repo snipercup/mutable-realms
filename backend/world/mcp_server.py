@@ -12,6 +12,7 @@ from backend.world.agent_tools import (
     list_events,
     move_world_entity,
     read_world_status,
+    record_world_social_interaction,
     treat_and_discharge_world_patient,
     validate_world_state,
 )
@@ -108,15 +109,11 @@ def world_inspect_entity(world_id: str, entity_id: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-def world_events(
-    world_id: str, limit: EventLimit = 10
-) -> dict[str, list[dict[str, Any]]]:
+def world_events(world_id: str, limit: EventLimit = 10) -> dict[str, list[dict[str, Any]]]:
     """Read the newest persisted world events, bounded to 1-100 rows."""
     ensure_bound_player(world_id)
     return {
-        "events": list_events(
-            get_database_path(), world_id=resolve_world_id(world_id), limit=limit
-        )
+        "events": list_events(get_database_path(), world_id=resolve_world_id(world_id), limit=limit)
     }
 
 
@@ -161,6 +158,37 @@ def world_treat_and_discharge_patient(
         patient_id=patient_id,
         bed_id=bed_id,
         actor_entity_id=resolve_actor_entity_id(actor_entity_id),
+    )
+
+
+@mcp.tool()
+def world_record_social_interaction(
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    subject_entity_id: str,
+    object_entity_id: str,
+    relationship_category: str,
+    relationship_delta: Annotated[int, Field(ge=-100, le=100)],
+    memory: Annotated[str, Field(min_length=1, max_length=500)],
+    actor_entity_id: str | None = None,
+) -> dict[str, Any]:
+    """Atomically update one relationship and store one concise linked memory."""
+    ensure_bound_player(world_id)
+    actor = resolve_actor_entity_id(actor_entity_id)
+    if actor is None:
+        raise RuntimeError("social interaction requires a trusted actor")
+    return record_world_social_interaction(
+        get_database_path(),
+        world_id=resolve_world_id(world_id),
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        actor_entity_id=actor,
+        subject_entity_id=subject_entity_id,
+        object_entity_id=object_entity_id,
+        relationship_category=relationship_category,
+        relationship_delta=relationship_delta,
+        memory=memory,
     )
 
 

@@ -39,9 +39,7 @@ class MoveEntityResult(MutationResult):
 
 
 def event_id(world_id: str, operation_id: str) -> str:
-    identifier = uuid.uuid5(
-        uuid.NAMESPACE_URL, f"mutable-realms:{world_id}:{operation_id}"
-    )
+    identifier = uuid.uuid5(uuid.NAMESPACE_URL, f"mutable-realms:{world_id}:{operation_id}")
     return f"event-{identifier}"
 
 
@@ -83,9 +81,7 @@ def move_entity(
                     existing["operation_type"] != _MOVE_EVENT_TYPE
                     or existing["request_json"] != request_json
                 ):
-                    raise MutationConflict(
-                        "operation ID was already used for a different request"
-                    )
+                    raise MutationConflict("operation ID was already used for a different request")
                 connection.rollback()
                 stored_result = json.loads(existing["result_json"])
                 return MoveEntityResult(
@@ -121,26 +117,20 @@ def move_entity(
             if entity["kind"] != "character":
                 raise MutationConflict(f"entity is not movable: {entity_id}")
             if entity["character_id"] is None:
-                raise MutationConflict(
-                    f"character is missing character state: {entity_id}"
-                )
+                raise MutationConflict(f"character is missing character state: {entity_id}")
             if entity["disposition"] == "discharged":
                 raise MutationConflict(f"discharged character is not movable: {entity_id}")
             if entity["location_id"] is None:
                 raise MutationConflict(f"entity has no current location: {entity_id}")
             if entity["location_id"] == destination_location_id:
-                raise MutationConflict(
-                    f"entity is already at location: {destination_location_id}"
-                )
+                raise MutationConflict(f"entity is already at location: {destination_location_id}")
 
             destination = connection.execute(
                 "SELECT 1 FROM locations WHERE id = ? AND world_id = ?",
                 (destination_location_id, world_id),
             ).fetchone()
             if destination is None:
-                raise MutationNotFound(
-                    f"location not found: {destination_location_id}"
-                )
+                raise MutationNotFound(f"location not found: {destination_location_id}")
 
             occupied_bed = connection.execute(
                 "SELECT entity_id FROM beds WHERE occupant_entity_id = ?",
@@ -215,8 +205,7 @@ def move_entity(
                     operation_id,
                     _MOVE_EVENT_TYPE,
                     actor_entity_id,
-                    f"{entity_id} moved from {entity['location_id']} to "
-                    f"{destination_location_id}",
+                    f"{entity_id} moved from {entity['location_id']} to {destination_location_id}",
                     payload_json,
                     next_revision,
                 ),

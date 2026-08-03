@@ -84,10 +84,7 @@ def create_app(
 
     @application.get("/api/worlds", tags=["world reads"])
     def worlds() -> list[WorldRead]:
-        return [
-            WorldRead.model_validate(world)
-            for world in list_worlds(get_database_path())
-        ]
+        return [WorldRead.model_validate(world) for world in list_worlds(get_database_path())]
 
     @application.get("/api/worlds/{world_id}/player", tags=["world reads"])
     def current_player(world_id: str) -> PlayerRead:
@@ -96,20 +93,14 @@ def create_app(
         except PlayerNotFound as error:
             raise HTTPException(status_code=404, detail="player not found") from error
 
-    @application.get(
-        "/api/worlds/{world_id}/locations/current", tags=["world reads"]
-    )
+    @application.get("/api/worlds/{world_id}/locations/current", tags=["world reads"])
     def current_location(world_id: str) -> LocationRead:
         try:
-            return LocationRead.model_validate(
-                get_current_location(get_database_path(), world_id)
-            )
+            return LocationRead.model_validate(get_current_location(get_database_path(), world_id))
         except (PlayerNotFound, LocationNotFound) as error:
             raise HTTPException(status_code=404, detail="location not found") from error
 
-    @application.get(
-        "/api/worlds/{world_id}/locations/{location_id}", tags=["world reads"]
-    )
+    @application.get("/api/worlds/{world_id}/locations/{location_id}", tags=["world reads"])
     def location(world_id: str, location_id: str) -> LocationRead:
         try:
             return LocationRead.model_validate(
@@ -128,20 +119,14 @@ def create_app(
                 get_ward_location_state(get_database_path(), world_id, location_id)
             )
         except WardCapabilityNotFound as error:
-            raise HTTPException(
-                status_code=404, detail="ward capability not found"
-            ) from error
+            raise HTTPException(status_code=404, detail="ward capability not found") from error
         except LocationNotFound as error:
             raise HTTPException(status_code=404, detail="location not found") from error
 
-    @application.get(
-        "/api/worlds/{world_id}/entities/{entity_id}", tags=["world reads"]
-    )
+    @application.get("/api/worlds/{world_id}/entities/{entity_id}", tags=["world reads"])
     def entity(world_id: str, entity_id: str) -> EntityRead:
         try:
-            return EntityRead.model_validate(
-                get_entity(get_database_path(), world_id, entity_id)
-            )
+            return EntityRead.model_validate(get_entity(get_database_path(), world_id, entity_id))
         except EntityNotFound as error:
             raise HTTPException(status_code=404, detail="entity not found") from error
 
@@ -152,9 +137,7 @@ def create_app(
         try:
             return [
                 WorldEventRead.model_validate(event)
-                for event in list_recent_events(
-                    get_database_path(), world_id, limit=limit
-                )
+                for event in list_recent_events(get_database_path(), world_id, limit=limit)
             ]
         except WorldNotFound as error:
             raise HTTPException(status_code=404, detail="world not found") from error

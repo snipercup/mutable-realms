@@ -67,13 +67,13 @@ def test_builds_scenario_neutral_context_for_current_location(tmp_path: Path) ->
             ],
         },
         "recent_events": [],
+        "relationships": [],
+        "memories": [],
     }
 
 
 @pytest.mark.parametrize("limit", [0, 101])
-def test_rejects_event_limits_outside_explicit_bounds(
-    tmp_path: Path, limit: int
-) -> None:
+def test_rejects_event_limits_outside_explicit_bounds(tmp_path: Path, limit: int) -> None:
     database_path = tmp_path / "world.sqlite3"
     migrate_database(database_path)
     seed_general_world(database_path)
@@ -114,8 +114,7 @@ def test_context_uses_one_read_only_sqlite_snapshot(
     assert connection_count == 1
     assert "BEGIN" in statements
     assert all(
-        statement.lstrip().upper().startswith(("BEGIN", "SELECT"))
-        for statement in statements
+        statement.lstrip().upper().startswith(("BEGIN", "SELECT")) for statement in statements
     )
 
 
@@ -142,9 +141,7 @@ def test_context_limits_newest_first_events_without_ward_projection(
         bed_id="bed-2",
     )
 
-    context = build_world_context(
-        database_path, world_id=WARD_WORLD_ID, recent_event_limit=1
-    )
+    context = build_world_context(database_path, world_id=WARD_WORLD_ID, recent_event_limit=1)
     payload = context.model_dump()
 
     assert context.world.revision == 2
@@ -192,9 +189,7 @@ def test_context_does_not_create_a_missing_database(tmp_path: Path) -> None:
     assert not database_path.parent.exists()
 
 
-def test_context_connection_rejects_writes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_context_connection_rejects_writes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     database_path = tmp_path / "world.sqlite3"
     migrate_database(database_path)
     seed_general_world(database_path)
@@ -209,12 +204,8 @@ def test_context_connection_rejects_writes(
         _connection: Any,
     ):
         with pytest.raises(sqlite3.OperationalError, match="readonly"):
-            _connection.execute(
-                "UPDATE worlds SET name = 'Changed' WHERE id = ?", (world_id,)
-            )
-        return original_get_player(
-            database_path, world_id, _connection=_connection
-        )
+            _connection.execute("UPDATE worlds SET name = 'Changed' WHERE id = ?", (world_id,))
+        return original_get_player(database_path, world_id, _connection=_connection)
 
     monkeypatch.setattr(context_module, "get_player", attempted_write)
 
@@ -235,8 +226,7 @@ def test_context_reads_committed_wal_state_without_mutating_world_data(
         assert writer.execute("PRAGMA journal_mode = WAL").fetchone()[0] == "wal"
         writer.execute("PRAGMA wal_autocheckpoint = 0")
         writer.execute(
-            "UPDATE worlds SET name = 'Open World Updated', revision = 1 "
-            "WHERE id = ?",
+            "UPDATE worlds SET name = 'Open World Updated', revision = 1 WHERE id = ?",
             (GENERAL_WORLD_ID,),
         )
         writer.commit()

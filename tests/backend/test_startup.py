@@ -30,7 +30,7 @@ def test_startup_migrates_database_and_readiness_checks_schema(tmp_path: Path) -
         versions = connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert [row[0] for row in versions] == [1, 2]
+        assert [row[0] for row in versions] == [1, 2, 3]
 
 
 def test_startup_fails_visibly_for_changed_applied_migration(tmp_path: Path) -> None:
@@ -38,9 +38,7 @@ def test_startup_fails_visibly_for_changed_applied_migration(tmp_path: Path) -> 
     app = create_app(database_path)
     asyncio.run(_run_lifespan(app))
     with connect_database(database_path) as connection:
-        connection.execute(
-            "UPDATE schema_migrations SET checksum = 'changed' WHERE version = 1"
-        )
+        connection.execute("UPDATE schema_migrations SET checksum = 'changed' WHERE version = 1")
         connection.commit()
 
     with pytest.raises(MigrationError, match="checksum"):

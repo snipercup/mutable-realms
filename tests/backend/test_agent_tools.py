@@ -43,6 +43,7 @@ def test_status_reports_revision_and_only_supported_mutations(tmp_path: Path) ->
         "available_mutations": [
             "world_move_entity",
             "world_treat_and_discharge_patient",
+            "world_record_social_interaction",
         ],
     }
 
@@ -50,9 +51,7 @@ def test_status_reports_revision_and_only_supported_mutations(tmp_path: Path) ->
 def test_inspect_and_events_return_authoritative_read_models(tmp_path: Path) -> None:
     database_path = _seeded_database(tmp_path)
 
-    entity = inspect_entity(
-        database_path, world_id=GENERAL_WORLD_ID, entity_id="hen"
-    )
+    entity = inspect_entity(database_path, world_id=GENERAL_WORLD_ID, entity_id="hen")
     events = list_events(database_path, world_id=GENERAL_WORLD_ID, limit=10)
 
     assert entity["id"] == "hen"
@@ -70,9 +69,7 @@ def test_events_reject_out_of_range_limits(tmp_path: Path, limit: int) -> None:
 
 
 @pytest.mark.parametrize("read_operation", ["inspect", "events"])
-def test_agent_reads_do_not_create_a_missing_database(
-    tmp_path: Path, read_operation: str
-) -> None:
+def test_agent_reads_do_not_create_a_missing_database(tmp_path: Path, read_operation: str) -> None:
     database_path = tmp_path / "missing.sqlite3"
 
     with pytest.raises(sqlite3.OperationalError):
@@ -103,9 +100,7 @@ def test_move_tool_delegates_to_revision_checked_operation(tmp_path: Path) -> No
         "location_id": "kelp-market",
         "world_revision": 1,
     }
-    assert read_world_status(database_path, world_id=GENERAL_WORLD_ID)["world"][
-        "revision"
-    ] == 1
+    assert read_world_status(database_path, world_id=GENERAL_WORLD_ID)["world"]["revision"] == 1
     with pytest.raises(StaleWorldRevision):
         move_world_entity(
             database_path,
@@ -131,9 +126,7 @@ def test_ward_tool_delegates_to_atomic_scenario_operation(tmp_path: Path) -> Non
     )
 
     assert result == {"already_applied": False, "world_revision": 1}
-    patient = inspect_entity(
-        database_path, world_id=WARD_WORLD_ID, entity_id="patient-1"
-    )
+    patient = inspect_entity(database_path, world_id=WARD_WORLD_ID, entity_id="patient-1")
     assert patient["condition"] == "recovered"
     assert patient["disposition"] == "discharged"
     assert patient["location_id"] is None
@@ -142,9 +135,7 @@ def test_ward_tool_delegates_to_atomic_scenario_operation(tmp_path: Path) -> Non
 def test_validation_tool_returns_structured_deterministic_issues(tmp_path: Path) -> None:
     database_path = _seeded_database(tmp_path)
     with connect_database(database_path) as connection:
-        connection.execute(
-            "UPDATE worlds SET revision = 3 WHERE id = ?", (GENERAL_WORLD_ID,)
-        )
+        connection.execute("UPDATE worlds SET revision = 3 WHERE id = ?", (GENERAL_WORLD_ID,))
         connection.commit()
 
     result = validate_world_state(database_path)

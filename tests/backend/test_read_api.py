@@ -107,9 +107,7 @@ def test_read_api_exposes_named_location_and_recent_events(tmp_path: Path) -> No
             f"/api/worlds/{WARD_WORLD_ID}/capabilities/ward/locations/ward",
         )
     )
-    events_status, events = asyncio.run(
-        _get(app, f"/api/worlds/{WARD_WORLD_ID}/events?limit=1")
-    )
+    events_status, events = asyncio.run(_get(app, f"/api/worlds/{WARD_WORLD_ID}/events?limit=1"))
 
     assert location_status == 200
     assert location["revision"] == 1
@@ -129,9 +127,7 @@ def test_read_api_returns_404_for_missing_resources(tmp_path: Path) -> None:
     location_status, location = asyncio.run(
         _get(app, f"/api/worlds/{WARD_WORLD_ID}/locations/missing")
     )
-    entity_status, entity = asyncio.run(
-        _get(app, f"/api/worlds/{WARD_WORLD_ID}/entities/missing")
-    )
+    entity_status, entity = asyncio.run(_get(app, f"/api/worlds/{WARD_WORLD_ID}/entities/missing"))
     events_status, events = asyncio.run(_get(app, "/api/worlds/missing/events"))
 
     assert player_status == 404
@@ -147,12 +143,8 @@ def test_read_api_returns_404_for_missing_resources(tmp_path: Path) -> None:
 def test_events_limit_is_bounded_by_api_validation(tmp_path: Path) -> None:
     app, _ = _seeded_app(tmp_path)
 
-    zero_status, _ = asyncio.run(
-        _get(app, f"/api/worlds/{WARD_WORLD_ID}/events?limit=0")
-    )
-    excessive_status, _ = asyncio.run(
-        _get(app, f"/api/worlds/{WARD_WORLD_ID}/events?limit=101")
-    )
+    zero_status, _ = asyncio.run(_get(app, f"/api/worlds/{WARD_WORLD_ID}/events?limit=0"))
+    excessive_status, _ = asyncio.run(_get(app, f"/api/worlds/{WARD_WORLD_ID}/events?limit=101"))
 
     assert zero_status == 422
     assert excessive_status == 422
@@ -170,16 +162,13 @@ def test_openapi_documents_read_routes(tmp_path: Path) -> None:
     assert "/api/worlds/{world_id}/entities/{entity_id}" in schema["paths"]
     assert "/api/worlds/{world_id}/events" in schema["paths"]
     assert "/api/worlds" in schema["paths"]
-    assert (
-        "/api/worlds/{world_id}/capabilities/ward/locations/{location_id}"
-        in schema["paths"]
-    )
-    player_schema = schema["paths"]["/api/worlds/{world_id}/player"]["get"][
+    assert "/api/worlds/{world_id}/capabilities/ward/locations/{location_id}" in schema["paths"]
+    player_schema = schema["paths"]["/api/worlds/{world_id}/player"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"]
+    location_schema = schema["paths"]["/api/worlds/{world_id}/locations/{location_id}"]["get"][
         "responses"
     ]["200"]["content"]["application/json"]["schema"]
-    location_schema = schema["paths"][
-        "/api/worlds/{world_id}/locations/{location_id}"
-    ]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
     assert player_schema["$ref"].endswith("/PlayerRead")
     assert location_schema["$ref"].endswith("/LocationRead")
 

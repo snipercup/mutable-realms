@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 from backend.world.agent_tools import (
     move_world_entity,
     read_world_status,
+    record_world_social_interaction,
     treat_and_discharge_world_patient,
 )
 from backend.world.context import WorldContext, build_world_context
@@ -20,6 +21,7 @@ from backend.world.mutations import (
     MutationNotFound,
     StaleWorldRevision,
 )
+from backend.world.social import SocialConflict, SocialNotFound
 
 
 class DecisionKind(StrEnum):
@@ -32,6 +34,7 @@ class DecisionKind(StrEnum):
 OperationType = Literal[
     "world_move_entity",
     "world_treat_and_discharge_patient",
+    "world_record_social_interaction",
 ]
 
 
@@ -43,23 +46,55 @@ class OperationDecision(BaseModel):
     destination_location_id: str | None = None
     patient_id: str | None = None
     bed_id: str | None = None
+    subject_entity_id: str | None = None
+    object_entity_id: str | None = None
+    relationship_category: str | None = None
+    relationship_delta: int | None = None
+    memory: str | None = None
 
     @model_validator(mode="after")
     def require_operation_arguments(self) -> OperationDecision:
         if self.operation_type == "world_move_entity":
-            if self.patient_id is not None or self.bed_id is not None:
-                raise ValueError("move operation cannot include ward arguments")
-            if not self.entity_id or not self.destination_location_id:
-                raise ValueError(
-                    "world_move_entity requires entity_id and destination_location_id"
+            if any(
+                (
+                    self.patient_id,
+                    self.bed_id,
+                    self.subject_entity_id,
+                    self.object_entity_id,
+                    self.relationship_category,
+                    self.relationship_delta is not None,
+                    self.memory,
                 )
-        else:
+            ):
+                raise ValueError("move operation cannot include unrelated arguments")
+            if not self.entity_id or not self.destination_location_id:
+                raise ValueError("world_move_entity requires entity_id and destination_location_id")
+        elif self.operation_type == "world_treat_and_discharge_patient":
             if self.entity_id is not None or self.destination_location_id is not None:
                 raise ValueError("ward operation cannot include movement arguments")
-            if not self.patient_id or not self.bed_id:
-                raise ValueError(
-                    "world_treat_and_discharge_patient requires patient_id and bed_id"
+            if any(
+                (
+                    self.subject_entity_id,
+                    self.object_entity_id,
+                    self.relationship_category,
+                    self.relationship_delta is not None,
+                    self.memory,
                 )
+            ):
+                raise ValueError("ward operation cannot include social arguments")
+            if not self.patient_id or not self.bed_id:
+                raise ValueError("world_treat_and_discharge_patient requires patient_id and bed_id")
+        else:
+            if any((self.entity_id, self.destination_location_id, self.patient_id, self.bed_id)):
+                raise ValueError("social operation cannot include movement or ward arguments")
+            if (
+                not self.subject_entity_id
+                or not self.object_entity_id
+                or not self.relationship_category
+                or self.relationship_delta is None
+                or not self.memory
+            ):
+                raise ValueError("social operation requires relationship and memory arguments")
         return self
 
 
@@ -156,21 +191,40 @@ def _execute_operation(
             "world_revision": result["world_revision"],
         }
 
-    assert operation.patient_id is not None
-    assert operation.bed_id is not None
-    result = treat_and_discharge_world_patient(
+    if operation.operation_type == "world_treat_and_discharge_patient":
+        assert operation.patient_id is not None
+        assert operation.bed_id is not None
+        result = treat_and_discharge_world_patient(
+            database_path,
+            world_id=world_id,
+            operation_id=operation_id,
+            expected_revision=expected_revision,
+            patient_id=operation.patient_id,
+            bed_id=operation.bed_id,
+            actor_entity_id=player_id,
+        )
+        return {
+            "already_applied": result["already_applied"],
+            "world_revision": result["world_revision"],
+        }
+
+    assert operation.subject_entity_id is not None
+    assert operation.object_entity_id is not None
+    assert operation.relationship_category is not None
+    assert operation.relationship_delta is not None
+    assert operation.memory is not None
+    return record_world_social_interaction(
         database_path,
         world_id=world_id,
         operation_id=operation_id,
         expected_revision=expected_revision,
-        patient_id=operation.patient_id,
-        bed_id=operation.bed_id,
         actor_entity_id=player_id,
+        subject_entity_id=operation.subject_entity_id,
+        object_entity_id=operation.object_entity_id,
+        relationship_category=operation.relationship_category,
+        relationship_delta=operation.relationship_delta,
+        memory=operation.memory,
     )
-    return {
-        "already_applied": result["already_applied"],
-        "world_revision": result["world_revision"],
-    }
 
 
 def run_turn(
@@ -268,7 +322,27 @@ def run_turn(
                 message=str(error),
                 attempts=attempts,
             )
+        except SocialNotFound as error:
+            after = build_world_context(database_path, world_id=world_id)
+            return _result(
+                TurnOutcome.MISSING_RESOURCE,
+                before,
+                after,
+                decision,
+                message=str(error),
+                attempts=attempts,
+            )
         except MutationConflict as error:
+            after = build_world_context(database_path, world_id=world_id)
+            return _result(
+                TurnOutcome.MUTATION_REJECTED,
+                before,
+                after,
+                decision,
+                message=str(error),
+                attempts=attempts,
+            )
+        except SocialConflict as error:
             after = build_world_context(database_path, world_id=world_id)
             return _result(
                 TurnOutcome.MUTATION_REJECTED,
@@ -301,9 +375,7 @@ def run_turn(
 
         after = build_world_context(database_path, world_id=world_id)
         outcome = (
-            TurnOutcome.IDEMPOTENT_REPLAY
-            if mutation["already_applied"]
-            else TurnOutcome.SUCCESS
+            TurnOutcome.IDEMPOTENT_REPLAY if mutation["already_applied"] else TurnOutcome.SUCCESS
         )
         return _result(
             outcome,

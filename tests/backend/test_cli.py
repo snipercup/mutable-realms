@@ -82,8 +82,7 @@ def test_move_entity_command_returns_authoritative_result(
     assert main([*db_args, "seed"]) == 0
     with connect_database(database_path) as connection:
         connection.execute(
-            "INSERT INTO locations(id, world_id, name) "
-            "VALUES ('hall', 'ward-world', 'Hall')"
+            "INSERT INTO locations(id, world_id, name) VALUES ('hall', 'ward-world', 'Hall')"
         )
         connection.commit()
     capsys.readouterr()
@@ -147,9 +146,10 @@ def test_move_entity_command_reports_stale_revision_without_changes(
     assert captured.out == ""
     assert "expected world revision 1, found 0" in captured.err
     with connect_database(database_path) as connection:
-        assert connection.execute(
-            "SELECT revision FROM worlds WHERE id = 'ward-world'"
-        ).fetchone()[0] == 0
+        assert (
+            connection.execute("SELECT revision FROM worlds WHERE id = 'ward-world'").fetchone()[0]
+            == 0
+        )
         assert connection.execute("SELECT COUNT(*) FROM operations").fetchone()[0] == 0
 
 

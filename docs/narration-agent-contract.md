@@ -41,7 +41,8 @@ Each player message is one atomic turn. The narration agent must:
 The initial supported mutation vocabulary is deliberately small:
 
 - `world_move_entity` for a valid generic character move;
-- `world_treat_and_discharge_patient` for the ward's atomic treatment/discharge transition.
+- `world_treat_and_discharge_patient` for the ward's atomic treatment/discharge transition;
+- `world_record_social_interaction` for one bounded relationship change plus one concise event-linked memory.
 
 Do not expose or invent a generic field-update operation. Do not assemble a multi-step mutation from separate low-level writes when one named atomic operation exists.
 
@@ -73,6 +74,7 @@ The operation-specific arguments are:
 | --- | --- |
 | `world_move_entity` | `entity_id`, `destination_location_id` |
 | `world_treat_and_discharge_patient` | `patient_id`, `bed_id` |
+| `world_record_social_interaction` | `subject_entity_id`, `object_entity_id`, `relationship_category`, `relationship_delta`, `memory` |
 
 ## Outcome handling
 

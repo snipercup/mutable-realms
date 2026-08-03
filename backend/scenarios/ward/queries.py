@@ -29,9 +29,7 @@ def get_ward_location_state(
             (location_id, world_id),
         ).fetchone()
         if location is None:
-            raise LocationNotFound(
-                f"Location {location_id!r} was not found in world {world_id!r}"
-            )
+            raise LocationNotFound(f"Location {location_id!r} was not found in world {world_id!r}")
         beds = [
             {
                 "id": row["id"],
@@ -67,9 +65,7 @@ def get_ward_location_state(
             )
         ]
         if not beds:
-            raise WardCapabilityNotFound(
-                f"Location {location_id!r} has no ward capability state"
-            )
+            raise WardCapabilityNotFound(f"Location {location_id!r} has no ward capability state")
     return {
         "world_id": world_id,
         "location_id": location_id,
@@ -80,9 +76,7 @@ def get_ward_location_state(
     }
 
 
-def get_ward_bed(
-    database_path: str | Path, world_id: str, bed_id: str
-) -> WardRecord | None:
+def get_ward_bed(database_path: str | Path, world_id: str, bed_id: str) -> WardRecord | None:
     """Read ward-specific occupancy for one bed entity."""
     with connect_database(database_path) as connection:
         row = connection.execute(

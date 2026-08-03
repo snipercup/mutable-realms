@@ -61,14 +61,10 @@ def treat_and_discharge_patient(
                     existing["operation_type"] != _EVENT_TYPE
                     or existing["request_json"] != request_json
                 ):
-                    raise MutationConflict(
-                        "operation ID was already used for a different request"
-                    )
+                    raise MutationConflict("operation ID was already used for a different request")
                 connection.rollback()
                 stored_result = json.loads(existing["result_json"])
-                return MutationResult(
-                    stored_result["world_revision"], already_applied=True
-                )
+                return MutationResult(stored_result["world_revision"], already_applied=True)
 
             world = connection.execute(
                 "SELECT revision FROM worlds WHERE id = ?", (world_id,)
@@ -149,9 +145,7 @@ def treat_and_discharge_patient(
             if revision_update.rowcount != 1:
                 raise StaleWorldRevision("world revision changed during mutation")
 
-            result_json = json.dumps(
-                {"world_revision": next_revision}, separators=(",", ":")
-            )
+            result_json = json.dumps({"world_revision": next_revision}, separators=(",", ":"))
             connection.execute(
                 """
                 INSERT INTO operations(

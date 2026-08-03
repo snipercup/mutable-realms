@@ -77,12 +77,8 @@ def get_current_location(database_path: str | Path, world_id: str) -> WorldRecor
         player = get_player(database_path, world_id, _connection=connection)
         location_id = player["location_id"]
         if location_id is None:
-            raise LocationNotFound(
-                f"Player in world {world_id!r} has no current location"
-            )
-        return get_location(
-            database_path, world_id, location_id, _connection=connection
-        )
+            raise LocationNotFound(f"Player in world {world_id!r} has no current location")
+        return get_location(database_path, world_id, location_id, _connection=connection)
 
 
 def get_location(
@@ -110,9 +106,7 @@ def get_location(
             (world_id, location_id),
         ).fetchone()
         if location is None:
-            raise LocationNotFound(
-                f"Location {location_id!r} was not found in world {world_id!r}"
-            )
+            raise LocationNotFound(f"Location {location_id!r} was not found in world {world_id!r}")
 
         entities = [
             dict(row)
@@ -160,9 +154,7 @@ def get_entity(
             (world_id, entity_id),
         ).fetchone()
     if row is None:
-        raise EntityNotFound(
-            f"Entity {entity_id!r} was not found in world {world_id!r}"
-        )
+        raise EntityNotFound(f"Entity {entity_id!r} was not found in world {world_id!r}")
     return dict(row)
 
 
@@ -181,9 +173,7 @@ def list_recent_events(
         else nullcontext(_connection)
     )
     with connection_context as connection:
-        world = connection.execute(
-            "SELECT 1 FROM worlds WHERE id = ?", (world_id,)
-        ).fetchone()
+        world = connection.execute("SELECT 1 FROM worlds WHERE id = ?", (world_id,)).fetchone()
         if world is None:
             raise WorldNotFound(f"World {world_id!r} was not found")
         rows = connection.execute(

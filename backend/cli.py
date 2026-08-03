@@ -24,9 +24,7 @@ _COMMANDS = ("migrate", "seed", "validate", "move-entity", "world-context", "wor
 def _database_path(value: str | None) -> Path:
     configured = value or os.environ.get("MUTABLE_REALMS_DB_PATH")
     if not configured:
-        raise ValueError(
-            "database path is required; set MUTABLE_REALMS_DB_PATH or pass --db-path"
-        )
+        raise ValueError("database path is required; set MUTABLE_REALMS_DB_PATH or pass --db-path")
     return Path(configured)
 
 
@@ -75,9 +73,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             }
             missing = [name for name, value in required.items() if value is None]
             if missing:
-                raise ValueError(
-                    "move-entity requires " + ", ".join(missing)
-                )
+                raise ValueError("move-entity requires " + ", ".join(missing))
             result = move_entity(
                 database_path,
                 world_id=args.world_id,
@@ -131,9 +127,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 player_action=args.player_action,
                 decide=lambda _action, _context: decision,
                 operation_id_factory=(
-                    (lambda: args.turn_operation_id)
-                    if args.turn_operation_id is not None
-                    else None
+                    (lambda: args.turn_operation_id) if args.turn_operation_id is not None else None
                 ),
             )
             payload = {

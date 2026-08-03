@@ -44,9 +44,7 @@ def _load_migrations(migrations_path: Path) -> list[Migration]:
     expected = list(range(1, len(migrations) + 1))
     versions = [migration.version for migration in migrations]
     if versions != expected:
-        raise MigrationError(
-            f"Migration versions must be contiguous from 0001; found {versions}"
-        )
+        raise MigrationError(f"Migration versions must be contiguous from 0001; found {versions}")
     return migrations
 
 
@@ -87,8 +85,7 @@ def _verify_history(
     expected_prefix = list(range(1, max(applied_versions, default=0) + 1))
     if applied_versions != expected_prefix:
         raise MigrationError(
-            "Applied migration history must be a contiguous prefix; "
-            f"found {applied_versions}"
+            f"Applied migration history must be a contiguous prefix; found {applied_versions}"
         )
 
     for migration in migrations:

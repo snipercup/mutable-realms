@@ -195,6 +195,7 @@ Phase 6 exposes the authoritative application services as a local stdio MCP serv
 | `world_events` | Read a newest-first event window bounded to 1–100 rows. |
 | `world_move_entity` | Invoke the generic revision-checked, idempotent move operation. |
 | `world_treat_and_discharge_patient` | Invoke the ward capability's atomic treatment/discharge operation. |
+| `world_record_social_interaction` | Update one bounded relationship and store one concise event-linked memory. |
 | `world_validate` | Run deterministic database and world-invariant validation. |
 
 The MCP process is bound to exactly one existing database through `MUTABLE_REALMS_DB_PATH`. Tool callers cannot supply another path, missing databases are not created, and every query path opens SQLite in read-only/query-only mode. Context and event limits are enforced as 1–100 in both MCP schemas and application services. Mutation tools retain their application-service validation, expected-revision, operation-ID, transaction, and event guarantees.
@@ -227,7 +228,19 @@ Start a new Hermes session after registration so tool discovery includes the ser
 
 There is intentionally no generic `world_update` tool. Arbitrary field updates would bypass scenario rules. Add a named application operation and expose a correspondingly narrow MCP tool when a scenario requires a new mutation.
 
-### Narrated turn contract
+## Phase 10 social state
+
+Migration `0003_social_state` adds generic, optional social state without changing the core entity model:
+
+* `relationships` stores a bounded score/category for one directed character pair and the event that last changed it;
+* `memories` stores concise text owned by an entity and linked to the authoritative event that created it;
+* `world_record_social_interaction` is one atomic, idempotent, expected-revision-checked operation that updates one relationship and records one memory;
+* context includes only relationships and memories involving the player and entities in the current location;
+* memory content is limited to 500 characters and full chat transcripts are not accepted;
+* validation checks relationship endpoint/world coherence and memory/event world coherence.
+
+The trusted narration MCP binding exposes the social operation with the configured player as actor. Worlds with fewer than two characters do not advertise it. Social state is read from SQLite, survives process restart, and remains separate from generated narration and browser presentation.
+
 
 Phase 7 adds the model-independent turn policy in `backend.world.turns` and documents the Hermes-facing contract in `docs/narration-agent-contract.md`. A narration session must be trusted-bound to one world and player. For each player message, Hermes reads `world_status` and `world_context`, returns exactly one structured decision kind, invokes at most one advertised mutation with the observed revision and a fresh operation ID, rereads context, and narrates only the persisted result. A stale revision causes one fresh-context reevaluation; rejected, missing, unsupported, and failed operations must never be narrated as successful.
 

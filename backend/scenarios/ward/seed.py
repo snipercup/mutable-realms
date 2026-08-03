@@ -41,8 +41,7 @@ def seed_ward_world(database_path: str | Path) -> bool:
                 for number in range(1, 7)
             )
             entities.extend(
-                (f"bed-{number}", WARD_WORLD_ID, "bed", f"Bed {number}")
-                for number in range(1, 7)
+                (f"bed-{number}", WARD_WORLD_ID, "bed", f"Bed {number}") for number in range(1, 7)
             )
             connection.executemany(
                 "INSERT INTO entities(id, world_id, kind, name) VALUES (?, ?, ?, ?)",
