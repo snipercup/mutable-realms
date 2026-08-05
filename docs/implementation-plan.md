@@ -847,6 +847,12 @@ Because quests are not tracked, there is no quest-state anchor that prevents a q
 
 The Phase 8 invariant "completed quests do not remain available" is therefore permanently inapplicable by design, and the context builder carries quest effects only through recent events, not quest state.
 
+### Phase 11 status — First slice complete
+
+Implemented on 2026-08-05: migration `0004_resources` adds a generic resource ledger (`resources`: owner character, resource type, non-negative quantity, linked update event), and `world_transfer_resource` is one atomic, idempotent, expected-revision-checked operation that grants units from the world (a quest reward) or transfers them between characters, recording a `resource_transferred` event and incrementing the revision once. World context includes only resources owned by the player and current-location entities; validation checks resource owner world/character coherence and update-event linkage; the trusted MCP server and deterministic turn runner expose the operation when the world has at least one character, with the configured player as actor. Tests cover migration compatibility, atomic persistence, exact idempotency, invalid inputs, overdraft and self-transfer rejection, turn orchestration, and validation corruption.
+
+The location-effect operation (Capability B — for example clearing rodents from a basement) is deliberately deferred to Phase 12, which introduces mutable location properties such as cleanliness and condition. Quest rewards via `world_transfer_resource` are the first concrete use of this capability.
+
 ---
 
 # 16. Phase 12 — Mutable Locations

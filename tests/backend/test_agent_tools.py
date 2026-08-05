@@ -36,7 +36,7 @@ def test_status_reports_revision_and_only_supported_mutations(tmp_path: Path) ->
 
     assert generic == {
         "world": {"id": GENERAL_WORLD_ID, "name": "Open World", "revision": 0},
-        "available_mutations": ["world_move_entity"],
+        "available_mutations": ["world_move_entity", "world_transfer_resource"],
     }
     assert ward == {
         "world": {"id": WARD_WORLD_ID, "name": "Recovery Ward", "revision": 0},
@@ -44,6 +44,7 @@ def test_status_reports_revision_and_only_supported_mutations(tmp_path: Path) ->
             "world_move_entity",
             "world_treat_and_discharge_patient",
             "world_record_social_interaction",
+            "world_transfer_resource",
         ],
     }
 

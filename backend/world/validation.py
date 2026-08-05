@@ -332,4 +332,59 @@ def validate_worlds(database_path: str | Path) -> list[ValidationIssue]:
                 )
             )
 
+        for row in connection.execute(
+            """
+            SELECT r.world_id, r.owner_entity_id, entity.world_id AS entity_world_id
+            FROM resources r
+            JOIN entities entity ON entity.id = r.owner_entity_id
+            WHERE entity.world_id <> r.world_id
+            ORDER BY r.world_id, r.owner_entity_id
+            """
+        ):
+            issues.append(
+                ValidationIssue(
+                    "resource_owner_world_mismatch",
+                    "Resource owner belongs to another world",
+                    row["owner_entity_id"],
+                )
+            )
+
+        for row in connection.execute(
+            """
+            SELECT r.owner_entity_id
+            FROM resources r
+            LEFT JOIN characters owner ON owner.entity_id = r.owner_entity_id
+            WHERE owner.entity_id IS NULL
+            ORDER BY r.world_id, r.owner_entity_id
+            """
+        ):
+            issues.append(
+                ValidationIssue(
+                    "resource_owner_not_character",
+                    "Resource owner is missing character state",
+                    row["owner_entity_id"],
+                )
+            )
+
+        for row in connection.execute(
+            """
+            SELECT r.world_id, r.owner_entity_id, r.updated_event_id,
+                   ev.world_id AS event_world_id, ev.world_revision
+            FROM resources r
+            LEFT JOIN events ev ON ev.id = r.updated_event_id
+            WHERE ev.id IS NULL
+               OR ev.world_id <> r.world_id
+               OR ev.event_type <> 'resource_transferred'
+               OR ev.world_revision > (SELECT revision FROM worlds WHERE id = r.world_id)
+            ORDER BY r.world_id, r.owner_entity_id
+            """
+        ):
+            issues.append(
+                ValidationIssue(
+                    "resource_updated_event_mismatch",
+                    "Resource update event is missing or belongs to another revision/world",
+                    row["owner_entity_id"],
+                )
+            )
+
     return issues

@@ -8,6 +8,7 @@ from backend.persistence.database import connect_readonly_database
 from backend.scenarios.ward.mutations import treat_and_discharge_patient
 from backend.world.mutations import move_entity
 from backend.world.queries import WorldNotFound, get_entity, list_recent_events
+from backend.world.resources import transfer_resource
 from backend.world.social import record_social_interaction
 from backend.world.validation import validate_worlds
 
@@ -42,12 +43,23 @@ def read_world_status(database_path: str | Path, *, world_id: str) -> dict[str, 
             ).fetchone()
             is not None
         )
+        has_characters = (
+            connection.execute(
+                """SELECT 1 FROM characters c
+            JOIN entities e ON e.id = c.entity_id
+            WHERE e.world_id = ? LIMIT 1""",
+                (world_id,),
+            ).fetchone()
+            is not None
+        )
 
     mutations = ["world_move_entity"]
     if has_ward_state:
         mutations.append("world_treat_and_discharge_patient")
     if has_social_state:
         mutations.append("world_record_social_interaction")
+    if has_characters:
+        mutations.append("world_transfer_resource")
     return {"world": dict(world), "available_mutations": mutations}
 
 
@@ -142,6 +154,32 @@ def record_world_social_interaction(
         relationship_category=relationship_category,
         relationship_delta=relationship_delta,
         memory=memory,
+    )
+
+
+def transfer_world_resource(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    actor_entity_id: str,
+    recipient_entity_id: str,
+    resource_type: str,
+    quantity: int,
+    source_entity_id: str | None = None,
+) -> dict[str, Any]:
+    """Apply the resource grant/transfer application operation."""
+    return transfer_resource(
+        database_path,
+        world_id=world_id,
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        actor_entity_id=actor_entity_id,
+        recipient_entity_id=recipient_entity_id,
+        resource_type=resource_type,
+        quantity=quantity,
+        source_entity_id=source_entity_id,
     )
 
 

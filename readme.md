@@ -196,6 +196,7 @@ Phase 6 exposes the authoritative application services as a local stdio MCP serv
 | `world_move_entity` | Invoke the generic revision-checked, idempotent move operation. |
 | `world_treat_and_discharge_patient` | Invoke the ward capability's atomic treatment/discharge operation. |
 | `world_record_social_interaction` | Update one bounded relationship and store one concise event-linked memory. |
+| `world_transfer_resource` | Grant or transfer resource units (rewards, currency, items) between characters. |
 | `world_validate` | Run deterministic database and world-invariant validation. |
 
 The MCP process is bound to exactly one existing database through `MUTABLE_REALMS_DB_PATH`. Tool callers cannot supply another path, missing databases are not created, and every query path opens SQLite in read-only/query-only mode. Context and event limits are enforced as 1–100 in both MCP schemas and application services. Mutation tools retain their application-service validation, expected-revision, operation-ID, transaction, and event guarantees.
@@ -243,7 +244,17 @@ The trusted narration MCP binding exposes the social operation with the configur
 
 ## Narration-only goals
 
-Quests are not tracked as world state. Accepting, progressing, and completing a quest is narration; quest continuity lives in narration memory and may be inconsistent across turns by design. What persists are a quest's effects, applied through the same named atomic operations as any other mutation: relationships (`world_record_social_interaction`), rewards and resources (item/currency transfers), and entity or location changes. An effect must never be narrated as applied unless its operation committed. No quest board or goal lifecycle is required; a minimal completed-goal ledger may be added later only if play demands deduplication of rewards.
+Quests are not tracked as world state. Accepting, progressing, and completing a quest is narration; quest continuity lives in narration memory and may be inconsistent across turns by design. What persists are a quest's effects, applied through the same named atomic operations as any other mutation: relationships (`world_record_social_interaction`), rewards and resources (`world_transfer_resource`), and entity or location changes (deferred to Phase 12). An effect must never be narrated as applied unless its operation committed. No quest board or goal lifecycle is required; a minimal completed-goal ledger may be added later only if play demands deduplication of rewards.
+
+## Resources
+
+Migration `0004_resources` adds a generic, optional resource ledger without changing the core entity model:
+
+* `resources` stores a non-negative quantity of one resource type (for example `coin`) per character and the event that last changed it;
+* `world_transfer_resource` is one atomic, idempotent, expected-revision-checked operation that grants units from the world (a quest reward) or transfers them between characters;
+* context includes only resources owned by the player and entities in the current location;
+* validation checks resource owner world/character coherence and update-event linkage;
+* the operation is advertised when the world has at least one character, and the configured narration player is always the actor.
 
 Phase 7 adds the model-independent turn policy in `backend.world.turns` and documents the Hermes-facing contract in `docs/narration-agent-contract.md`. A narration session must be trusted-bound to one world and player. For each player message, Hermes reads `world_status` and `world_context`, returns exactly one structured decision kind, invokes at most one advertised mutation with the observed revision and a fresh operation ID, rereads context, and narrates only the persisted result. A stale revision causes one fresh-context reevaluation; rejected, missing, unsupported, and failed operations must never be narrated as successful.
 

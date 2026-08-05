@@ -13,6 +13,7 @@ from backend.world.agent_tools import (
     move_world_entity,
     read_world_status,
     record_world_social_interaction,
+    transfer_world_resource,
     treat_and_discharge_world_patient,
     validate_world_state,
 )
@@ -189,6 +190,35 @@ def world_record_social_interaction(
         relationship_category=relationship_category,
         relationship_delta=relationship_delta,
         memory=memory,
+    )
+
+
+@mcp.tool()
+def world_transfer_resource(
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    recipient_entity_id: str,
+    resource_type: Annotated[str, Field(min_length=1, max_length=100)],
+    quantity: Annotated[int, Field(ge=1)],
+    source_entity_id: str | None = None,
+    actor_entity_id: str | None = None,
+) -> dict[str, Any]:
+    """Atomically grant or transfer resource units between characters."""
+    ensure_bound_player(world_id)
+    actor = resolve_actor_entity_id(actor_entity_id)
+    if actor is None:
+        raise RuntimeError("resource transfer requires a trusted actor")
+    return transfer_world_resource(
+        get_database_path(),
+        world_id=resolve_world_id(world_id),
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        actor_entity_id=actor,
+        recipient_entity_id=recipient_entity_id,
+        resource_type=resource_type,
+        quantity=quantity,
+        source_entity_id=source_entity_id,
     )
 
 

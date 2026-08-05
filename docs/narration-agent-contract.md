@@ -42,7 +42,8 @@ The initial supported mutation vocabulary is deliberately small:
 
 - `world_move_entity` for a valid generic character move;
 - `world_treat_and_discharge_patient` for the ward's atomic treatment/discharge transition;
-- `world_record_social_interaction` for one bounded relationship change plus one concise event-linked memory.
+- `world_record_social_interaction` for one bounded relationship change plus one concise event-linked memory;
+- `world_transfer_resource` for granting or transferring resource units (rewards, currency, items) between characters.
 
 Do not expose or invent a generic field-update operation. Do not assemble a multi-step mutation from separate low-level writes when one named atomic operation exists.
 
@@ -75,6 +76,7 @@ The operation-specific arguments are:
 | `world_move_entity` | `entity_id`, `destination_location_id` |
 | `world_treat_and_discharge_patient` | `patient_id`, `bed_id` |
 | `world_record_social_interaction` | `subject_entity_id`, `object_entity_id`, `relationship_category`, `relationship_delta`, `memory` |
+| `world_transfer_resource` | `recipient_entity_id`, `resource_type`, `quantity`; optional `source_entity_id` |
 
 ## Outcome handling
 
@@ -95,7 +97,7 @@ The browser is derived from the HTTP API. After a successful mutation, refresh o
 
 ## Narration-only goals
 
-Quests and other narrative goals are not tracked as world state in this design. The narrator may freely describe accepting, progressing, and completing quests; none of that is persisted. Only quest consequences persist, through the supported operations (`world_record_social_interaction`, and future reward/transfer and location-effect operations). The narrator must never claim an effect ("you earned 50 gold", "the owner now trusts you") unless the corresponding operation committed and the post-turn read confirms it. Quest continuity is narration memory and may be inconsistent across turns; that is an accepted design trade-off, not a persistence failure.
+Quests and other narrative goals are not tracked as world state in this design. The narrator may freely describe accepting, progressing, and completing quests; none of that is persisted. Only quest consequences persist, through the supported operations (`world_record_social_interaction` for relationships, `world_transfer_resource` for rewards and resources; location-effect operations arrive with Phase 12). The narrator must never claim an effect ("you earned 50 gold", "the owner now trusts you") unless the corresponding operation committed and the post-turn read confirms it. Quest continuity is narration memory and may be inconsistent across turns; that is an accepted design trade-off, not a persistence failure.
 
 ## Deterministic implementation seam
 

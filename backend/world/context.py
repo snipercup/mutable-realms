@@ -14,6 +14,7 @@ from backend.world.queries import (
     get_player,
     list_recent_events,
 )
+from backend.world.resources import read_resources
 from backend.world.social import read_social_context
 
 
@@ -75,6 +76,7 @@ class WorldContext(ContextModel):
     recent_events: list[ContextEvent]
     relationships: list[dict[str, Any]]
     memories: list[dict[str, Any]]
+    resources: list[dict[str, Any]]
 
 
 def build_world_context(
@@ -113,6 +115,15 @@ def build_world_context(
             related_entity_ids=[entity["id"] for entity in location["entities"]],
             _connection=connection,
         )
+        resources = read_resources(
+            database_path,
+            world_id=world_id,
+            owner_entity_ids=[
+                entity["id"] for entity in location["entities"]
+            ]
+            + [player["id"]],
+            _connection=connection,
+        )
 
     return WorldContext.model_validate(
         {
@@ -121,5 +132,6 @@ def build_world_context(
             "current_location": location,
             "recent_events": events,
             **social,
+            **resources,
         }
     )

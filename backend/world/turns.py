@@ -13,6 +13,7 @@ from backend.world.agent_tools import (
     move_world_entity,
     read_world_status,
     record_world_social_interaction,
+    transfer_world_resource,
     treat_and_discharge_world_patient,
 )
 from backend.world.context import WorldContext, build_world_context
@@ -21,6 +22,7 @@ from backend.world.mutations import (
     MutationNotFound,
     StaleWorldRevision,
 )
+from backend.world.resources import ResourceConflict, ResourceNotFound
 from backend.world.social import SocialConflict, SocialNotFound
 
 
@@ -35,6 +37,7 @@ OperationType = Literal[
     "world_move_entity",
     "world_treat_and_discharge_patient",
     "world_record_social_interaction",
+    "world_transfer_resource",
 ]
 
 
@@ -51,9 +54,19 @@ class OperationDecision(BaseModel):
     relationship_category: str | None = None
     relationship_delta: int | None = None
     memory: str | None = None
+    recipient_entity_id: str | None = None
+    resource_type: str | None = None
+    quantity: int | None = None
+    source_entity_id: str | None = None
 
     @model_validator(mode="after")
     def require_operation_arguments(self) -> OperationDecision:
+        resource_args = (
+            self.recipient_entity_id,
+            self.resource_type,
+            self.quantity is not None,
+            self.source_entity_id,
+        )
         if self.operation_type == "world_move_entity":
             if any(
                 (
@@ -64,6 +77,7 @@ class OperationDecision(BaseModel):
                     self.relationship_category,
                     self.relationship_delta is not None,
                     self.memory,
+                    *resource_args,
                 )
             ):
                 raise ValueError("move operation cannot include unrelated arguments")
@@ -79,14 +93,17 @@ class OperationDecision(BaseModel):
                     self.relationship_category,
                     self.relationship_delta is not None,
                     self.memory,
+                    *resource_args,
                 )
             ):
-                raise ValueError("ward operation cannot include social arguments")
+                raise ValueError("ward operation cannot include social or resource arguments")
             if not self.patient_id or not self.bed_id:
                 raise ValueError("world_treat_and_discharge_patient requires patient_id and bed_id")
-        else:
+        elif self.operation_type == "world_record_social_interaction":
             if any((self.entity_id, self.destination_location_id, self.patient_id, self.bed_id)):
                 raise ValueError("social operation cannot include movement or ward arguments")
+            if any(resource_args):
+                raise ValueError("social operation cannot include resource arguments")
             if (
                 not self.subject_entity_id
                 or not self.object_entity_id
@@ -95,6 +112,33 @@ class OperationDecision(BaseModel):
                 or not self.memory
             ):
                 raise ValueError("social operation requires relationship and memory arguments")
+        else:
+            if any(
+                (
+                    self.entity_id,
+                    self.destination_location_id,
+                    self.patient_id,
+                    self.bed_id,
+                    self.subject_entity_id,
+                    self.object_entity_id,
+                    self.relationship_category,
+                    self.relationship_delta is not None,
+                    self.memory,
+                )
+            ):
+                raise ValueError(
+                    "resource operation cannot include movement, ward, or social arguments"
+                )
+            if (
+                not self.recipient_entity_id
+                or not self.resource_type
+                or self.quantity is None
+                or self.quantity <= 0
+            ):
+                raise ValueError(
+                    "world_transfer_resource requires recipient_entity_id, resource_type, "
+                    "and a positive quantity"
+                )
         return self
 
 
@@ -202,6 +246,26 @@ def _execute_operation(
             patient_id=operation.patient_id,
             bed_id=operation.bed_id,
             actor_entity_id=player_id,
+        )
+        return {
+            "already_applied": result["already_applied"],
+            "world_revision": result["world_revision"],
+        }
+
+    if operation.operation_type == "world_transfer_resource":
+        assert operation.recipient_entity_id is not None
+        assert operation.resource_type is not None
+        assert operation.quantity is not None
+        result = transfer_world_resource(
+            database_path,
+            world_id=world_id,
+            operation_id=operation_id,
+            expected_revision=expected_revision,
+            actor_entity_id=player_id,
+            recipient_entity_id=operation.recipient_entity_id,
+            resource_type=operation.resource_type,
+            quantity=operation.quantity,
+            source_entity_id=operation.source_entity_id,
         )
         return {
             "already_applied": result["already_applied"],
@@ -332,6 +396,16 @@ def run_turn(
                 message=str(error),
                 attempts=attempts,
             )
+        except ResourceNotFound as error:
+            after = build_world_context(database_path, world_id=world_id)
+            return _result(
+                TurnOutcome.MISSING_RESOURCE,
+                before,
+                after,
+                decision,
+                message=str(error),
+                attempts=attempts,
+            )
         except MutationConflict as error:
             after = build_world_context(database_path, world_id=world_id)
             return _result(
@@ -343,6 +417,16 @@ def run_turn(
                 attempts=attempts,
             )
         except SocialConflict as error:
+            after = build_world_context(database_path, world_id=world_id)
+            return _result(
+                TurnOutcome.MUTATION_REJECTED,
+                before,
+                after,
+                decision,
+                message=str(error),
+                attempts=attempts,
+            )
+        except ResourceConflict as error:
             after = build_world_context(database_path, world_id=world_id)
             return _result(
                 TurnOutcome.MUTATION_REJECTED,
