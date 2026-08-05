@@ -7,18 +7,11 @@
 # the configured port (default 8790). Safe to run on every container start.
 set -euo pipefail
 
-REPO_DIR="${MUTABLE_REALMS_REPO_DIR:-/workspace/mutable-realms}"
-export MUTABLE_REALMS_DB_PATH="${MUTABLE_REALMS_DB_PATH:-/var/lib/mutable-realms/world.sqlite3}"
+REPO_DIR="${MUTABLE_REALMS_REPO_DIR:-/myfiles/workspace/mutable-realms}"
+export MUTABLE_REALMS_DB_PATH="${MUTABLE_REALMS_DB_PATH:-/myfiles/state/mutable-realms/world.sqlite3}"
 export MUTABLE_REALMS_PORT="${MUTABLE_REALMS_PORT:-8790}"
 
-# The image installs a locked Python environment outside the bind-mounted
-# workspace at /opt/mutable-realms-venv. Prefer the repository-local venv when
-# present so boot matches the host's current dependency state.
-if [ -x "$REPO_DIR/venv/bin/python" ]; then
-  export UV_PROJECT_ENVIRONMENT="$REPO_DIR/venv"
-else
-  export UV_PROJECT_ENVIRONMENT="/opt/mutable-realms-venv"
-fi
+export UV_PROJECT_ENVIRONMENT="/opt/mutable-realms-venv"
 
 cd "$REPO_DIR"
 
