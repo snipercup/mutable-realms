@@ -43,7 +43,8 @@ The initial supported mutation vocabulary is deliberately small:
 - `world_move_entity` for a valid generic character move;
 - `world_treat_and_discharge_patient` for the ward's atomic treatment/discharge transition;
 - `world_record_social_interaction` for one bounded relationship change plus one concise event-linked memory;
-- `world_transfer_resource` for granting or transferring resource units (rewards, currency, items) between characters.
+- `world_transfer_resource` for granting or transferring resource units (rewards, currency, items) between characters;
+- `world_update_location` for renaming a location and/or setting one bounded property value (`cleanliness`, `condition`, `prosperity`, `safety`).
 
 Do not expose or invent a generic field-update operation. Do not assemble a multi-step mutation from separate low-level writes when one named atomic operation exists.
 
@@ -77,6 +78,7 @@ The operation-specific arguments are:
 | `world_treat_and_discharge_patient` | `patient_id`, `bed_id` |
 | `world_record_social_interaction` | `subject_entity_id`, `object_entity_id`, `relationship_category`, `relationship_delta`, `memory` |
 | `world_transfer_resource` | `recipient_entity_id`, `resource_type`, `quantity`; optional `source_entity_id` |
+| `world_update_location` | `location_id`; optional `display_name` and/or `property` + `value` (0–100) |
 
 ## Outcome handling
 

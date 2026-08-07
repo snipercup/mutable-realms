@@ -6,6 +6,7 @@ from typing import Any
 
 from backend.persistence.database import connect_readonly_database
 from backend.scenarios.ward.mutations import treat_and_discharge_patient
+from backend.world.locations import update_location
 from backend.world.mutations import move_entity
 from backend.world.queries import WorldNotFound, get_entity, list_recent_events
 from backend.world.resources import transfer_resource
@@ -52,6 +53,12 @@ def read_world_status(database_path: str | Path, *, world_id: str) -> dict[str, 
             ).fetchone()
             is not None
         )
+        has_locations = (
+            connection.execute(
+                "SELECT 1 FROM locations WHERE world_id = ? LIMIT 1", (world_id,)
+            ).fetchone()
+            is not None
+        )
 
     mutations = ["world_move_entity"]
     if has_ward_state:
@@ -60,6 +67,8 @@ def read_world_status(database_path: str | Path, *, world_id: str) -> dict[str, 
         mutations.append("world_record_social_interaction")
     if has_characters:
         mutations.append("world_transfer_resource")
+    if has_locations:
+        mutations.append("world_update_location")
     return {"world": dict(world), "available_mutations": mutations}
 
 
@@ -180,6 +189,32 @@ def transfer_world_resource(
         resource_type=resource_type,
         quantity=quantity,
         source_entity_id=source_entity_id,
+    )
+
+
+def update_world_location(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    actor_entity_id: str,
+    location_id: str,
+    display_name: str | None = None,
+    property: str | None = None,
+    value: int | None = None,
+) -> dict[str, Any]:
+    """Apply the location rename/property application operation."""
+    return update_location(
+        database_path,
+        world_id=world_id,
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        actor_entity_id=actor_entity_id,
+        location_id=location_id,
+        display_name=display_name,
+        property=property,
+        value=value,
     )
 
 

@@ -197,6 +197,7 @@ Phase 6 exposes the authoritative application services as a local stdio MCP serv
 | `world_treat_and_discharge_patient` | Invoke the ward capability's atomic treatment/discharge operation. |
 | `world_record_social_interaction` | Update one bounded relationship and store one concise event-linked memory. |
 | `world_transfer_resource` | Grant or transfer resource units (rewards, currency, items) between characters. |
+| `world_update_location` | Rename a location and/or set one bounded property value (cleanliness, condition, prosperity, safety). |
 | `world_validate` | Run deterministic database and world-invariant validation. |
 
 The MCP process is bound to exactly one existing database through `MUTABLE_REALMS_DB_PATH`. Tool callers cannot supply another path, missing databases are not created, and every query path opens SQLite in read-only/query-only mode. Context and event limits are enforced as 1–100 in both MCP schemas and application services. Mutation tools retain their application-service validation, expected-revision, operation-ID, transaction, and event guarantees.
@@ -255,6 +256,16 @@ Migration `0004_resources` adds a generic, optional resource ledger without chan
 * context includes only resources owned by the player and entities in the current location;
 * validation checks resource owner world/character coherence and update-event linkage;
 * the operation is advertised when the world has at least one character, and the configured narration player is always the actor.
+
+## Mutable locations
+
+Migration `0005_location_properties` adds optional persistent location state without changing the core entity model:
+
+* `location_properties` stores a bounded 0–100 value for scenario-defined properties (initial taxonomy: `cleanliness`, `condition`, `prosperity`, `safety`) and the event that last changed it;
+* `locations.name` remains the mutable display name behind stable IDs, so a location can evolve (The Slums → Improving Riverside → Riverside Quarter) while keeping its identity;
+* `world_update_location` is one atomic, idempotent, expected-revision-checked operation that renames a location and/or sets one property value;
+* context includes the current location's properties; validation checks property world/location coherence and update-event linkage;
+* the operation is advertised when the world has at least one location, and the configured narration player is always the actor.
 
 Phase 7 adds the model-independent turn policy in `backend.world.turns` and documents the Hermes-facing contract in `docs/narration-agent-contract.md`. A narration session must be trusted-bound to one world and player. For each player message, Hermes reads `world_status` and `world_context`, returns exactly one structured decision kind, invokes at most one advertised mutation with the observed revision and a fresh operation ID, rereads context, and narrates only the persisted result. A stale revision causes one fresh-context reevaluation; rejected, missing, unsupported, and failed operations must never be narrated as successful.
 

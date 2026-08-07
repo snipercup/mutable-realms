@@ -15,8 +15,10 @@ from backend.world.agent_tools import (
     record_world_social_interaction,
     transfer_world_resource,
     treat_and_discharge_world_patient,
+    update_world_location,
 )
 from backend.world.context import WorldContext, build_world_context
+from backend.world.locations import LocationStateConflict, LocationStateNotFound
 from backend.world.mutations import (
     MutationConflict,
     MutationNotFound,
@@ -38,6 +40,7 @@ OperationType = Literal[
     "world_treat_and_discharge_patient",
     "world_record_social_interaction",
     "world_transfer_resource",
+    "world_update_location",
 ]
 
 
@@ -58,6 +61,10 @@ class OperationDecision(BaseModel):
     resource_type: str | None = None
     quantity: int | None = None
     source_entity_id: str | None = None
+    location_id: str | None = None
+    display_name: str | None = None
+    property: str | None = None
+    value: int | None = None
 
     @model_validator(mode="after")
     def require_operation_arguments(self) -> OperationDecision:
@@ -66,6 +73,12 @@ class OperationDecision(BaseModel):
             self.resource_type,
             self.quantity is not None,
             self.source_entity_id,
+        )
+        location_args = (
+            self.location_id,
+            self.display_name,
+            self.property,
+            self.value is not None,
         )
         if self.operation_type == "world_move_entity":
             if any(
@@ -78,6 +91,7 @@ class OperationDecision(BaseModel):
                     self.relationship_delta is not None,
                     self.memory,
                     *resource_args,
+                    *location_args,
                 )
             ):
                 raise ValueError("move operation cannot include unrelated arguments")
@@ -94,9 +108,12 @@ class OperationDecision(BaseModel):
                     self.relationship_delta is not None,
                     self.memory,
                     *resource_args,
+                    *location_args,
                 )
             ):
-                raise ValueError("ward operation cannot include social or resource arguments")
+                raise ValueError(
+                    "ward operation cannot include social, resource, or location arguments"
+                )
             if not self.patient_id or not self.bed_id:
                 raise ValueError("world_treat_and_discharge_patient requires patient_id and bed_id")
         elif self.operation_type == "world_record_social_interaction":
@@ -104,6 +121,8 @@ class OperationDecision(BaseModel):
                 raise ValueError("social operation cannot include movement or ward arguments")
             if any(resource_args):
                 raise ValueError("social operation cannot include resource arguments")
+            if any(location_args):
+                raise ValueError("social operation cannot include location arguments")
             if (
                 not self.subject_entity_id
                 or not self.object_entity_id
@@ -112,6 +131,35 @@ class OperationDecision(BaseModel):
                 or not self.memory
             ):
                 raise ValueError("social operation requires relationship and memory arguments")
+        elif self.operation_type == "world_transfer_resource":
+            if any(
+                (
+                    self.entity_id,
+                    self.destination_location_id,
+                    self.patient_id,
+                    self.bed_id,
+                    self.subject_entity_id,
+                    self.object_entity_id,
+                    self.relationship_category,
+                    self.relationship_delta is not None,
+                    self.memory,
+                    *location_args,
+                )
+            ):
+                raise ValueError(
+                    "resource operation cannot include movement, ward, social, or "
+                    "location arguments"
+                )
+            if (
+                not self.recipient_entity_id
+                or not self.resource_type
+                or self.quantity is None
+                or self.quantity <= 0
+            ):
+                raise ValueError(
+                    "world_transfer_resource requires recipient_entity_id, resource_type, "
+                    "and a positive quantity"
+                )
         else:
             if any(
                 (
@@ -124,21 +172,23 @@ class OperationDecision(BaseModel):
                     self.relationship_category,
                     self.relationship_delta is not None,
                     self.memory,
+                    *resource_args,
                 )
             ):
                 raise ValueError(
-                    "resource operation cannot include movement, ward, or social arguments"
+                    "location operation cannot include movement, ward, social, or "
+                    "resource arguments"
                 )
-            if (
-                not self.recipient_entity_id
-                or not self.resource_type
-                or self.quantity is None
-                or self.quantity <= 0
-            ):
-                raise ValueError(
-                    "world_transfer_resource requires recipient_entity_id, resource_type, "
-                    "and a positive quantity"
-                )
+            if not self.location_id:
+                raise ValueError("world_update_location requires location_id")
+            if self.display_name is None and self.property is None:
+                raise ValueError("world_update_location requires display_name or property")
+            if self.display_name is not None and not self.display_name.strip():
+                raise ValueError("display name must not be blank")
+            if self.property is not None and self.value is None:
+                raise ValueError("world_update_location requires value when property is set")
+            if self.value is not None and self.property is None:
+                raise ValueError("world_update_location requires property when value is set")
         return self
 
 
@@ -271,6 +321,20 @@ def _execute_operation(
             "already_applied": result["already_applied"],
             "world_revision": result["world_revision"],
         }
+
+    if operation.operation_type == "world_update_location":
+        assert operation.location_id is not None
+        return update_world_location(
+            database_path,
+            world_id=world_id,
+            operation_id=operation_id,
+            expected_revision=expected_revision,
+            actor_entity_id=player_id,
+            location_id=operation.location_id,
+            display_name=operation.display_name,
+            property=operation.property,
+            value=operation.value,
+        )
 
     assert operation.subject_entity_id is not None
     assert operation.object_entity_id is not None
@@ -406,6 +470,16 @@ def run_turn(
                 message=str(error),
                 attempts=attempts,
             )
+        except LocationStateNotFound as error:
+            after = build_world_context(database_path, world_id=world_id)
+            return _result(
+                TurnOutcome.MISSING_RESOURCE,
+                before,
+                after,
+                decision,
+                message=str(error),
+                attempts=attempts,
+            )
         except MutationConflict as error:
             after = build_world_context(database_path, world_id=world_id)
             return _result(
@@ -427,6 +501,16 @@ def run_turn(
                 attempts=attempts,
             )
         except ResourceConflict as error:
+            after = build_world_context(database_path, world_id=world_id)
+            return _result(
+                TurnOutcome.MUTATION_REJECTED,
+                before,
+                after,
+                decision,
+                message=str(error),
+                attempts=attempts,
+            )
+        except LocationStateConflict as error:
             after = build_world_context(database_path, world_id=world_id)
             return _result(
                 TurnOutcome.MUTATION_REJECTED,

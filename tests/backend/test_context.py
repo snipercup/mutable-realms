@@ -65,6 +65,7 @@ def test_builds_scenario_neutral_context_for_current_location(tmp_path: Path) ->
                     "disposition": None,
                 },
             ],
+            "properties": [],
         },
         "recent_events": [],
         "relationships": [],

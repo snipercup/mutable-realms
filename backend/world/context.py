@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.persistence.database import connect_readonly_database
+from backend.world.locations import read_location_properties
 from backend.world.queries import (
     LocationNotFound,
     WorldNotFound,
@@ -55,6 +56,7 @@ class ContextLocation(ContextModel):
     description: str | None
     revision: int = Field(ge=0)
     entities: list[ContextEntity]
+    properties: list[dict[str, Any]]
 
 
 class ContextEvent(ContextModel):
@@ -102,6 +104,12 @@ def build_world_context(
         if location_id is None:
             raise LocationNotFound(f"Player in world {world_id!r} has no current location")
         location = get_location(database_path, world_id, location_id, _connection=connection)
+        location["properties"] = read_location_properties(
+            database_path,
+            world_id=world_id,
+            location_ids=[location_id],
+            _connection=connection,
+        )["properties"]
         events = list_recent_events(
             database_path,
             world_id,

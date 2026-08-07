@@ -387,4 +387,43 @@ def validate_worlds(database_path: str | Path) -> list[ValidationIssue]:
                 )
             )
 
+        for row in connection.execute(
+            """
+            SELECT lp.world_id, lp.location_id, location.world_id AS location_world_id
+            FROM location_properties lp
+            JOIN locations location ON location.id = lp.location_id
+            WHERE location.world_id <> lp.world_id
+            ORDER BY lp.world_id, lp.location_id
+            """
+        ):
+            issues.append(
+                ValidationIssue(
+                    "location_property_world_mismatch",
+                    "Location property belongs to another world",
+                    row["location_id"],
+                )
+            )
+
+        for row in connection.execute(
+            """
+            SELECT lp.world_id, lp.location_id, lp.updated_event_id,
+                   ev.world_id AS event_world_id, ev.world_revision
+            FROM location_properties lp
+            LEFT JOIN events ev ON ev.id = lp.updated_event_id
+            WHERE ev.id IS NULL
+               OR ev.world_id <> lp.world_id
+               OR ev.event_type <> 'location_updated'
+               OR ev.world_revision > (SELECT revision FROM worlds WHERE id = lp.world_id)
+            ORDER BY lp.world_id, lp.location_id
+            """
+        ):
+            issues.append(
+                ValidationIssue(
+                    "location_property_updated_event_mismatch",
+                    "Location property update event is missing or belongs to "
+                    "another revision/world",
+                    row["location_id"],
+                )
+            )
+
     return issues

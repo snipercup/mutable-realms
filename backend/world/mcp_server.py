@@ -15,6 +15,7 @@ from backend.world.agent_tools import (
     record_world_social_interaction,
     transfer_world_resource,
     treat_and_discharge_world_patient,
+    update_world_location,
     validate_world_state,
 )
 from backend.world.context import build_world_context
@@ -219,6 +220,35 @@ def world_transfer_resource(
         resource_type=resource_type,
         quantity=quantity,
         source_entity_id=source_entity_id,
+    )
+
+
+@mcp.tool()
+def world_update_location(
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    location_id: str,
+    display_name: Annotated[str | None, Field(min_length=1, max_length=100)] = None,
+    property: Annotated[str | None, Field(min_length=1, max_length=50)] = None,
+    value: Annotated[int | None, Field(ge=0, le=100)] = None,
+    actor_entity_id: str | None = None,
+) -> dict[str, Any]:
+    """Atomically rename a location and/or set one bounded property value."""
+    ensure_bound_player(world_id)
+    actor = resolve_actor_entity_id(actor_entity_id)
+    if actor is None:
+        raise RuntimeError("location update requires a trusted actor")
+    return update_world_location(
+        get_database_path(),
+        world_id=resolve_world_id(world_id),
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        actor_entity_id=actor,
+        location_id=location_id,
+        display_name=display_name,
+        property=property,
+        value=value,
     )
 
 

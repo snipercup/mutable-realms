@@ -853,6 +853,8 @@ Implemented on 2026-08-05: migration `0004_resources` adds a generic resource le
 
 The location-effect operation (Capability B — for example clearing rodents from a basement) is deliberately deferred to Phase 12, which introduces mutable location properties such as cleanliness and condition. Quest rewards via `world_transfer_resource` are the first concrete use of this capability.
 
+Live-verified on 2026-08-05 through the narration profile: a narrated quest reward granted 40 coins to the player via `world_transfer_resource`, committing revision 0 → 1 with the `resource_transferred` event (`op-transfer-40-coins-001`), the persisted balance, the post-turn context reread, and browser API readback — while the quest itself remained narration-only. Whole-world validation passed after the turn.
+
 ---
 
 # 16. Phase 12 — Mutable Locations
@@ -889,6 +891,18 @@ Riverside Quarter
 ```
 
 Future context should describe the current Riverside Quarter while retaining enough historical information for characters to remember what it used to be.
+
+### Phase 12 status — First slice complete
+
+The first Phase 12 slice introduces persistent location properties and one location-effect operation (Capability B, deferred from Phase 11):
+
+* migration `0005_location_properties` adds a generic `location_properties` ledger (location, scenario-defined property, bounded 0–100 value, linked update event); `locations.name` remains the mutable display name behind stable IDs;
+* `world_update_location` is one atomic, idempotent, expected-revision-checked operation that renames a location and/or sets one property value, recording a `location_updated` event and incrementing the revision once;
+* context includes the current location's properties; validation checks property world/location coherence and update-event linkage; the trusted MCP server and deterministic turn runner expose the operation when the world has at least one location, with the configured player as actor;
+* the initial property taxonomy is `cleanliness`, `condition`, `prosperity`, `safety`; the schema accepts scenario-defined property names beyond that set;
+* deferred: population and prosperity simulation, wider taxonomies, a dedicated location-history table (event history plus memories cover "what it used to be"), physical entity add/remove operations, and multi-location travel (Phase 13).
+
+Implemented and verified on 2026-08-05: migration `0005_location_properties`, the `world_update_location` service, scoped context properties, coherence validation, MCP tool, and turn-runner dispatch. Tests cover migration compatibility, atomic persistence, exact idempotency, invalid inputs, missing locations, property/value pairing, display-name identity evolution, turn orchestration, and validation corruption (126 total). At Milestone H the core Mutable Realms concept — persistent causality from free-form narration — is demonstrated.
 
 ---
 
