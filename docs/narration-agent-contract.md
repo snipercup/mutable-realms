@@ -40,11 +40,13 @@ Each player message is one atomic turn. The narration agent must:
 
 The initial supported mutation vocabulary is deliberately small:
 
-- `world_move_entity` for a valid generic character move;
+- `world_move_entity` for a valid generic character move between adjacent (linked) locations;
 - `world_treat_and_discharge_patient` for the ward's atomic treatment/discharge transition;
 - `world_record_social_interaction` for one bounded relationship change plus one concise event-linked memory;
 - `world_transfer_resource` for granting or transferring resource units (rewards, currency, items) between characters;
 - `world_update_location` for renaming a location and/or setting one bounded property value (`cleanliness`, `condition`, `prosperity`, `safety`).
+
+Movement requires a `location_links` edge between the entity's current location and the destination; `world_context` reports `linked_locations` for the current location so travel options are visible to the narrator.
 
 Do not expose or invent a generic field-update operation. Do not assemble a multi-step mutation from separate low-level writes when one named atomic operation exists.
 

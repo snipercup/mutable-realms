@@ -11,6 +11,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from backend.persistence.migrations import MigrationError, migrate_database
+from backend.scenarios.town.seed import seed_town_world
 from backend.scenarios.ward.seed import seed_ward_world
 from backend.world.context import build_world_context
 from backend.world.mutations import MutationError, move_entity
@@ -61,6 +62,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print("Seeded deterministic ward world")
             else:
                 print("Ward world already exists; no changes applied")
+            if seed_town_world(database_path):
+                print("Seeded deterministic town world")
+            else:
+                print("Town world already exists; no changes applied")
             return 0
 
         if args.command == "move-entity":

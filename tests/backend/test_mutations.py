@@ -33,6 +33,10 @@ def _add_location(database_path: Path, location_id: str = "hall") -> None:
             "INSERT INTO locations(id, world_id, name) VALUES (?, ?, ?)",
             (location_id, WARD_WORLD_ID, "Hall"),
         )
+        connection.execute(
+            "INSERT INTO location_links(world_id, location_a, location_b) VALUES (?, ?, ?)",
+            (WARD_WORLD_ID, min("ward", location_id), max("ward", location_id)),
+        )
         connection.commit()
 
 
@@ -40,6 +44,12 @@ def test_move_entity_works_in_a_world_without_ward_state(tmp_path: Path) -> None
     database_path = tmp_path / "world.sqlite3"
     migrate_database(database_path)
     seed_general_world(database_path)
+    with connect_database(database_path) as connection:
+        connection.execute(
+            "INSERT INTO location_links(world_id, location_a, location_b) VALUES (?, ?, ?)",
+            (GENERAL_WORLD_ID, "kelp-market", "ocean-farm"),
+        )
+        connection.commit()
 
     result = move_entity(
         database_path,

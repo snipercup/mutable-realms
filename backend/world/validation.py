@@ -426,4 +426,22 @@ def validate_worlds(database_path: str | Path) -> list[ValidationIssue]:
                 )
             )
 
+        for row in connection.execute(
+            """
+            SELECT ll.world_id, ll.location_a
+            FROM location_links ll
+            JOIN locations la ON la.id = ll.location_a
+            JOIN locations lb ON lb.id = ll.location_b
+            WHERE la.world_id <> ll.world_id OR lb.world_id <> ll.world_id
+            ORDER BY ll.world_id, ll.location_a
+            """
+        ):
+            issues.append(
+                ValidationIssue(
+                    "location_link_world_mismatch",
+                    "Location link endpoint belongs to another world",
+                    row["location_a"],
+                )
+            )
+
     return issues

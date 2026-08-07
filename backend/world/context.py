@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.persistence.database import connect_readonly_database
+from backend.world.links import read_linked_locations
 from backend.world.locations import read_location_properties
 from backend.world.queries import (
     LocationNotFound,
@@ -57,6 +58,7 @@ class ContextLocation(ContextModel):
     revision: int = Field(ge=0)
     entities: list[ContextEntity]
     properties: list[dict[str, Any]]
+    linked_locations: list[dict[str, Any]]
 
 
 class ContextEvent(ContextModel):
@@ -110,6 +112,12 @@ def build_world_context(
             location_ids=[location_id],
             _connection=connection,
         )["properties"]
+        location["linked_locations"] = read_linked_locations(
+            database_path,
+            world_id=world_id,
+            location_id=location_id,
+            _connection=connection,
+        )["linked_locations"]
         events = list_recent_events(
             database_path,
             world_id,

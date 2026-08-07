@@ -106,6 +106,11 @@ def test_stale_revision_refetches_context_and_redecides_once(tmp_path: Path) -> 
             "INSERT INTO locations(id, world_id, name) VALUES ('outside', ?, 'Outside')",
             (WARD_WORLD_ID,),
         )
+        connection.execute(
+            "INSERT INTO location_links(world_id, location_a, location_b) "
+            "VALUES (?, 'outside', 'ward')",
+            (WARD_WORLD_ID,),
+        )
         connection.commit()
 
     def race_decide(_action: str, context):

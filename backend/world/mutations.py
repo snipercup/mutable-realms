@@ -132,6 +132,17 @@ def move_entity(
             if destination is None:
                 raise MutationNotFound(f"location not found: {destination_location_id}")
 
+            linked = connection.execute(
+                """SELECT 1 FROM location_links
+                WHERE world_id = ? AND ? IN (location_a, location_b)
+                  AND ? IN (location_a, location_b)""",
+                (world_id, entity["location_id"], destination_location_id),
+            ).fetchone()
+            if linked is None:
+                raise MutationConflict(
+                    f"destination is not adjacent: {destination_location_id}"
+                )
+
             occupied_bed = connection.execute(
                 "SELECT entity_id FROM beds WHERE occupant_entity_id = ?",
                 (entity_id,),

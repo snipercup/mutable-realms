@@ -27,6 +27,8 @@ def test_migrate_seed_and_validate_commands(
     assert "Applied migrations: 0001" in captured.out
     assert "Seeded deterministic ward world" in captured.out
     assert "Ward world already exists; no changes applied" in captured.out
+    assert "Seeded deterministic town world" in captured.out
+    assert "Town world already exists; no changes applied" in captured.out
     assert "World validation passed" in captured.out
     assert captured.err == ""
 
@@ -83,6 +85,10 @@ def test_move_entity_command_returns_authoritative_result(
     with connect_database(database_path) as connection:
         connection.execute(
             "INSERT INTO locations(id, world_id, name) VALUES ('hall', 'ward-world', 'Hall')"
+        )
+        connection.execute(
+            "INSERT INTO location_links(world_id, location_a, location_b) "
+            "VALUES ('ward-world', 'hall', 'ward')"
         )
         connection.commit()
     capsys.readouterr()

@@ -926,6 +926,18 @@ Context retrieval should then naturally change its working set.
 
 This phase demonstrates that the system can stream relevant world context rather than continually accumulating prompt content.
 
+### Phase 13 status — Scope
+
+The first Phase 13 slice expands from one scene into a small connected world:
+
+* migration `0006_location_links` adds an undirected adjacency table (`location_a < location_b` canonical form, world-scoped); worlds without links simply have no travel;
+* `world_move_entity` gains an adjacency precondition: the destination must be linked to the entity's current location. The same operation, MCP tool, and turn policy are retained — no parallel travel operation;
+* a deterministic `seed_town_world` creates a small connected world (plaza ↔ market ↔ docks ↔ tavern) with a player, NPCs, and an item, and the `seed` CLI creates it alongside the ward (idempotent);
+* context gains `linked_locations` (reachable neighbors) on the current location, so a narrated turn can offer travel; after a travel turn the context working set streams the new location's entities, properties, and events;
+* validation checks link endpoint/world coherence; tests cover migration, adjacency enforcement, travel persistence, context working-set change, seed determinism, and validation corruption.
+
+Deferred: directed/weighted edges, travel time/cost, conditional travel (locked doors), multi-hop pathfinding, NPC autonomous movement, and map visualization (Phase 14).
+
 ---
 
 # 18. Phase 14 — Richer Visualization

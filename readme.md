@@ -157,7 +157,7 @@ The npm scripts are the common project entry points:
 | `npm run serve` | Start one backend worker on port 8790 by default. |
 | `npm run frontend-build` | Build the frontend into `frontend/dist/`. |
 | `npm run migrate` | Apply pending checksummed SQLite migrations. |
-| `npm run seed` | Create the optional deterministic ward example if absent. |
+| `npm run seed` | Create the optional deterministic ward and town worlds if absent. |
 | `npm run validate` | Check foreign keys and cross-table world invariants. |
 | `npm run move-entity -- …` | Apply an idempotent, revision-checked local character move. |
 | `npm run world-context -- …` | Build deterministic, read-only context for one world. |
@@ -266,6 +266,16 @@ Migration `0005_location_properties` adds optional persistent location state wit
 * `world_update_location` is one atomic, idempotent, expected-revision-checked operation that renames a location and/or sets one property value;
 * context includes the current location's properties; validation checks property world/location coherence and update-event linkage;
 * the operation is advertised when the world has at least one location, and the configured narration player is always the actor.
+
+## Connected worlds and travel
+
+Migration `0006_location_links` adds optional undirected adjacency between locations:
+
+* `location_links` stores world-scoped edges in canonical `location_a < location_b` form; worlds without links simply have no travel;
+* `world_move_entity` now requires the destination to be linked to the entity's current location;
+* `world_context` reports `linked_locations` (reachable neighbors) for the current location, so a narrated turn can offer travel;
+* after a travel turn, the context working set streams the new location's entities, properties, and events;
+* the deterministic `seed` command also creates `town-world` (Harbor Town: plaza ↔ market ↔ docks ↔ tavern) so travel is immediately playable.
 
 Phase 7 adds the model-independent turn policy in `backend.world.turns` and documents the Hermes-facing contract in `docs/narration-agent-contract.md`. A narration session must be trusted-bound to one world and player. For each player message, Hermes reads `world_status` and `world_context`, returns exactly one structured decision kind, invokes at most one advertised mutation with the observed revision and a fresh operation ID, rereads context, and narrates only the persisted result. A stale revision causes one fresh-context reevaluation; rejected, missing, unsupported, and failed operations must never be narrated as successful.
 

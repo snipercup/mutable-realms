@@ -89,6 +89,13 @@ def test_agent_reads_do_not_create_a_missing_database(tmp_path: Path, read_opera
 
 def test_move_tool_delegates_to_revision_checked_operation(tmp_path: Path) -> None:
     database_path = _seeded_database(tmp_path)
+    with connect_database(database_path) as connection:
+        connection.execute(
+            "INSERT INTO location_links(world_id, location_a, location_b) "
+            "VALUES (?, 'kelp-market', 'ocean-farm')",
+            (GENERAL_WORLD_ID,),
+        )
+        connection.commit()
 
     result = move_world_entity(
         database_path,
