@@ -45,14 +45,7 @@ Future narration grounded in the changed world
 
 ## System inventory
 
-| Layer | Contents |
-| --- | --- |
-| Migrations | `0001` initial schema · `0002` generalize entities · `0003` social state · `0004` resources · `0005` location properties · `0006` location links |
-| Operations | `world_move_entity` · `world_treat_and_discharge_patient` · `world_record_social_interaction` · `world_transfer_resource` · `world_update_location` |
-| MCP tools | the operations above plus `world_status`, `world_context`, `world_inspect_entity`, `world_events`; `world_validate` is refused when a session is bound |
-| API reads | `/api/worlds` · `…/player` · `…/map` · `…/locations/current` · `…/locations/{id}` · `…/entities/{id}` · `…/events` · `…/capabilities/ward/...` |
-| Turn relay | `POST /api/worlds/{world_id}/turns` — `decision_json` = deterministic `run_turn` seam; otherwise relays to the bound narration agent (`backend/app/narrator.py`, injectable for tests) |
-| CLI | `migrate` · `seed` · `validate` · `backup` · `move-entity` · `world-context` · `world-turn` (npm scripts) |
+The full command, API, MCP tool, and environment-variable reference lives in [interfaces-and-tools.md](interfaces-and-tools.md). At a glance: six additive migrations (`0001` initial through `0006` location links); five atomic operations (`world_move_entity`, `world_treat_and_discharge_patient`, `world_record_social_interaction`, `world_transfer_resource`, `world_update_location`); and the `POST /api/worlds/{world_id}/turns` relay (deterministic with `decision_json`, narrated without it).
 
 ## Adding a capability — the vertical slice
 
@@ -73,14 +66,7 @@ Verification gate before claiming a capability works: full suite (`uv run pytest
 
 ## Operations
 
-| Command | Purpose |
-| --- | --- |
-| `npm run migrate` | Apply pending checksummed migrations (also runs at server startup). |
-| `npm run seed` | Create the deterministic ward and town worlds if absent. |
-| `npm run validate` | Whole-world invariant check; read-only; nonzero on violation. |
-| `npm run backup -- [--backup-dir DIR]` | SQLite online-backup snapshot into `backups/`; verifies integrity + schema + world validation; prints SHA-256. |
-| `npm run world-turn -- …` | Deterministic turn with `--decision-json`; the acceptance/debugging seam. |
-| `npm run serve` | One FastAPI worker on `MUTABLE_REALMS_PORT` (default 8790). |
+The command reference is in [interfaces-and-tools.md](interfaces-and-tools.md). The operational rules that matter:
 
 - **State boundary**: live DB at `MUTABLE_REALMS_DB_PATH` (outside Git, bind-mounted host state dir). Backup files belong beside it.
 - **Migration workflow**: `backup → migrate → validate`. Restore is manual: stop the worker, replace `world.sqlite3` with a snapshot, run `npm run validate` before resuming mutations.

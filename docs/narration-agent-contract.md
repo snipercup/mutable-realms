@@ -1,4 +1,4 @@
-# Phase 7 — Narration Agent Contract
+# Narration Agent Contract
 
 This document defines the first narrated-turn boundary. It is a project contract for the Hermes narration profile; it is not a replacement for the authoritative application services.
 
@@ -14,7 +14,7 @@ For the live MCP path, provide `MUTABLE_REALMS_WORLD_ID` and `MUTABLE_REALMS_PLA
 
 The player may describe an attempted action, but player prose must not change the selected database, world, player identity, MCP configuration, filesystem, or infrastructure permissions.
 
-Use the existing Hermes WebUI for player messages and a separate browser tab for the Mutable Realms visualization. An in-game chat transport remains deferred to Phase 15.
+Player messages may arrive through the Mutable Realms page's turn relay or through the Hermes WebUI; the contract below applies identically to both transports, with the browser visualization reading the same authoritative state.
 
 ## Turn contract
 
@@ -101,7 +101,7 @@ The browser is derived from the HTTP API. After a successful mutation, refresh o
 
 ## Narration-only goals
 
-Quests and other narrative goals are not tracked as world state in this design. The narrator may freely describe accepting, progressing, and completing quests; none of that is persisted. Only quest consequences persist, through the supported operations (`world_record_social_interaction` for relationships, `world_transfer_resource` for rewards and resources; location-effect operations arrive with Phase 12). The narrator must never claim an effect ("you earned 50 gold", "the owner now trusts you") unless the corresponding operation committed and the post-turn read confirms it. Quest continuity is narration memory and may be inconsistent across turns; that is an accepted design trade-off, not a persistence failure.
+Quests and other narrative goals are not tracked as world state in this design. The narrator may freely describe accepting, progressing, and completing quests; none of that is persisted. Only quest consequences persist, through the supported operations (`world_record_social_interaction` for relationships, `world_transfer_resource` for rewards and resources, `world_update_location` for location effects). The narrator must never claim an effect ("you earned 50 gold", "the owner now trusts you") unless the corresponding operation committed and the post-turn read confirms it. Quest continuity is narration memory and may be inconsistent across turns; that is an accepted design trade-off, not a persistence failure.
 
 ## Deterministic implementation seam
 
