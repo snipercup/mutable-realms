@@ -108,6 +108,7 @@ Open the page, select a world, and type an action in the "What do you do?" input
 
 ## Documentation
 
+* [docs/current-development.md](docs/current-development.md) — the active development idea and its state.
 * [docs/maintenance-guide.md](docs/maintenance-guide.md) — durable development guidance: design rules, how to add a capability, operations, deferred work.
 * [docs/interfaces-and-tools.md](docs/interfaces-and-tools.md) — commands, HTTP API, MCP tools, environment variables, Hermes narration setup.
 * [docs/narration-agent-contract.md](docs/narration-agent-contract.md) — the narration agent's behavioral contract.
