@@ -23,6 +23,13 @@ from backend.scenarios.ward.seed import seed_ward_world
 from backend.world.context import build_world_context
 from backend.world.mutations import MutationError, move_entity
 from backend.world.queries import WorldQueryError
+from backend.world.scenarios import (
+    ScenarioError,
+    create_scenario,
+    remove_scenario,
+    set_scenario_element,
+    update_scenario,
+)
 from backend.world.turns import TurnDecision, run_turn
 from backend.world.validation import validate_worlds
 
@@ -34,6 +41,10 @@ _COMMANDS = (
     "move-entity",
     "world-context",
     "world-turn",
+    "create-scenario",
+    "update-scenario",
+    "set-scenario-element",
+    "remove-scenario",
 )
 
 
@@ -109,6 +120,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--decision-json")
     parser.add_argument("--turn-operation-id")
     parser.add_argument("--backup-dir", help="override the default backups/ directory")
+    parser.add_argument("--scenario-id")
+    parser.add_argument("--title")
+    parser.add_argument("--description")
+    parser.add_argument("--element-type")
+    parser.add_argument("--content")
     args = parser.parse_args(argv)
 
     try:
@@ -220,6 +236,79 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 1
             return 0
 
+        if args.command == "create-scenario":
+            required = {
+                "--scenario-id": args.scenario_id,
+                "--operation-id": args.operation_id,
+                "--title": args.title,
+            }
+            missing = [name for name, value in required.items() if value is None]
+            if missing:
+                raise ValueError("create-scenario requires " + ", ".join(missing))
+            result = create_scenario(
+                database_path,
+                scenario_id=args.scenario_id,
+                operation_id=args.operation_id,
+                title=args.title,
+                description=args.description,
+            )
+            print(json.dumps(result, sort_keys=True))
+            return 0
+
+        if args.command == "update-scenario":
+            required = {
+                "--scenario-id": args.scenario_id,
+                "--operation-id": args.operation_id,
+            }
+            missing = [name for name, value in required.items() if value is None]
+            if missing:
+                raise ValueError("update-scenario requires " + ", ".join(missing))
+            result = update_scenario(
+                database_path,
+                scenario_id=args.scenario_id,
+                operation_id=args.operation_id,
+                title=args.title,
+                description=args.description,
+            )
+            print(json.dumps(result, sort_keys=True))
+            return 0
+
+        if args.command == "set-scenario-element":
+            required = {
+                "--scenario-id": args.scenario_id,
+                "--operation-id": args.operation_id,
+                "--element-type": args.element_type,
+                "--content": args.content,
+            }
+            missing = [name for name, value in required.items() if value is None]
+            if missing:
+                raise ValueError("set-scenario-element requires " + ", ".join(missing))
+            result = set_scenario_element(
+                database_path,
+                scenario_id=args.scenario_id,
+                operation_id=args.operation_id,
+                element_type=args.element_type,
+                content=args.content,
+            )
+            print(json.dumps(result, sort_keys=True))
+            return 0
+
+        if args.command == "remove-scenario":
+            required = {
+                "--scenario-id": args.scenario_id,
+                "--operation-id": args.operation_id,
+            }
+            missing = [name for name, value in required.items() if value is None]
+            if missing:
+                raise ValueError("remove-scenario requires " + ", ".join(missing))
+            result = remove_scenario(
+                database_path,
+                scenario_id=args.scenario_id,
+                operation_id=args.operation_id,
+            )
+            print(json.dumps(result, sort_keys=True))
+            return 0
+
         if args.command == "backup":
             return _backup(database_path, args.backup_dir)
 
@@ -234,6 +323,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (
         MigrationError,
         MutationError,
+        ScenarioError,
         WorldQueryError,
         sqlite3.Error,
         OSError,

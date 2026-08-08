@@ -29,6 +29,10 @@ The live database lives outside Git in a bind-mounted state directory; backups a
 | `npm run move-entity -- …` | Revision-checked, idempotent character move. |
 | `npm run world-context -- …` | Read-only context snapshot for one world. |
 | `npm run world-turn -- …` | Execute one structured turn decision deterministically. |
+| `npm run create-scenario -- …` | Create one authoring scenario (title, optional description). |
+| `npm run update-scenario -- …` | Update a scenario's title and/or description. |
+| `npm run set-scenario-element -- …` | Upsert one scenario story element. |
+| `npm run remove-scenario -- …` | Remove a scenario and its elements (destructive). |
 | `npm run world-tools` | Run the MCP tool server over stdio. |
 
 ## CLI commands
@@ -60,6 +64,21 @@ npm run move-entity -- --world-id "$WORLD_ID" --operation-id "$OP" \
   --destination-location-id "$DEST" --actor-entity-id "$ACTOR"
 ```
 
+### Scenario authoring
+
+Scenarios are reusable authoring templates (title, description, and story elements) from which worlds are instanced later. They are administrative data — never exposed through the turn policy or the narration agent.
+
+```sh
+npm run create-scenario -- --scenario-id aerthalon --operation-id op-1 \
+  --title "Aerthalon" --description "A vast ancient fantasy world."
+npm run set-scenario-element -- --scenario-id aerthalon --operation-id op-2 \
+  --element-type opening_scene --content "You arrive at the gates of the guild city."
+npm run update-scenario -- --scenario-id aerthalon --operation-id op-3 --title "Aerthalon Reborn"
+npm run remove-scenario -- --scenario-id aerthalon --operation-id op-4
+```
+
+Element types: `author_note`, `plot_essentials`, `opening_scene` (content 1–20000 characters). Scenario mutations are idempotent by caller operation ID; a removed scenario leaves no trace (its elements and operation records cascade).
+
 ## HTTP API
 
 Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup applies pending migrations and fails if history is invalid.
@@ -83,6 +102,21 @@ Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup ap
 | `GET /api/worlds/{world_id}/entities/{entity_id}` | One entity and optional character state. |
 | `GET /api/worlds/{world_id}/events?limit=20` | Newest-first events (limit 1–100). |
 | `GET /api/worlds/{world_id}/capabilities/ward/locations/{location_id}` | Optional ward bed occupancy. |
+
+### Scenario authoring
+
+Admin endpoints for reusable authoring templates (see the CLI section for element types and idempotency semantics). Scenario ids are lowercase kebab-case.
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/scenarios` | List scenarios (without elements). |
+| `GET /api/scenarios/{scenario_id}` | One scenario with its elements. |
+| `POST /api/scenarios` | Create — body `{scenario_id, title, description?, operation_id}`. |
+| `PATCH /api/scenarios/{scenario_id}` | Update title/description — body `{title?, description?, operation_id}`. |
+| `PUT /api/scenarios/{scenario_id}/elements/{element_type}` | Upsert one element — body `{content, operation_id}`. |
+| `DELETE /api/scenarios/{scenario_id}?operation_id=…` | Remove a scenario (destructive). |
+
+Errors: `404` unknown scenario · `409` duplicate id or operation-ID reuse.
 
 ### Player turns
 

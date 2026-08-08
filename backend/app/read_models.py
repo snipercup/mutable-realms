@@ -107,3 +107,40 @@ class TurnResponse(StrictReadModel):
     revision_after: int | None = Field(default=None, ge=0)
     attempts: int = Field(default=1, ge=1)
     mutation: dict[str, Any] | None = None
+
+
+class ScenarioElementRead(StrictReadModel):
+    element_type: str
+    content: str
+    updated_at: str
+
+
+class ScenarioRead(StrictReadModel):
+    id: str
+    title: str
+    description: str | None
+    created_at: str
+    elements: list[ScenarioElementRead] = Field(default_factory=list)
+
+
+class ScenarioCreateRequest(StrictReadModel):
+    scenario_id: str
+    title: str = Field(min_length=1)
+    description: str | None = None
+    operation_id: str
+
+
+class ScenarioUpdateRequest(StrictReadModel):
+    title: str | None = None
+    description: str | None = None
+    operation_id: str
+
+
+class ScenarioElementRequest(StrictReadModel):
+    content: str = Field(min_length=1)
+    operation_id: str
+
+
+class ScenarioMutationResponse(StrictReadModel):
+    already_applied: bool
+    scenario_id: str

@@ -4,14 +4,36 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-_None yet. When an idea arrives, it is scoped here before implementation using the template below._
+### Scenario authoring and world management — in progress (Step 1 complete)
 
-### Idea title — proposed | scoped | in progress | complete | abandoned
+**Goal:** define reusable **scenarios** — a title, description, and story elements (author's note, plot essentials, opening scene) — from which many worlds can be made. Creating a world from a scenario *instances* that content: the new world owns its own copy (title, description, elements), the scenario stays unchanged, and later edits to either side do not affect the other. Worlds remain individually manageable (rename, re-describe, set elements, remove).
 
-- **Goal:** one paragraph describing what the idea should make possible.
-- **Scope:** what changes (backend / frontend / docs / tests) · what is deliberately out of scope.
-- **Verification:** how success will be checked — suite/lint, deterministic CLI seam, browser readback, narration-profile live turn.
-- **Commit:** branch + commit message once pushed to main.
+**Learned from the user's example (not part of the tracker content):** these elements are *authorial story setup* — long-form prose defining tone, premise, and the opening situation. Player-facing prompt templates (pick-a-species style choices) are explicitly out of scope; the elements are static story properties the agent reads, not player questionnaires.
+
+**Scope — scenario layer (authoring templates, admin-only):**
+- migration `0007_scenarios`: `scenarios` (id, title, description) + `scenario_elements` (scenario, element type ∈ `author_note` | `plot_essentials` | `opening_scene`, content 1–20000 chars) + `scenario_operations` (operation-id idempotency + traceability; no world-revision machinery — scenarios are templates, not playable state);
+- ops: `create_scenario`, `update_scenario` (title/description), `set_scenario_element`, `remove_scenario` — atomic and idempotent; CLI (`create-scenario`, `update-scenario`, `set-scenario-element`, `remove-scenario`) + HTTP;
+- note: these are authoring *data*, distinct from the `backend/scenarios/` seed modules (code fixtures that create the deterministic ward/town worlds).
+
+**Scope — world layer (instances + management):**
+- migration `0008_world_metadata`: `worlds.description` (nullable) + `worlds.source_scenario_id` (nullable FK → scenarios, `ON DELETE SET NULL`);
+- migration `0009_world_elements`: world-owned elements ledger (same three types, linked update event);
+- `create_world_from_scenario` — copies title/description/elements into a fresh world (revision 0 → 1, `world_created` event, `source_scenario_id` set); the scenario is untouched;
+- world management ops: `create_world` (bare, no scenario), `update_world` (title/description), `set_world_element`, `remove_world` (cascading delete of all world state);
+- CLI + HTTP for all; deliberately NOT exposed through the turn policy or the narration agent (administration, not per-turn gameplay); `world_context` gains the world's description and elements so the agent can ground a new world's opening in the authored setup.
+
+**Copy semantics are the contract:** instancing copies; edits diverge; deleting a scenario leaves its worlds intact (`source_scenario_id` becomes NULL); removing a world removes its history with it (accepted trade-off).
+
+**Out of scope (for now):** scenario versioning/diffs; live-linking or propagation between scenario and worlds; scenario/world management UI in the page; player/location provisioning for new worlds (a created world is not yet playable until entity/location creation exists — a roadmap item); soft-delete; a global audit trail of removals.
+
+**Verification:** full suite + lint; migration compatibility (existing worlds gain `description = NULL`, `source_scenario_id = NULL`); scenario round-trips (create/update/elements/remove) with idempotent replay; instantiate → world has copied title/description/elements, revision 1, `world_created` event; scenario unchanged after instantiation AND after world edits; world edits never touch the scenario; deleting a scenario keeps its worlds; cascade removal checks; a created world with elements appears in `world-context`; live checks via CLI + HTTP against temporary scenario/world only (never the live ward/town worlds).
+
+**Suggested sequencing:**
+1. ✅ Scenario authoring — **complete (2026-08-08)**: migration `0007_scenarios` (scenarios + scenario_elements + scenario_operations), `backend/world/scenarios.py` (create/update/set-element/remove + reads), CLI (`create-scenario`, `update-scenario`, `set-scenario-element`, `remove-scenario` + npm scripts), HTTP (`GET/POST /api/scenarios`, `PATCH`, `PUT …/elements/{type}`, `DELETE`), and `tests/backend/test_scenarios.py` (20 tests: persistence, exact-request idempotent replay, duplicate-id and operation-reuse conflicts, element upsert/validation, cascade removal, CLI roundtrip, API roundtrip with 404/409; suite 180 passed, lint clean). Live-verified via CLI and HTTP on a temporary database only.
+2. Instantiation: migrations `0008_world_metadata`/`0009_world_elements` + `create_world_from_scenario` + copy-semantics tests (scenario unchanged; edits diverge).
+3. World management remainder: `update_world`, `set_world_element`, `remove_world` + cascade tests.
+
+**Commit:** pending.
 
 ## Recently completed
 

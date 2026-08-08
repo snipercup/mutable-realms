@@ -16,6 +16,11 @@ from backend.app.read_models import (
     EntityRead,
     LocationRead,
     PlayerRead,
+    ScenarioCreateRequest,
+    ScenarioElementRequest,
+    ScenarioMutationResponse,
+    ScenarioRead,
+    ScenarioUpdateRequest,
     TurnRequest,
     TurnResponse,
     WorldEventRead,
@@ -45,6 +50,16 @@ from backend.world.queries import (
     get_world_map,
     list_recent_events,
     list_worlds,
+)
+from backend.world.scenarios import (
+    ScenarioConflict,
+    ScenarioNotFound,
+    create_scenario,
+    list_scenarios,
+    read_scenario,
+    remove_scenario,
+    set_scenario_element,
+    update_scenario,
 )
 from backend.world.turns import TurnDecision, run_turn
 
@@ -161,6 +176,103 @@ def create_app(
             ]
         except WorldNotFound as error:
             raise HTTPException(status_code=404, detail="world not found") from error
+
+    @application.get("/api/scenarios", tags=["scenario reads"])
+    def scenarios() -> list[ScenarioRead]:
+        return [
+            ScenarioRead.model_validate(scenario)
+            for scenario in list_scenarios(get_database_path())
+        ]
+
+    @application.get("/api/scenarios/{scenario_id}", tags=["scenario reads"])
+    def scenario(scenario_id: str) -> ScenarioRead:
+        try:
+            return ScenarioRead.model_validate(
+                read_scenario(get_database_path(), scenario_id)
+            )
+        except ScenarioNotFound as error:
+            raise HTTPException(status_code=404, detail="scenario not found") from error
+
+    @application.post("/api/scenarios", tags=["scenario mutations"], status_code=201)
+    def create_scenario_route(request: ScenarioCreateRequest) -> ScenarioMutationResponse:
+        try:
+            result = create_scenario(
+                get_database_path(),
+                scenario_id=request.scenario_id,
+                operation_id=request.operation_id,
+                title=request.title,
+                description=request.description,
+            )
+        except ScenarioConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return ScenarioMutationResponse(
+            already_applied=result["already_applied"],
+            scenario_id=result["scenario_id"],
+        )
+
+    @application.patch("/api/scenarios/{scenario_id}", tags=["scenario mutations"])
+    def update_scenario_route(
+        scenario_id: str, request: ScenarioUpdateRequest
+    ) -> ScenarioMutationResponse:
+        try:
+            result = update_scenario(
+                get_database_path(),
+                scenario_id=scenario_id,
+                operation_id=request.operation_id,
+                title=request.title,
+                description=request.description,
+            )
+        except ScenarioNotFound as error:
+            raise HTTPException(status_code=404, detail="scenario not found") from error
+        except ScenarioConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return ScenarioMutationResponse(
+            already_applied=result["already_applied"],
+            scenario_id=result["scenario_id"],
+        )
+
+    @application.put(
+        "/api/scenarios/{scenario_id}/elements/{element_type}",
+        tags=["scenario mutations"],
+    )
+    def set_scenario_element_route(
+        scenario_id: str, element_type: str, request: ScenarioElementRequest
+    ) -> ScenarioMutationResponse:
+        try:
+            result = set_scenario_element(
+                get_database_path(),
+                scenario_id=scenario_id,
+                operation_id=request.operation_id,
+                element_type=element_type,
+                content=request.content,
+            )
+        except ScenarioNotFound as error:
+            raise HTTPException(status_code=404, detail="scenario not found") from error
+        except ScenarioConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return ScenarioMutationResponse(
+            already_applied=result["already_applied"],
+            scenario_id=result["scenario_id"],
+        )
+
+    @application.delete("/api/scenarios/{scenario_id}", tags=["scenario mutations"])
+    def remove_scenario_route(
+        scenario_id: str, operation_id: str = Query(...)
+    ) -> ScenarioMutationResponse:
+        try:
+            result = remove_scenario(
+                get_database_path(),
+                scenario_id=scenario_id,
+                operation_id=operation_id,
+            )
+        except ScenarioNotFound as error:
+            raise HTTPException(status_code=404, detail="scenario not found") from error
+        except ScenarioConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return ScenarioMutationResponse(
+            already_applied=result["already_applied"],
+            scenario_id=result["scenario_id"],
+        )
 
     @application.post("/api/worlds/{world_id}/turns", tags=["player turns"])
     def player_turn(world_id: str, request: TurnRequest) -> TurnResponse:
