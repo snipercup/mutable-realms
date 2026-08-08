@@ -159,6 +159,7 @@ The npm scripts are the common project entry points:
 | `npm run migrate` | Apply pending checksummed SQLite migrations. |
 | `npm run seed` | Create the optional deterministic ward and town worlds if absent. |
 | `npm run validate` | Check foreign keys and cross-table world invariants. |
+| `npm run backup -- …` | Snapshot the configured database with the SQLite online backup API and verify the artifact. |
 | `npm run move-entity -- …` | Apply an idempotent, revision-checked local character move. |
 | `npm run world-context -- …` | Build deterministic, read-only context for one world. |
 | `npm run world-turn -- …` | Execute one validated structured turn decision and reread authoritative state. |
@@ -174,6 +175,8 @@ npm run validate
 ```
 
 `migrate` is idempotent and rejects modified or unsupported migration history. Migration `0002_generalize_entities` preserves existing ward databases while allowing scenario-defined entity kinds and character roles. `seed` is a deterministic ward example command retained for development compatibility; it is not required to create every world. `validate` is read-only and exits nonzero when authoritative state violates a supported invariant.
+
+`backup` snapshots the configured database into `backups/` beside it (override with `--backup-dir`). It uses the SQLite online backup API, so the snapshot is consistent even while the single worker is mid-write and WAL/SHM sidecar files need not be copied separately. The command verifies the artifact — `PRAGMA integrity_check`, supported schema history, and whole-world validation — before reporting success, and prints the backup path plus a SHA-256 checksum. A snapshot of an already-corrupt world is kept but flagged with a nonzero exit. Restore is currently manual: stop the worker, replace `world.sqlite3` with the snapshot, then run `npm run validate` before resuming mutations.
 
 The Phase 5 Context Builder reads the world, player, current location, nearby generic entities, and bounded recent events from one SQLite snapshot. It returns strict scenario-neutral JSON; optional capabilities such as ward occupancy remain separate projections. The event limit defaults to 10 and must be between 1 and 100:
 

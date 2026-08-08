@@ -9,6 +9,7 @@
     "migrate": "uv run python -m backend.cli migrate",
     "seed": "uv run python -m backend.cli seed",
     "validate": "uv run python -m backend.cli validate",
+    "backup": "uv run python -m backend.cli backup",
     "move-entity": "uv run python -m backend.cli move-entity",
     "world-context": "uv run python -m backend.cli world-context",
     "world-turn": "uv run python -m backend.cli world-turn",

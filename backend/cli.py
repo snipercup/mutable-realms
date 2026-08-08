@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sqlite3
 import sys
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 
 from pydantic import ValidationError
 
-from backend.persistence.migrations import MigrationError, migrate_database
+from backend.persistence.database import connect_database
+from backend.persistence.migrations import (
+    MigrationError,
+    migrate_database,
+    verify_database_schema,
+)
 from backend.scenarios.town.seed import seed_town_world
 from backend.scenarios.ward.seed import seed_ward_world
 from backend.world.context import build_world_context
@@ -19,7 +26,15 @@ from backend.world.queries import WorldQueryError
 from backend.world.turns import TurnDecision, run_turn
 from backend.world.validation import validate_worlds
 
-_COMMANDS = ("migrate", "seed", "validate", "move-entity", "world-context", "world-turn")
+_COMMANDS = (
+    "migrate",
+    "seed",
+    "validate",
+    "backup",
+    "move-entity",
+    "world-context",
+    "world-turn",
+)
 
 
 def _database_path(value: str | None) -> Path:
@@ -27,6 +42,55 @@ def _database_path(value: str | None) -> Path:
     if not configured:
         raise ValueError("database path is required; set MUTABLE_REALMS_DB_PATH or pass --db-path")
     return Path(configured)
+
+
+def _integrity_ok(database_path: Path) -> bool:
+    with sqlite3.connect(database_path) as connection:
+        row = connection.execute("PRAGMA integrity_check").fetchone()
+    return row is not None and row[0] == "ok"
+
+
+def _backup(database_path: Path, backup_dir: str | None) -> int:
+    """Snapshot the authoritative database with the SQLite online backup API.
+
+    The snapshot is consistent even while the single worker is mid-write, so
+    WAL/SHM sidecar files need not be copied separately. The artifact is
+    verified (integrity, schema history, whole-world validation) before the
+    command reports success; a snapshot of an already-corrupt world is kept
+    but flagged with a nonzero exit.
+    """
+    if not database_path.is_file():
+        raise ValueError(f"database file does not exist: {database_path}")
+    output_dir = Path(backup_dir) if backup_dir else database_path.parent / "backups"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_path = output_dir / f"{database_path.stem}-{timestamp}.sqlite3"
+
+    source = connect_database(database_path)
+    try:
+        with sqlite3.connect(backup_path) as target:
+            source.backup(target)
+    finally:
+        source.close()
+
+    if not _integrity_ok(backup_path):
+        raise ValueError(f"backup failed integrity check: {backup_path}")
+    verify_database_schema(backup_path)
+
+    print(f"Backup written: {backup_path}")
+    print(f"SHA-256: {hashlib.sha256(backup_path.read_bytes()).hexdigest()}")
+    print("Integrity check: ok")
+    print("Schema verification: ok")
+
+    issues = validate_worlds(backup_path)
+    if issues:
+        for issue in issues:
+            entity = f" [{issue.entity_id}]" if issue.entity_id else ""
+            print(f"{issue.code}{entity}: {issue.message}", file=sys.stderr)
+        print("World validation: FAILED (backup kept; source world needs repair)", file=sys.stderr)
+        return 1
+    print("World validation: passed")
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -44,6 +108,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--player-action")
     parser.add_argument("--decision-json")
     parser.add_argument("--turn-operation-id")
+    parser.add_argument("--backup-dir", help="override the default backups/ directory")
     args = parser.parse_args(argv)
 
     try:
@@ -154,6 +219,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             }:
                 return 1
             return 0
+
+        if args.command == "backup":
+            return _backup(database_path, args.backup_dir)
 
         issues = validate_worlds(database_path)
         if not issues:

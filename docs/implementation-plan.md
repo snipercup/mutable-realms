@@ -1142,6 +1142,19 @@ Database backups and world export/import should become supported operations befo
 
 The initial backup boundary is the configured state directory containing `world.sqlite3` and any SQLite WAL/SHM sidecar files. Backup procedures must use a SQLite-safe snapshot method rather than copying only the main database file while writes may be active. After restoration or migration, run world validation before resuming mutations.
 
+### Backup and export/import scope — First slice complete
+
+The first slice protects the live state boundary before worlds grow more valuable:
+
+* the `backup` CLI command (invoked as `npm run backup`, i.e. `python -m backend.cli backup`): resolves the configured database (`MUTABLE_REALMS_DB_PATH` or `--db-path`), snapshots it with the SQLite online backup API (`Connection.backup()`) into a timestamped file under the state directory's `backups/` subdirectory (override with `--backup-dir`) — consistent even while the single worker is mid-write, so WAL/SHM sidecar files need not be copied separately;
+* the command verifies the artifact before reporting success: opens the snapshot, runs `PRAGMA integrity_check`, and verifies the supported schema history (the same `verify_database_schema` used by readiness); it prints the backup path and a SHA-256 checksum for later restore verification;
+* a whole-world `validate` pass over the snapshot (the same checks as `npm run validate`) flags a backup of an already-corrupt world with a nonzero exit instead of silently archiving it;
+* backup is a manual/ops command, not part of boot; the boot launcher already re-runs migrate → seed → validate on the live file.
+
+Deferred: a `restore` command (for now, documented as copy-back plus `npm run validate` before resuming mutations), JSON world export/import for portability, snapshot rotation/retention policies, and encrypted or remote backups.
+
+Implemented and verified on 2026-08-08: `backend/cli.py` backup branch with online-backup snapshot, integrity/schema/world-validation verification, and checksum output; `npm run backup` script; readme documentation; and `tests/backend/test_backup.py` (6 tests covering verified snapshots, committed-state preservation, restore readback, corrupt-world flagging, missing-file and non-database failures; suite 153 passed, lint clean). Live-verified against the persistent DB: `npm run backup` produced a snapshot of both worlds at their current revisions (ward 2, town 2, sailor at the docks), integrity and schema checks passed, and whole-world validation passed on the artifact.
+
 ---
 
 # 23. Observability
@@ -1263,9 +1276,13 @@ Characters persist across locations and can retain relevant relationships or mem
 
 Quests themselves are narration-only and are not tracked as world state; their world-changing consequences persist through the same named atomic operations as every other mutation (relationship changes, rewards/resources, entity and location effects). Persisted effects must never silently reappear or be undone.
 
+Implemented with Phase 11: goals carry no world state at all (no tables, lifecycle, or board); their consequences persist through `world_record_social_interaction` (relationships) and `world_transfer_resource` (rewards/resources), with the accepted double-reward trade-off and the deferred minimal completed-goal ledger documented in the Phase 11 status block. Live-verified on 2026-08-05: a narrated quest reward of 40 coins committed revision 0 → 1 via `world_transfer_resource` while the quest itself remained narration-only.
+
 ### Milestone H — Location Transformation
 
 Repeated player actions can cause a location's persistent identity or condition to change, and future narration reflects the new state.
+
+Implemented with Phase 12: `0005_location_properties` plus the atomic `world_update_location` operation (display-name renames and bounded property/value effects, Capability B), scoped context properties, coherence validation, and live verification on 2026-08-05.
 
 At Milestone H, the core Mutable Realms concept has been demonstrated.
 
