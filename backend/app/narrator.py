@@ -11,11 +11,17 @@ machinery as every other narrated turn.
 Tests inject a fake narrator instead of invoking the CLI, so the relay
 itself is fully deterministic; only the default production narrator shells
 out to ``hermes``.
+
+The Hermes CLI is invoked in quiet mode (``-Q``) so banner, spinner, and
+tool previews are suppressed, but the rendered reasoning box and the
+model's own meta-commentary still need deterministic cleanup so the page
+receives only player-facing narration.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from collections.abc import Callable
 
@@ -26,6 +32,19 @@ DEFAULT_PROFILE = os.environ.get(
     "MUTABLE_REALMS_NARRATOR_PROFILE", "mutable-realms-narration"
 )
 NARRATOR_TIMEOUT_SECONDS = float(os.environ.get("MUTABLE_REALMS_NARRATOR_TIMEOUT", "120"))
+
+# The CLI renders the model's reasoning inside a box drawn with box-drawing
+# characters (CRLF line endings); the reply itself uses plain line endings.
+_REASONING_BOX_RE = re.compile(r"(?ms)^┌.*?┘\s*")
+
+# Model meta-commentary that is not player-facing narration. These are
+# stripped deterministically as a safety net; the relay prompt asks the
+# agent not to produce them at all.
+_LEADING_META_RE = re.compile(r"^(?:Decision[:\- ]).*?(?=\n\n|\Z)", re.DOTALL)
+_TRAILING_META_RE = re.compile(
+    r"(?:\n\n|\A)(?:No change was persisted|Refresh the page|World revision).*?\Z",
+    re.DOTALL,
+)
 
 
 class NarratorError(RuntimeError):
@@ -43,9 +62,27 @@ def build_narration_prompt(world_id: str, player_id: str, player_action: str) ->
         f"{player_action}\n\n"
         "Follow your narration contract exactly: read the world state first "
         "(world_status and world_context), perform at most one supported "
-        "operation if the action warrants one, and reply with the player-facing "
-        "narration only. Never claim a change that did not commit."
+        "operation if the action warrants one.\n\n"
+        "Your entire reply must be the player-facing narration itself, written "
+        "directly to the player in the second person and present tense. Do not "
+        "include decision summaries, tool reports, status lines, or any text "
+        "outside the narration. Never mention persistence, page refreshes, "
+        "world revisions, or whether the world changed. If nothing changed, "
+        "still narrate the moment in-world."
     )
+
+
+def clean_narration(output: str) -> str:
+    """Reduce raw CLI output to player-facing narration.
+
+    Removes the rendered reasoning box and leading/trailing model
+    meta-commentary (decision summaries, persistence status lines). Text that
+    is already clean narration passes through unchanged.
+    """
+    text = _REASONING_BOX_RE.sub("", output)
+    text = _LEADING_META_RE.sub("", text)
+    text = _TRAILING_META_RE.sub("", text)
+    return text.strip()
 
 
 class HermesNarrator:
@@ -61,7 +98,15 @@ class HermesNarrator:
 
     def __call__(self, world_id: str, player_id: str, player_action: str) -> str:
         prompt = build_narration_prompt(world_id, player_id, player_action)
-        command = ["hermes", "--profile", self.profile, "chat", "-q", prompt]
+        command = [
+            "hermes",
+            "--profile",
+            self.profile,
+            "chat",
+            "-Q",
+            "-q",
+            prompt,
+        ]
         try:
             completed = subprocess.run(
                 command,
@@ -77,7 +122,7 @@ class HermesNarrator:
         if completed.returncode != 0:
             detail = (completed.stderr or completed.stdout or "").strip()
             raise NarratorError(f"narration agent failed: {detail[:500]}")
-        narration = completed.stdout.strip()
+        narration = clean_narration(completed.stdout)
         if not narration:
             raise NarratorError("narration agent returned an empty reply")
         return narration

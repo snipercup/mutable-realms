@@ -89,7 +89,7 @@ Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup ap
 `POST /api/worlds/{world_id}/turns` — body `{player_id, player_action, decision_json?}`.
 
 - **With `decision_json`**: the deterministic seam over HTTP (same `run_turn` path as `world-turn`); tests and scripted play drive exact decisions. Returns `{outcome, message, revision_before, revision_after, attempts, mutation}`.
-- **Without it**: relays the action to the bound narration agent (`hermes --profile mutable-realms-narration chat`), which reads the world, performs at most one supported mutation, and returns player-facing narration. Returns `{outcome: "narrated_turn", narration, revision_before, revision_after}`.
+- **Without it**: relays the action to the bound narration agent (`hermes --profile mutable-realms-narration chat`), which reads the world, performs at most one supported mutation, and returns player-facing narration. Returns `{outcome: "narrated_turn", narration, revision_before, revision_after}`. The relay runs the CLI in quiet mode and strips rendered reasoning and meta-commentary so `narration` is the immersive prose only (the narration profile also sets `display.show_reasoning: false`).
 - Errors: `404` unknown world · `409` player does not match the world's bound player · `422` invalid decision or blank action · `502` narration agent unavailable.
 
 Narration is presentation-only and never persisted. The narration profile stays bound to one world and one player; the interface works for that world and the agent honestly refuses others. The relay is injectable for tests (`create_app(..., narrator=...)`).
