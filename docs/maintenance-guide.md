@@ -1,0 +1,164 @@
+# Mutable Realms — Maintenance and Development Guide
+
+The original `implementation-plan.md` served its purpose: Phases 1–15 and Milestones A–H are complete, the backup slice is implemented, and the first successful prototype is demonstrated. This guide replaces that plan. It holds the durable guidance for operating and extending Mutable Realms beyond the initial prototype. Historical phase-by-phase records live in the Git history; do not recreate them here.
+
+## Core concept
+
+> The player changes something through narrative interaction, the world actually changes, and the system continues reasoning from that changed reality later.
+
+That is the entire point of the project. Graphical quality, location count, and generated text volume are secondary. Every design decision in this guide protects persistent causality.
+
+## The authoritative loop
+
+```text
+Free-form player action
+        ↓
+Hermes narration agent
+        ↓
+Relevant persisted context
+        ↓
+Controlled world mutations
+        ↓
+SQLite authoritative state
+        ↓
+Updated browser visualization
+        ↓
+Future narration grounded in the changed world
+```
+
+- **SQLite** is the single authoritative store; narration, prose, SVG, and web pages are derived views and must never contradict it.
+- **FastAPI** serves read APIs, the turn relay, health routes, and the built frontend from one process (one worker).
+- **Hermes** runs the narration agent as a dedicated profile bound through MCP env vars (`MUTABLE_REALMS_DB_PATH`, `MUTABLE_REALMS_WORLD_ID`, `MUTABLE_REALMS_PLAYER_ID`) to exactly one world and one player.
+- **The browser** discovers worlds, renders location/entities/events/map from API data, and now accepts player actions directly (`POST /api/worlds/{world_id}/turns`), relaying them to the narration agent.
+
+## Non-negotiable design rules
+
+1. **Authoritative state is SQLite.** Mutations happen only through named, validated, atomic application operations — never generic `world_update`, never direct SQL from agents, never narration-only claims of persistence.
+2. **One mutation per turn.** Each narrated turn performs at most one supported operation; multi-step consequences are compound operations (e.g. treat-and-discharge), not model-assembled low-level writes.
+3. **Deterministic bookkeeping.** Idempotency (caller operation ID, exact-request replay), expected-revision checks with one fresh retry, event linkage, and invariant-safe transactions are enforced in code, never by prompting.
+4. **Agents reason; software bookkeeps.** Model reasoning is reserved for interpretation, creativity, and judgment. Queries, validation, and repetitive transformation are deterministic code.
+5. **Retrieve working sets, not whole worlds.** Context includes only what the current scene needs (player + current-location entities, relationships, resources, properties, bounded events) on one read-only snapshot.
+6. **Capability growth, not premature generality.** Add a capability only when play demands it, as one vertical slice (see below). Scenario concepts (wards, quests, inventories) must never become mandatory core abstractions.
+7. **Scenario-neutrality.** No empty scenario fields leak into generic reads; capability views are separate derived projections.
+8. **Preserve causality and compatibility.** Meaningful changes persist until deliberately reversed; schema changes are additive migrations; derived presentation (map, sprites, prose) never becomes authoritative.
+9. **Narration-only goals.** Quests are not tracked as world state; only their effects persist through named operations. Accepted trade-off: nothing prevents narrating a quest twice — if double rewards ever hurt play, add a minimal completed-goal ledger (quest identifier + completion event, no lifecycle/board).
+
+## System inventory
+
+| Layer | Contents |
+| --- | --- |
+| Migrations | `0001` initial schema · `0002` generalize entities · `0003` social state · `0004` resources · `0005` location properties · `0006` location links |
+| Operations | `world_move_entity` · `world_treat_and_discharge_patient` · `world_record_social_interaction` · `world_transfer_resource` · `world_update_location` |
+| MCP tools | the operations above plus `world_status`, `world_context`, `world_inspect_entity`, `world_events`; `world_validate` is refused when a session is bound |
+| API reads | `/api/worlds` · `…/player` · `…/map` · `…/locations/current` · `…/locations/{id}` · `…/entities/{id}` · `…/events` · `…/capabilities/ward/...` |
+| Turn relay | `POST /api/worlds/{world_id}/turns` — `decision_json` = deterministic `run_turn` seam; otherwise relays to the bound narration agent (`backend/app/narrator.py`, injectable for tests) |
+| CLI | `migrate` · `seed` · `validate` · `backup` · `move-entity` · `world-context` · `world-turn` (npm scripts) |
+
+## Adding a capability — the vertical slice
+
+Every new capability follows the same pattern. Implement one slice end to end; record the scope in this guide first, then flip it to complete with verification evidence.
+
+1. **Migration `000N`** — additive, strict tables, FKs, `updated_event_id` linkage to `events`, CHECK constraints, indexes. Never edit history.
+2. **Atomic operation service** — one `BEGIN IMMEDIATE` transaction: expected-revision check → exact-request idempotency via caller operation ID → revision bump + operation record + event + state change. Error types map to turn outcomes (`MISSING_RESOURCE`, `MUTATION_REJECTED`).
+3. **Context working set** — add the read projection on the same read-only snapshot; keep it bounded.
+4. **Validation** — coherence checks mirroring the existing ones (owner world/character match, event linkage).
+5. **Agent surface** — `agent_tools.py` wrapper + `world_status` advertisement rule (capability advertised only for worlds that support it) + MCP tool with schema bounds.
+6. **Turn policy** — `turns.py`: `OperationType`, per-operation argument validator, dispatch branch, error mapping.
+7. **Docs** — this guide (scope → complete), `readme.md`, `docs/narration-agent-contract.md`.
+8. **Tests** — migration compatibility, atomic persistence, exact idempotency, invalid inputs, rejection paths, turn orchestration, validation corruption.
+
+Expected churn when adding a migration or MCP tool — hardcoded assertions in existing tests break by design: `test_migrations.py` (applied-count tuples), `test_startup.py` (schema-version list), `test_mcp_server.py` (tool-name list), `test_agent_tools.py` (`available_mutations` per world), `test_context.py` (full-dict context shape). Update them; these are bookkeeping, not regressions.
+
+Verification gate before claiming a capability works: full suite (`uv run pytest -q`), `npm run lint` (ruff + tsc), and the deterministic CLI seam (`npm run world-turn` with a validated decision JSON — it proves the end-to-end path that in-process tests cannot).
+
+## Operations
+
+| Command | Purpose |
+| --- | --- |
+| `npm run migrate` | Apply pending checksummed migrations (also runs at server startup). |
+| `npm run seed` | Create the deterministic ward and town worlds if absent. |
+| `npm run validate` | Whole-world invariant check; read-only; nonzero on violation. |
+| `npm run backup -- [--backup-dir DIR]` | SQLite online-backup snapshot into `backups/`; verifies integrity + schema + world validation; prints SHA-256. |
+| `npm run world-turn -- …` | Deterministic turn with `--decision-json`; the acceptance/debugging seam. |
+| `npm run serve` | One FastAPI worker on `MUTABLE_REALMS_PORT` (default 8790). |
+
+- **State boundary**: live DB at `MUTABLE_REALMS_DB_PATH` (outside Git, bind-mounted host state dir). Backup files belong beside it.
+- **Migration workflow**: `backup → migrate → validate`. Restore is manual: stop the worker, replace `world.sqlite3` with a snapshot, run `npm run validate` before resuming mutations.
+- **Boot**: `scripts/start-mutable-realms.sh` runs migrate → seed → optional frontend build → uvicorn; wired through Dockerfile + compose.
+- **Health**: `/health/live` (process answers) vs `/health/ready` (DB reachable, supported schema). Full world validation is a separate diagnostic.
+- **Container gotchas**: (1) the Hermes WebUI keeps ONE long-lived MCP subprocess per profile shared across chats — after changing MCP code, restart the container or the agent keeps the old tool list; (2) a boot-started server on 8790 keeps old backend code until a container restart — verify new routes on your own port first.
+
+## Testing strategy
+
+Persistent state is game logic. Unit tests cover domain rules; persistence tests cover reads, writes, transactions, constraints, and migrations; API tests cover queries and mutations through supported interfaces; integration tests cover sequences across application recreation (e.g. treat → discharge → close → reopen → verify persisted). Persistence tests use temporary database files, never the live world. Keep small regression fixtures. The deterministic layer must be testable without Hermes or any external model — never depend on nondeterministic LLM output in tests.
+
+## Database migration standard
+
+Schema changes are versioned from the first schema. Versioned SQL files + a schema-version table with SHA-256 checksums are sufficient; reject modified, missing, noncontiguous, or unsupported history. Every migration preserves existing world state when practical. Never depend on manually editing production world databases. Before risky work: `backup → migrate → validate`.
+
+## Observability
+
+Logs should identify startup, migrations, world mutations, validation failures, API errors, and agent operation failures. Avoid logging huge prompts or full world state by default. Distinguish three conditions as the system grows: application operational (liveness), world valid (validation), agent reachable (narration relay).
+
+## Security boundaries
+
+The narration agent operates through narrow MCP tools, not unrestricted shell. Treat generated content and player input as untrusted data — narrative text must never become executable code because it appears in world state. Keep secrets (API keys, OAuth tokens) out of Git, world data, prompts, event history, and frontend bundles. Bind services to localhost-facing ports unless wider access is deliberate.
+
+## Avoid premature systems
+
+Do not add: PostgreSQL, Redis, message queues, microservices, Kubernetes, ECS frameworks, complex plugin architectures, generic scripting languages, multiplayer synchronization, procedural generation frameworks, vector databases, embeddings, WebSockets, full-text search, large frontend frameworks. Any may eventually become justified; none should be introduced because a hypothetical future might need them. Prefer the smallest architecture that supports persistent causality correctly.
+
+## Known deferred work
+
+These were deliberately deferred when their slice shipped. Pick them up when play demands, each as its own vertical slice.
+
+| Area | Deferred items |
+| --- | --- |
+| Backup/export | `restore` command; JSON world export/import; snapshot rotation/retention; encrypted/remote backups |
+| Goals | minimal completed-goal ledger (double-reward dedup anchor) |
+| Locations | population/prosperity simulation; wider property taxonomies; dedicated location-history table; physical entity add/remove operations |
+| Travel | directed/weighted edges; travel time/cost; conditional travel (locked doors); multi-hop pathfinding; NPC autonomous movement |
+| Visualization | authoritative map coordinates; tooltips; clickable objects; character/inventory panels; scene transitions/animations; goal/reward UI (only for worlds that track goals as state) |
+| Direct interface | multi-world agent rebinding; streaming responses; server-side turn history; undo/replay; input affordances (quick actions, command palette) |
+| Social | factions; disposition taxonomies; multi-party interactions; memory relevance ranking; NPC-owned memories; social visualization |
+| Capability requests | Phase 16 loop below |
+
+## Phase 16 — capability requests
+
+When the narration agent meets play that existing infrastructure cannot persist (e.g. "I deploy probes to map nearby star systems"), it must not redesign the database. It should produce a structured capability request:
+
+```text
+CAPABILITY GAP
+
+Current world cannot persist:
+- exploration probes
+- star-system surveys
+
+Required behavior:
+- probes remain deployed
+- survey progress changes over time
+- discoveries persist
+```
+
+The infrastructure side then implements the general capability as a vertical slice. Do not implement autonomous schema evolution; this loop is the controlled mechanism for the game's mechanics to evolve in response to play.
+
+## Development history
+
+| Work | Delivered | Verified |
+| --- | --- | --- |
+| Steps 1–3 | Plan tightening, tooling, dev image | 2026-08-01 |
+| Phase 1 / Milestone A | Authoritative world slice: migrations, validation, atomic treat-and-discharge | 2026-08-01 |
+| Phase 2 | Read API + generic browser visualization | 2026-08-01 |
+| Scenario-neutrality | `0002_generalize_entities`, scenario modules | 2026-08-02 |
+| Phases 3–7 | Controlled mutations, event history, context builder, MCP tools, narrated turn policy | 2026-08 |
+| Phase 8 | Consistency validation audit (`missing_bed_state` gap fixed) | 2026-08 |
+| Phase 9 / Milestone E | Full gameplay loop acceptance; persisted return across rebuild | 2026-08 |
+| Phase 10 / Milestone F | Social state: relationships + memories (`0003`) | 2026-08-02 |
+| Phase 11 / Milestone G | Resources (`0004`), quests narration-only, effects persist | 2026-08-05 |
+| Phase 12 / Milestone H | Mutable locations (`0005`) | 2026-08-05 |
+| Phase 13 | Location links + adjacency-constrained travel (`0006`) | 2026-08-05 |
+| Phase 14 | Derived SVG map view | 2026-08 |
+| Phase 15 | Direct player interface: turn relay + page input | 2026-08-08 |
+| §22 slice | `backup` command with verified artifacts | 2026-08-08 |
+
+The current live state (2026-08-08): ward-world and town-world both at revision 2; the narration profile is bound to town-world / sailor; the page accepts player actions for that world.
