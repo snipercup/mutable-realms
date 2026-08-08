@@ -113,6 +113,21 @@ Open the page, select a world, and type an action in the "What do you do?" input
 * [docs/interfaces-and-tools.md](docs/interfaces-and-tools.md) — commands, HTTP API, MCP tools, environment variables, Hermes narration setup.
 * [docs/narration-agent-contract.md](docs/narration-agent-contract.md) — the narration agent's behavioral contract.
 
+## Roadmap
+
+The initial prototype is complete. The ideas below were deliberately deferred while the core loop was proven; each is scoped and built one at a time when play demands it.
+
+| Area | Ideas |
+| --- | --- |
+| Backup and export | One-command restore · world export/import · snapshot rotation and retention · remote or encrypted backups |
+| Goals | A minimal completed-goal ledger to prevent double rewards |
+| Locations | Population and prosperity simulation · wider property taxonomies · a dedicated location-history table · adding and removing entities |
+| Travel | Weighted or directed edges · travel time and cost · conditional travel (locked doors) · multi-hop pathfinding · NPC movement |
+| Visualization | Tooltips · clickable objects · character and inventory panels · scene transitions and animations · goal/reward UI for worlds that track goals as state |
+| Direct interface | Multi-world agent rebinding · streaming responses · server-side turn history · undo and replay · quick actions |
+| Social | Factions · disposition taxonomies · multi-party interactions · memory relevance ranking · NPC-owned memories · social visualization |
+| Capability requests | When the agent meets play the world cannot yet persist, it emits a structured request and the capability is built deliberately — no autonomous schema changes |
+
 ## Project Goals
 
 Mutable Realms explores whether modern AI agents can support a world that is:

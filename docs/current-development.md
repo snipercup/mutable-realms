@@ -1,6 +1,6 @@
 # Current Development
 
-Mutable Realms develops one idea at a time. This document tracks the single active idea and the recently closed trail. It is not a backlog: ideas that are interesting but not being worked on belong in [maintenance-guide.md](maintenance-guide.md) under *Known deferred work*; finished ideas are recorded there under *Development history*.
+Mutable Realms develops one idea at a time. This document tracks the single active idea and the recently closed trail. It is not a backlog: ideas that are interesting but not being worked on belong in the [readme.md](../readme.md) *Roadmap*; finished ideas are recorded in [maintenance-guide.md](maintenance-guide.md) under *Development history*.
 
 ## Active idea
 
@@ -25,7 +25,7 @@ _None yet. When an idea arrives, it is scoped here before implementation using t
 3. **Record the scope here** (status: scoped / in progress) before implementing.
 4. **Implement and verify** — full suite, lint, and live verification proportional to risk.
 5. **Flip status to complete** with verification evidence and a suggested branch + commit message; the user commits and pushes.
-6. **Close the entry.** If the idea is postponed mid-way, move it as one line into the maintenance guide's *Known deferred work* table and mark it abandoned here.
+6. **Close the entry.** If the idea is postponed mid-way, move it as one line into the readme *Roadmap* and mark it abandoned here.
 
 Notes on the process, learned during the plan era and still enforced:
 

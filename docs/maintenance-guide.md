@@ -94,21 +94,6 @@ The narration agent operates through narrow MCP tools, not unrestricted shell. T
 
 Do not add: PostgreSQL, Redis, message queues, microservices, Kubernetes, ECS frameworks, complex plugin architectures, generic scripting languages, multiplayer synchronization, procedural generation frameworks, vector databases, embeddings, WebSockets, full-text search, large frontend frameworks. Any may eventually become justified; none should be introduced because a hypothetical future might need them. Prefer the smallest architecture that supports persistent causality correctly.
 
-## Known deferred work
-
-These were deliberately deferred when their slice shipped. Pick them up when play demands, each as its own vertical slice.
-
-| Area | Deferred items |
-| --- | --- |
-| Backup/export | `restore` command; JSON world export/import; snapshot rotation/retention; encrypted/remote backups |
-| Goals | minimal completed-goal ledger (double-reward dedup anchor) |
-| Locations | population/prosperity simulation; wider property taxonomies; dedicated location-history table; physical entity add/remove operations |
-| Travel | directed/weighted edges; travel time/cost; conditional travel (locked doors); multi-hop pathfinding; NPC autonomous movement |
-| Visualization | authoritative map coordinates; tooltips; clickable objects; character/inventory panels; scene transitions/animations; goal/reward UI (only for worlds that track goals as state) |
-| Direct interface | multi-world agent rebinding; streaming responses; server-side turn history; undo/replay; input affordances (quick actions, command palette) |
-| Social | factions; disposition taxonomies; multi-party interactions; memory relevance ranking; NPC-owned memories; social visualization |
-| Capability requests | Phase 16 loop below |
-
 ## Phase 16 — capability requests
 
 When the narration agent meets play that existing infrastructure cannot persist (e.g. "I deploy probes to map nearby star systems"), it must not redesign the database. It should produce a structured capability request:
