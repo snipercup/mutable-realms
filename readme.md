@@ -301,6 +301,16 @@ npm run serve
 
 The interface is then available at `http://localhost:8790/`. It discovers available worlds, lets the player select one, and renders that world's current location, arbitrary entity kinds, revision, and recent events. Selection is reflected in the `?world=...` URL parameter. It refreshes authoritative state every five seconds or when **Refresh state** is selected. If `frontend/dist/` is absent, the backend still starts with its API, health, and OpenAPI routes available.
 
+## Direct player interface
+
+Phase 15 adds player input to the page itself: below the world view there is a narration panel with a session-local log and a "What do you do?" input. Submitting an action posts to `POST /api/worlds/{world_id}/turns`:
+
+* with `decision_json` in the body, the endpoint runs the deterministic `run_turn` seam over HTTP (the same path as `npm run world-turn`), which is how tests and scripted play drive exact decisions;
+* without it, the endpoint relays the action to the bound narration agent (`hermes --profile mutable-realms-narration chat`; override the profile and timeout with `MUTABLE_REALMS_NARRATOR_PROFILE` and `MUTABLE_REALMS_NARRATOR_TIMEOUT`), which reads the world, performs at most one supported mutation, and returns player-facing narration;
+* the response reports the outcome and the before/after revision, and the page re-polls authoritative state so the map, entities, and events reflect the committed revision.
+
+Narration is presentation-only: it is not persisted and never becomes authoritative state. The narration profile remains bound to one world and one player; the interface works for that world and the agent honestly refuses others. The relay is injectable for tests (`create_app(..., narrator=...)`).
+
 The API applies pending migrations during startup and fails startup if migration history is invalid. Its health endpoints are:
 
 * `GET /health/live` — the process can answer requests;

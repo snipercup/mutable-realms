@@ -59,6 +59,16 @@ type WorldMap = {
   locations: WorldMapLocation[];
 };
 
+type TurnResponse = {
+  outcome: string;
+  message: string | null;
+  narration: string | null;
+  revision_before: number | null;
+  revision_after: number | null;
+  attempts: number;
+  mutation: Record<string, unknown> | null;
+};
+
 type WorldState = {
   world: World;
   player: Player;
@@ -92,6 +102,27 @@ root.innerHTML = `
     </header>
     <div class="status-banner" id="status" role="alert" hidden></div>
     <section id="world-view" aria-live="polite"></section>
+    <section class="panel narration-panel" aria-label="Narration">
+      <div class="narration-heading">
+        <div>
+          <span class="eyebrow">Narration agent</span>
+          <h2 class="section-title">What do you do?</h2>
+        </div>
+        <span class="revision-block" id="narration-revision"></span>
+      </div>
+      <div class="narration-log" id="narration-log" aria-live="polite"></div>
+      <form class="action-form" id="action-form">
+        <input
+          class="action-input"
+          id="action-input"
+          type="text"
+          placeholder="Type your action and press Enter…"
+          autocomplete="off"
+          aria-label="Your action"
+        />
+        <button class="action-button" id="action-submit" type="submit">Act</button>
+      </form>
+    </section>
   </main>
 `;
 
@@ -100,10 +131,17 @@ const refreshButton = requireElement<HTMLButtonElement>("#refresh");
 const freshness = requireElement<HTMLSpanElement>("#freshness");
 const statusBanner = requireElement<HTMLDivElement>("#status");
 const worldView = requireElement<HTMLElement>("#world-view");
+const narrationLog = requireElement<HTMLDivElement>("#narration-log");
+const narrationRevision = requireElement<HTMLSpanElement>("#narration-revision");
+const actionForm = requireElement<HTMLFormElement>("#action-form");
+const actionInput = requireElement<HTMLInputElement>("#action-input");
+const actionSubmit = requireElement<HTMLButtonElement>("#action-submit");
 
 let worlds: World[] = [];
 let selectedWorldId: string | null = null;
+let currentPlayerId: string | null = null;
 let loading = false;
+let actionPending = false;
 let lastUpdated: Date | null = null;
 
 function requireElement<T extends Element>(selector: string): T {
@@ -132,6 +170,30 @@ async function fetchJson<T>(path: string): Promise<T> {
     throw new Error(payload?.detail ?? `Request failed with status ${response.status}`);
   }
   return (await response.json()) as T;
+}
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+    throw new Error(payload?.detail ?? `Request failed with status ${response.status}`);
+  }
+  return (await response.json()) as T;
+}
+
+function appendNarration(role: "player" | "agent", text: string): void {
+  const entry = element("div", `narration-entry narration-entry--${role}`);
+  entry.append(element("span", "narration-role", role === "player" ? "You" : "Narrator"));
+  entry.append(element("p", "narration-text", text));
+  narrationLog.append(entry);
+  while (narrationLog.childElementCount > 50) {
+    narrationLog.firstElementChild?.remove();
+  }
+  narrationLog.scrollTop = narrationLog.scrollHeight;
 }
 
 async function loadWorlds(): Promise<void> {
@@ -398,7 +460,10 @@ async function refresh(): Promise<void> {
   setError(null);
   try {
     if (worlds.length === 0) await loadWorlds();
-    renderState(await loadState());
+    const state = await loadState();
+    currentPlayerId = state.player.id;
+    narrationRevision.textContent = `r${state.location.revision}`;
+    renderState(state);
     lastUpdated = new Date();
     updateFreshness();
   } catch (error) {
@@ -410,8 +475,48 @@ async function refresh(): Promise<void> {
   }
 }
 
+async function runPlayerAction(action: string): Promise<void> {
+  if (selectedWorldId === null || currentPlayerId === null) return;
+  actionPending = true;
+  actionInput.disabled = true;
+  actionSubmit.disabled = true;
+  appendNarration("player", action);
+  setError(null);
+  try {
+    const encodedWorld = encodeURIComponent(selectedWorldId);
+    const response = await postJson<TurnResponse>(
+      `/api/worlds/${encodedWorld}/turns`,
+      { player_id: currentPlayerId, player_action: action },
+    );
+    const narration = response.narration ?? response.message ?? response.outcome;
+    appendNarration("agent", narration);
+    if (response.revision_after !== null) {
+      narrationRevision.textContent = `r${response.revision_after}`;
+    }
+    void refresh();
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "The narration agent could not be reached");
+  } finally {
+    actionPending = false;
+    actionInput.disabled = false;
+    actionSubmit.disabled = false;
+    actionInput.focus();
+  }
+}
+
+actionForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const action = actionInput.value.trim();
+  if (action === "" || actionPending) return;
+  actionInput.value = "";
+  void runPlayerAction(action);
+});
+
 worldSelect.addEventListener("change", () => {
   selectedWorldId = worldSelect.value;
+  currentPlayerId = null;
+  narrationLog.replaceChildren();
+  narrationRevision.textContent = "";
   const url = new URL(window.location.href);
   url.searchParams.set("world", selectedWorldId);
   window.history.replaceState(null, "", url);

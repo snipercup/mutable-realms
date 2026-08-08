@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class StrictReadModel(BaseModel):
@@ -84,3 +84,26 @@ class WorldMapRead(StrictReadModel):
 class HealthRead(StrictReadModel):
     status: str
     database: str
+
+
+class TurnRequest(StrictReadModel):
+    player_id: str
+    player_action: str = Field(min_length=1)
+    decision_json: str | None = None
+
+    @field_validator("player_action")
+    @classmethod
+    def _player_action_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("player_action must not be blank")
+        return value
+
+
+class TurnResponse(StrictReadModel):
+    outcome: str
+    message: str | None = None
+    narration: str | None = None
+    revision_before: int | None = Field(default=None, ge=0)
+    revision_after: int | None = Field(default=None, ge=0)
+    attempts: int = Field(default=1, ge=1)
+    mutation: dict[str, Any] | None = None

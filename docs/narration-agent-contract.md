@@ -115,6 +115,10 @@ Quests and other narrative goals are not tracked as world state in this design. 
 
 This lets tests verify persistence and causality without asserting nondeterministic prose. Hermes may follow the same contract directly through the MCP tools.
 
+## Direct player interface relay
+
+When the player types an action in the Mutable Realms page, the backend relays it to this same bound narration session (`hermes --profile mutable-realms-narration chat`). The relay prompt carries the world id, player id, and the player's free-form action; everything else in this contract applies identically: read `world_status` and `world_context` before acting, perform at most one supported operation with the observed revision and a fresh operation ID, reread the context, and narrate only what committed. The reply text becomes the narration shown in the page. If the player's world is not the bound world, refuse honestly instead of improvising.
+
 ## Acceptance scenario
 
 With a fresh seeded ward:

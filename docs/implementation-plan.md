@@ -1011,6 +1011,18 @@ At that point the custom frontend can communicate with Hermes or an appropriate 
 
 Do not make this integration a prerequisite for proving the world model.
 
+### Phase 15 status — First slice complete
+
+The first Phase 15 slice adds the direct player interface in the form the plan sketches: the world visualization plus an in-page narration stream and a "What do you do?" input.
+
+* `POST /api/worlds/{world_id}/turns` accepts `{player_id, player_action, decision_json?}`. With `decision_json`, it is the deterministic seam over HTTP (the same `run_turn` path the `world-turn` CLI uses) — tests and scripted play can drive exact decisions. Without it, the endpoint relays the action to the bound narration agent behind the scenes (`hermes --profile mutable-realms-narration chat`, injectable as a narrator callable for tests) and returns the agent's narration plus the post-turn revision;
+* the frontend gains a narration panel with a session-local log and an action form; submitting runs the relay and immediately re-polls authoritative state, so the map, entities, and events refresh from the committed revision;
+* narration remains presentation-only: it is not persisted, never authoritative, and the relay enforces the same one-supported-mutation-per-turn contract as every other narrated turn. The narration profile stays bound to one world and player; the interface works for that world and the agent honestly refuses others.
+
+Deferred: multi-world agent rebinding, streaming responses, server-side turn history, undo/replay, and input affordances beyond free text (quick actions, command palette).
+
+Implemented and verified on 2026-08-08: `backend/app/narrator.py` (Hermes CLI relay with injectable seam), the `POST /api/worlds/{world_id}/turns` endpoint, the narration panel and action form in the frontend, and `tests/backend/test_direct_interface.py` (10 tests covering deterministic decisions, relay narration, committed-revision readback, and failure mapping; suite 147 passed, lint clean). Live-verified against the persistent DB: a no-mutation turn returned `no_mutation` with revision unchanged, and a `world_record_social_interaction` decision committed revision 1 → 2 with the `social_interaction_recorded` event and relationship readback through the API.
+
 ---
 
 # 20. Phase 16 — Infrastructure Extension Requests

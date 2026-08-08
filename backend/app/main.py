@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 from collections.abc import AsyncIterator
@@ -8,11 +9,15 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
+from pydantic import ValidationError
 
+from backend.app.narrator import HermesNarrator, Narrator, NarratorError
 from backend.app.read_models import (
     EntityRead,
     LocationRead,
     PlayerRead,
+    TurnRequest,
+    TurnResponse,
     WorldEventRead,
     WorldMapRead,
     WorldRead,
@@ -27,6 +32,7 @@ from backend.scenarios.ward.queries import (
     get_ward_location_state,
 )
 from backend.scenarios.ward.read_models import WardLocationRead
+from backend.world.agent_tools import read_world_status
 from backend.world.queries import (
     EntityNotFound,
     LocationNotFound,
@@ -40,6 +46,7 @@ from backend.world.queries import (
     list_recent_events,
     list_worlds,
 )
+from backend.world.turns import TurnDecision, run_turn
 
 DEFAULT_FRONTEND_PATH = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
@@ -48,6 +55,7 @@ def create_app(
     database_path: str | Path | None = None,
     *,
     frontend_path: str | Path | None = DEFAULT_FRONTEND_PATH,
+    narrator: Narrator | None = None,
 ) -> FastAPI:
     configured_path = Path(database_path) if database_path is not None else None
 
@@ -64,6 +72,7 @@ def create_app(
         yield
 
     application = FastAPI(title="Mutable Realms", lifespan=lifespan)
+    application.state.narrator = narrator
 
     def get_database_path() -> Path:
         resolved_path = getattr(application.state, "database_path", None)
@@ -152,6 +161,64 @@ def create_app(
             ]
         except WorldNotFound as error:
             raise HTTPException(status_code=404, detail="world not found") from error
+
+    @application.post("/api/worlds/{world_id}/turns", tags=["player turns"])
+    def player_turn(world_id: str, request: TurnRequest) -> TurnResponse:
+        """Execute one narrated player turn.
+
+        With ``decision_json`` this is the deterministic seam over HTTP: the
+        same ``run_turn`` path the ``world-turn`` CLI uses. Without it, the
+        action is relayed to the bound narration agent, which reads the world,
+        performs at most one supported mutation, and returns player-facing
+        narration.
+        """
+        database_path = get_database_path()
+        if request.decision_json is not None:
+            try:
+                decision = TurnDecision.model_validate(json.loads(request.decision_json))
+            except (json.JSONDecodeError, ValidationError) as error:
+                detail = f"invalid decision_json: {error}"
+                raise HTTPException(status_code=422, detail=detail) from error
+            try:
+                result = run_turn(
+                    database_path,
+                    world_id=world_id,
+                    player_id=request.player_id,
+                    player_action=request.player_action,
+                    decide=lambda _action, _context: decision,
+                )
+            except ValueError as error:
+                raise HTTPException(status_code=409, detail=str(error)) from error
+            except WorldNotFound as error:
+                raise HTTPException(status_code=404, detail="world not found") from error
+            return TurnResponse(
+                outcome=result.outcome.value,
+                message=result.message,
+                revision_before=result.before.world.revision,
+                revision_after=result.after.world.revision,
+                attempts=result.attempts,
+                mutation=result.mutation,
+            )
+
+        narrator = getattr(application.state, "narrator", None) or HermesNarrator()
+        try:
+            revision_before = read_world_status(database_path, world_id=world_id)[
+                "world"
+            ]["revision"]
+        except WorldNotFound as error:
+            raise HTTPException(status_code=404, detail="world not found") from error
+        try:
+            narration = narrator(world_id, request.player_id, request.player_action)
+        except NarratorError as error:
+            raise HTTPException(status_code=502, detail=str(error)) from error
+        after_status = read_world_status(database_path, world_id=world_id)
+        return TurnResponse(
+            outcome="narrated_turn",
+            narration=narration,
+            revision_before=revision_before,
+            revision_after=after_status["world"]["revision"],
+            attempts=1,
+        )
 
     if frontend_path is not None:
         resolved_frontend_path = Path(frontend_path)
