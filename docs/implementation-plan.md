@@ -926,7 +926,7 @@ Context retrieval should then naturally change its working set.
 
 This phase demonstrates that the system can stream relevant world context rather than continually accumulating prompt content.
 
-### Phase 13 status — Scope
+### Phase 13 status — First slice complete
 
 The first Phase 13 slice expands from one scene into a small connected world:
 
@@ -936,11 +936,25 @@ The first Phase 13 slice expands from one scene into a small connected world:
 * context gains `linked_locations` (reachable neighbors) on the current location, so a narrated turn can offer travel; after a travel turn the context working set streams the new location's entities, properties, and events;
 * validation checks link endpoint/world coherence; tests cover migration, adjacency enforcement, travel persistence, context working-set change, seed determinism, and validation corruption.
 
+Implemented and verified on 2026-08-05: migration `0006_location_links`, the `read_linked_locations` context projection, the adjacency precondition on `world_move_entity`, the Harbor Town seed (wired into `seed`), and coherence validation. Tests cover migration compatibility, adjacency rejection, travel persistence with working-set streaming, undirected reads, seed determinism, and validation corruption (134 total). Live-verified through the narration profile: the sailor walked from the plaza to the tavern via `world_move_entity`, committing revision 0 → 1 with the `entity_moved` event, the updated player placement, the streamed context working set (tavern entities), and browser readback.
+
 Deferred: directed/weighted edges, travel time/cost, conditional travel (locked doors), multi-hop pathfinding, NPC autonomous movement, and map visualization (Phase 14).
 
 ---
 
 # 18. Phase 14 — Richer Visualization
+
+> Richer visualization is a derived presentation of the same authoritative state; it must never become authoritative itself. Browsers render only what the API reports, and the API reports only committed world state.
+
+### Phase 14 status — First slice complete
+
+The first Phase 14 slice adds a derived map view of a connected world:
+
+* `GET /api/worlds/{world_id}/map` returns one read-only snapshot: world, the player's current location, and every location with name, description, entity-kind counts, and linked-location IDs (computed from `location_links`);
+* the frontend renders the map as SVG — location nodes, link edges, the player's location highlighted, and per-location entity-kind glyphs with counts — derived from that endpoint on the same 5-second poll;
+* no authoritative state is added; the map is pure presentation, and worlds with no links still render as a single node.
+
+Deferred: map coordinates in authoritative state (layout stays a frontend derivation), tooltips, clickable objects, character/inventory panels, scene transitions and animations, and a goal/reward UI (for worlds that track goals as state).
 
 Only after state and narration work reliably should visual complexity grow.
 

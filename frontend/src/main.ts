@@ -45,11 +45,26 @@ type WorldEvent = {
   created_at: string;
 };
 
+type WorldMapLocation = {
+  id: string;
+  name: string;
+  description: string | null;
+  entity_kinds: Record<string, number>;
+  linked_location_ids: string[];
+};
+
+type WorldMap = {
+  world: World;
+  player_location_id: string | null;
+  locations: WorldMapLocation[];
+};
+
 type WorldState = {
   world: World;
   player: Player;
   location: Location;
   events: WorldEvent[];
+  map: WorldMap;
 };
 
 const POLL_INTERVAL_MS = 5_000;
@@ -145,14 +160,15 @@ async function loadWorlds(): Promise<void> {
 async function loadState(): Promise<WorldState> {
   if (selectedWorldId === null) throw new Error("No world is selected");
   const encodedWorld = encodeURIComponent(selectedWorldId);
-  const [player, location, events] = await Promise.all([
+  const [player, location, events, map] = await Promise.all([
     fetchJson<Player>(`/api/worlds/${encodedWorld}/player`),
     fetchJson<Location>(`/api/worlds/${encodedWorld}/locations/current`),
     fetchJson<WorldEvent[]>(`/api/worlds/${encodedWorld}/events?limit=20`),
+    fetchJson<WorldMap>(`/api/worlds/${encodedWorld}/map`),
   ]);
   const world = worlds.find((candidate) => candidate.id === selectedWorldId);
   if (world === undefined) throw new Error("Selected world is unavailable");
-  return { world: { ...world, revision: location.revision }, player, location, events };
+  return { world: { ...world, revision: location.revision }, player, location, events, map };
 }
 
 function renderEntity(entityState: EntitySummary, playerId: string): HTMLElement {
@@ -170,6 +186,131 @@ function renderEntity(entityState: EntitySummary, playerId: string): HTMLElement
   );
   if (details.length > 0) card.append(element("p", "entity-details", details.join(" · ")));
   return card;
+}
+
+const MAP_WIDTH = 480;
+const MAP_HEIGHT = 320;
+const MAP_CENTER_X = MAP_WIDTH / 2;
+const MAP_CENTER_Y = MAP_HEIGHT / 2;
+const MAP_RADIUS = 110;
+
+const KIND_COLORS: Record<string, string> = {
+  character: "#4f8cff",
+  item: "#e8a23c",
+  animal: "#57b96b",
+};
+
+function mapPositions(count: number): Array<[number, number]> {
+  return Array.from({ length: count }, (_, index) => {
+    const angle = (index / Math.max(count, 1)) * Math.PI * 2 - Math.PI / 2;
+    return [
+      MAP_CENTER_X + MAP_RADIUS * Math.cos(angle),
+      MAP_CENTER_Y + MAP_RADIUS * Math.sin(angle),
+    ];
+  });
+}
+
+function svgElement(
+  tag: string,
+  attributes: Record<string, string | number>,
+): SVGElement {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [key, value] of Object.entries(attributes)) {
+    node.setAttribute(key, String(value));
+  }
+  return node;
+}
+
+function renderMap(state: WorldState): HTMLElement {
+  const panel = element("section", "panel map-panel");
+  panel.append(
+    element("span", "eyebrow", "Derived from world state"),
+    element("h2", "section-title", `Map of ${state.world.name}`),
+  );
+
+  const svg = svgElement("svg", {
+    viewBox: `0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`,
+    class: "map-svg",
+    role: "img",
+    "aria-label": `Map of ${state.world.name}`,
+  });
+
+  const ordered = [...state.map.locations].sort((a, b) => a.name.localeCompare(b.name));
+  const positions = new Map<string, [number, number]>();
+  mapPositions(ordered.length).forEach((position, index) => {
+    positions.set(ordered[index].id, position);
+  });
+
+  const drawnEdges = new Set<string>();
+  for (const location of state.map.locations) {
+    for (const linkedId of location.linked_location_ids) {
+      const key = [location.id, linkedId].sort().join("|");
+      if (drawnEdges.has(key)) continue;
+      drawnEdges.add(key);
+      const start = positions.get(location.id);
+      const end = positions.get(linkedId);
+      if (start === undefined || end === undefined) continue;
+      svg.append(
+        svgElement("line", {
+          x1: start[0],
+          y1: start[1],
+          x2: end[0],
+          y2: end[1],
+          class: "map-edge",
+        }),
+      );
+    }
+  }
+
+  for (const location of ordered) {
+    const [x, y] = positions.get(location.id) ?? [MAP_CENTER_X, MAP_CENTER_Y];
+    const playerHere = state.map.player_location_id === location.id;
+    const group = svgElement("g", {
+      class: playerHere ? "map-node map-node--player" : "map-node",
+      transform: `translate(${x}, ${y})`,
+    });
+    group.append(
+      svgElement("circle", { r: 20, class: "map-node-circle" }),
+      svgElement("text", { y: 40, class: "map-label", "text-anchor": "middle" }),
+    );
+    if (playerHere) {
+      group.append(svgElement("circle", { r: 27, class: "map-node-ring" }));
+    }
+    const label = group.querySelector("text");
+    if (label !== null) label.textContent = location.name;
+
+    const kinds = Object.entries(location.entity_kinds).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+    let glyphX = -((kinds.length - 1) * 16) / 2;
+    for (const [kind, count] of kinds) {
+      const glyph = svgElement("g", { transform: `translate(${glyphX}, 60)` });
+      const color = KIND_COLORS[kind] ?? "#94a3b8";
+      if (kind === "character") {
+        glyph.append(svgElement("circle", { r: 5, fill: color }));
+      } else if (kind === "item") {
+        glyph.append(
+          svgElement("rect", { x: -4, y: -4, width: 8, height: 8, fill: color, transform: "rotate(45)" }),
+        );
+      } else {
+        glyph.append(
+          svgElement("polygon", { points: "0,-5 5,4 -5,4", fill: color }),
+        );
+      }
+      glyph.append(
+        svgElement("text", { y: 4, class: "map-count", "text-anchor": "middle" }),
+      );
+      const countText = glyph.querySelector("text");
+      if (countText !== null) countText.textContent = String(count);
+      group.append(glyph);
+      glyphX += 16;
+    }
+
+    svg.append(group);
+  }
+
+  panel.append(svg);
+  return panel;
 }
 
 function renderState(state: WorldState): void {
@@ -236,7 +377,7 @@ function renderState(state: WorldState): void {
 
   const layout = element("div", "content-grid");
   layout.append(locationPanel, eventsPanel);
-  worldView.replaceChildren(layout);
+  worldView.replaceChildren(renderMap(state), layout);
 }
 
 function setError(message: string | null): void {

@@ -14,6 +14,7 @@ from backend.app.read_models import (
     LocationRead,
     PlayerRead,
     WorldEventRead,
+    WorldMapRead,
     WorldRead,
 )
 from backend.persistence.migrations import (
@@ -35,6 +36,7 @@ from backend.world.queries import (
     get_entity,
     get_location,
     get_player,
+    get_world_map,
     list_recent_events,
     list_worlds,
 )
@@ -92,6 +94,15 @@ def create_app(
             return PlayerRead.model_validate(get_player(get_database_path(), world_id))
         except PlayerNotFound as error:
             raise HTTPException(status_code=404, detail="player not found") from error
+
+    @application.get("/api/worlds/{world_id}/map", tags=["world reads"])
+    def world_map(world_id: str) -> WorldMapRead:
+        try:
+            return WorldMapRead.model_validate(
+                get_world_map(get_database_path(), world_id=world_id)
+            )
+        except WorldNotFound as error:
+            raise HTTPException(status_code=404, detail="world not found") from error
 
     @application.get("/api/worlds/{world_id}/locations/current", tags=["world reads"])
     def current_location(world_id: str) -> LocationRead:

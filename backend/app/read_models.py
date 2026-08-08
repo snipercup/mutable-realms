@@ -67,6 +67,20 @@ class WorldEventRead(StrictReadModel):
     occurred_at: str
 
 
+class WorldMapLocationRead(StrictReadModel):
+    id: str
+    name: str
+    description: str | None
+    entity_kinds: dict[str, int]
+    linked_location_ids: list[str]
+
+
+class WorldMapRead(StrictReadModel):
+    world: WorldRead
+    player_location_id: str | None
+    locations: list[WorldMapLocationRead]
+
+
 class HealthRead(StrictReadModel):
     status: str
     database: str

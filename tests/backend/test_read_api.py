@@ -8,6 +8,7 @@ from httpx import ASGITransport, AsyncClient
 
 from backend.app.main import create_app
 from backend.persistence.migrations import migrate_database
+from backend.scenarios.town.seed import TOWN_WORLD_ID, seed_town_world
 from backend.scenarios.ward.mutations import treat_and_discharge_patient
 from backend.scenarios.ward.seed import WARD_WORLD_ID, seed_ward_world
 from tests.backend.general_world import GENERAL_WORLD_ID, seed_general_world
@@ -35,6 +36,43 @@ async def _get_text(app: Any, path: str) -> tuple[int, str]:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.get(path)
     return response.status_code, response.text
+
+
+def test_read_api_exposes_world_map_with_links_and_entity_kinds(tmp_path: Path) -> None:
+    database_path = tmp_path / "world.sqlite3"
+    migrate_database(database_path)
+    seed_town_world(database_path)
+    app = create_app(database_path)
+
+    status, world_map = asyncio.run(_get(app, f"/api/worlds/{TOWN_WORLD_ID}/map"))
+
+    assert status == 200
+    assert world_map["world"]["id"] == TOWN_WORLD_ID
+    assert world_map["player_location_id"] == "plaza"
+    by_id = {loc["id"]: loc for loc in world_map["locations"]}
+    assert set(by_id) == {"plaza", "market", "tavern", "docks"}
+    assert by_id["plaza"]["linked_location_ids"] == ["market", "tavern"]
+    assert by_id["market"]["linked_location_ids"] == ["docks", "plaza"]
+    assert by_id["plaza"]["entity_kinds"] == {"character": 1}
+    assert by_id["market"]["entity_kinds"] == {"character": 1, "item": 1}
+
+
+def test_read_api_map_renders_world_without_links(tmp_path: Path) -> None:
+    app, _ = _seeded_app(tmp_path)
+
+    status, world_map = asyncio.run(_get(app, f"/api/worlds/{GENERAL_WORLD_ID}/map"))
+
+    assert status == 200
+    assert world_map["player_location_id"] == "ocean-farm"
+    assert all(loc["linked_location_ids"] == [] for loc in world_map["locations"])
+
+
+def test_read_api_map_reports_missing_world(tmp_path: Path) -> None:
+    app, _ = _seeded_app(tmp_path)
+
+    status, _ = asyncio.run(_get(app, "/api/worlds/no-such-world/map"))
+
+    assert status == 404
 
 
 def test_read_api_exposes_player_current_location_and_entity(tmp_path: Path) -> None:

@@ -123,3 +123,12 @@ h1, h2, h3, p { margin: 0; }
   .entity-grid { grid-template-columns: 1fr; }
   .revision-block { border-left: 0; padding-left: 0; text-align: left; }
 }
+
+.map-panel { padding: 22px; }
+.map-svg { display: block; width: 100%; height: auto; max-width: 520px; margin: 0 auto; }
+.map-edge { stroke: #3a4a63; stroke-width: 2; }
+.map-node-circle { fill: #1b2740; stroke: #5a6f94; stroke-width: 2; }
+.map-node--player .map-node-circle { fill: #173a33; stroke: var(--accent); }
+.map-node-ring { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 4 3; }
+.map-label { fill: #dbe6f5; font-size: 12px; font-weight: 600; }
+.map-count { fill: #e2e8f0; font-size: 10px; font-weight: 700; }

@@ -201,3 +201,70 @@ def list_recent_events(
         }
         for row in rows
     ]
+
+
+def get_world_map(database_path: str | Path, *, world_id: str) -> dict[str, Any]:
+    """Return the derived map read model for one world on one snapshot."""
+    with connect_readonly_database(database_path) as connection:
+        world = connection.execute(
+            "SELECT id, name, revision FROM worlds WHERE id = ?", (world_id,)
+        ).fetchone()
+        if world is None:
+            raise WorldNotFound(f"World {world_id!r} was not found")
+        location_rows = connection.execute(
+            "SELECT id, name, description FROM locations WHERE world_id = ? ORDER BY name, id",
+            (world_id,),
+        ).fetchall()
+        link_rows = connection.execute(
+            "SELECT location_a, location_b FROM location_links "
+            "WHERE world_id = ? ORDER BY location_a, location_b",
+            (world_id,),
+        ).fetchall()
+        count_rows = connection.execute(
+            """
+            SELECT el.location_id, e.kind, COUNT(*) AS count
+            FROM entity_locations el
+            JOIN entities e ON e.id = el.entity_id
+            WHERE e.world_id = ? AND el.location_id IS NOT NULL
+            GROUP BY el.location_id, e.kind
+            ORDER BY el.location_id, e.kind
+            """,
+            (world_id,),
+        ).fetchall()
+        player = connection.execute(
+            """
+            SELECT c.entity_id, el.location_id
+            FROM characters c
+            JOIN entities e ON e.id = c.entity_id
+            LEFT JOIN entity_locations el ON el.entity_id = c.entity_id
+            WHERE e.world_id = ? AND c.role = 'player'
+            ORDER BY c.entity_id
+            LIMIT 1
+            """,
+            (world_id,),
+        ).fetchone()
+
+    linked_by_location: dict[str, list[str]] = {}
+    for row in link_rows:
+        first, second = row["location_a"], row["location_b"]
+        linked_by_location.setdefault(first, []).append(second)
+        linked_by_location.setdefault(second, []).append(first)
+
+    counts_by_location: dict[str, dict[str, int]] = {}
+    for row in count_rows:
+        counts_by_location.setdefault(row["location_id"], {})[row["kind"]] = row["count"]
+
+    return {
+        "world": dict(world),
+        "player_location_id": player["location_id"] if player is not None else None,
+        "locations": [
+            {
+                "id": location["id"],
+                "name": location["name"],
+                "description": location["description"],
+                "entity_kinds": counts_by_location.get(location["id"], {}),
+                "linked_location_ids": sorted(linked_by_location.get(location["id"], [])),
+            }
+            for location in location_rows
+        ],
+    }

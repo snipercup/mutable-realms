@@ -312,6 +312,7 @@ The initial read-only world API is documented interactively at `GET /docs` and i
 | --- | --- |
 | `GET /api/worlds` | List available worlds for selection. |
 | `GET /api/worlds/{world_id}/player` | Read the world's current player and placement. |
+| `GET /api/worlds/{world_id}/map` | Read the derived map: every location with entity-kind counts and linked locations, plus the player's current location. |
 | `GET /api/worlds/{world_id}/locations/current` | Read the current player's location and generic entity contents. |
 | `GET /api/worlds/{world_id}/locations/{location_id}` | Read a specific location and its current contents. |
 | `GET /api/worlds/{world_id}/entities/{entity_id}` | Read generic entity details and optional character state. |
