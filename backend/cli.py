@@ -38,6 +38,7 @@ from backend.world.worlds import (
     remove_world,
     set_world_element,
     update_world,
+    world_provision_player,
 )
 
 _COMMANDS = (
@@ -56,6 +57,7 @@ _COMMANDS = (
     "update-world",
     "set-world-element",
     "remove-world",
+    "provision-player",
 )
 
 
@@ -136,6 +138,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--description")
     parser.add_argument("--element-type")
     parser.add_argument("--content")
+    parser.add_argument("--player-name")
+    parser.add_argument("--location-name")
     args = parser.parse_args(argv)
 
     try:
@@ -396,6 +400,28 @@ def main(argv: Sequence[str] | None = None) -> int:
                 world_id=args.world_id,
                 operation_id=args.operation_id,
                 expected_revision=args.expected_revision,
+            )
+            print(json.dumps(result, sort_keys=True))
+            return 0
+
+        if args.command == "provision-player":
+            required = {
+                "--world-id": args.world_id,
+                "--operation-id": args.operation_id,
+                "--expected-revision": args.expected_revision,
+                "--player-name": args.player_name,
+                "--location-name": args.location_name,
+            }
+            missing = [name for name, value in required.items() if value is None]
+            if missing:
+                raise ValueError("provision-player requires " + ", ".join(missing))
+            result = world_provision_player(
+                database_path,
+                world_id=args.world_id,
+                operation_id=args.operation_id,
+                expected_revision=args.expected_revision,
+                player_name=args.player_name,
+                location_name=args.location_name,
             )
             print(json.dumps(result, sort_keys=True))
             return 0

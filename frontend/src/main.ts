@@ -27,6 +27,14 @@ type ScenarioDetail = Scenario & {
 
 type WorldDetail = World & {
   elements: ScenarioElement[];
+  player: PlayerSummary | null;
+};
+
+type PlayerSummary = {
+  id: string;
+  name: string;
+  location_id: string | null;
+  location_name: string | null;
 };
 
 type Player = {
@@ -261,6 +269,27 @@ root.innerHTML = `
             <button class="manage-button" data-world-element-save="opening_scene" type="button">Save</button>
           </label>
         </div>
+        <div class="scenario-elements">
+          <span class="eyebrow">Player</span>
+          <div id="world-player-info"></div>
+          <form class="manage-form" id="world-player-form">
+            <input
+              class="manage-input"
+              id="world-player-name"
+              placeholder="Player name (e.g. fate)"
+              aria-label="Player name"
+              required
+            />
+            <input
+              class="manage-input"
+              id="world-player-location"
+              placeholder="Starting location (e.g. Settlement)"
+              aria-label="Starting location"
+              required
+            />
+            <button class="manage-button" id="world-player-submit" type="submit">Provision player</button>
+          </form>
+        </div>
         <button class="manage-button manage-button--danger" id="world-delete" type="button">Delete world</button>
       </div>
     </section>
@@ -306,6 +335,10 @@ const worldEditDescription = requireElement<HTMLTextAreaElement>("#world-edit-de
 const worldEditSave = requireElement<HTMLButtonElement>("#world-edit-save");
 const worldEditorClose = requireElement<HTMLButtonElement>("#world-editor-close");
 const worldDelete = requireElement<HTMLButtonElement>("#world-delete");
+const worldPlayerInfo = requireElement<HTMLDivElement>("#world-player-info");
+const worldPlayerForm = requireElement<HTMLFormElement>("#world-player-form");
+const worldPlayerName = requireElement<HTMLInputElement>("#world-player-name");
+const worldPlayerLocation = requireElement<HTMLInputElement>("#world-player-location");
 
 let worlds: World[] = [];
 let selectedWorldId: string | null = null;
@@ -656,12 +689,37 @@ async function refresh(forceWorlds = false): Promise<void> {
     lastUpdated = new Date();
     updateFreshness();
   } catch (error) {
-    setError(error instanceof Error ? error.message : "Unable to read world state");
+    currentPlayerId = null;
+    const message = error instanceof Error ? error.message : "Unable to read world state";
+    if (message.includes("player not found")) {
+      renderWorldViewEmpty(
+        "This world has no player yet.",
+        "Provision a player and a starting location from the Manage view to make it playable.",
+      );
+      setError(null);
+    } else if (message.includes("location not found")) {
+      renderWorldViewEmpty(
+        "This world is not ready to play yet.",
+        "Provision a player and a starting location from the Manage view.",
+      );
+      setError(null);
+    } else {
+      setError(message);
+    }
   } finally {
     loading = false;
     refreshButton.disabled = false;
     worldSelect.disabled = worlds.length === 0;
   }
+}
+
+function renderWorldViewEmpty(message: string, hint: string): void {
+  worldView.replaceChildren();
+  const panel = element("section", "panel world-empty");
+  panel.append(element("span", "eyebrow", "Derived from world state"));
+  panel.append(element("h2", "section-title", message));
+  panel.append(element("p", "world-empty-hint", hint));
+  worldView.append(panel);
 }
 
 async function runPlayerAction(action: string): Promise<void> {
@@ -996,8 +1054,32 @@ async function loadWorldDetail(worldId: string): Promise<void> {
     for (const elementType of ["author_note", "plot_essentials", "opening_scene"]) {
       worldElementTextarea(elementType).value = byType.get(elementType) ?? "";
     }
+    renderWorldPlayer(detail);
   } catch (error) {
     setError(error instanceof Error ? error.message : "Unable to load world");
+  }
+}
+
+function renderWorldPlayer(detail: WorldDetail): void {
+  worldPlayerInfo.replaceChildren();
+  if (detail.player !== null) {
+    worldPlayerForm.hidden = true;
+    worldPlayerInfo.append(
+      element(
+        "p",
+        "manage-description",
+        `Player: ${detail.player.name} at ${detail.player.location_name ?? "an unknown location"}`,
+      ),
+    );
+  } else {
+    worldPlayerForm.hidden = false;
+    worldPlayerInfo.append(
+      element(
+        "p",
+        "manage-description",
+        "This world has no player yet — provision one to make it playable.",
+      ),
+    );
   }
 }
 
@@ -1121,6 +1203,43 @@ for (const button of root?.querySelectorAll<HTMLButtonElement>("[data-world-elem
     button.addEventListener("click", () => void saveWorldElement(elementType));
   }
 }
+
+async function provisionPlayer(): Promise<void> {
+  if (editingWorldId === null || manageBusy) return;
+  const playerName = worldPlayerName.value.trim();
+  const locationName = worldPlayerLocation.value.trim();
+  if (playerName === "" || locationName === "") {
+    setError("Player name and starting location are required");
+    return;
+  }
+  setError(null);
+  manageBusy = true;
+  try {
+    const response = await requestJson<{ world_revision: number }>(
+      "POST",
+      `/api/worlds/${encodeURIComponent(editingWorldId)}/player`,
+      {
+        player_name: playerName,
+        location_name: locationName,
+        operation_id: crypto.randomUUID(),
+        expected_revision: editingWorldRevision,
+      },
+    );
+    editingWorldRevision = response.world_revision;
+    worldPlayerName.value = "";
+    worldPlayerLocation.value = "";
+    await Promise.all([loadManage(), loadWorldDetail(editingWorldId)]);
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to provision player");
+  } finally {
+    manageBusy = false;
+  }
+}
+
+worldPlayerForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void provisionPlayer();
+});
 
 viewPlayButton.addEventListener("click", () => setViewMode("play"));
 viewManageButton.addEventListener("click", () => setViewMode("manage"));

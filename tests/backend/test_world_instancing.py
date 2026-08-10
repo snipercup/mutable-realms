@@ -28,6 +28,7 @@ from backend.world.worlds import (
     remove_world,
     set_world_element,
     update_world,
+    world_provision_player,
 )
 
 
@@ -437,6 +438,211 @@ def test_world_api_detail_endpoint(tmp_path: Path) -> None:
     assert body["elements"][0]["element_type"] == "author_note"
 
     status, _ = asyncio.run(_request(app, "GET", "/api/worlds/missing"))
+    assert status == 404
+
+
+# --- player provisioning ---------------------------------------------------
+
+
+def _world_without_player(database_path: Path, world_id: str = "campaign-1") -> None:
+    _scenario(database_path)
+    _instance(database_path, world_id=world_id)
+
+
+def test_provision_player_creates_player_and_starting_location(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path)
+    _world_without_player(database_path)
+
+    result = world_provision_player(
+        database_path,
+        world_id="campaign-1",
+        operation_id="provision-1",
+        expected_revision=1,
+        player_name="fate",
+        location_name="Settlement",
+    )
+
+    assert result["world_revision"] == 2
+    assert result["player_id"] == "campaign-1-player"
+    assert result["location_id"] == "campaign-1-start"
+    with connect_database(database_path) as connection:
+        player = connection.execute(
+            "SELECT e.name, c.role FROM entities e "
+            "JOIN characters c ON c.entity_id = e.id "
+            "WHERE e.id = 'campaign-1-player'"
+        ).fetchone()
+        assert dict(player) == {"name": "fate", "role": "player"}
+        placement = connection.execute(
+            "SELECT location_id FROM entity_locations "
+            "WHERE entity_id = 'campaign-1-player'"
+        ).fetchone()
+        assert dict(placement)["location_id"] == "campaign-1-start"
+        event = connection.execute(
+            "SELECT event_type, world_revision FROM events "
+            "WHERE world_id = 'campaign-1' AND event_type = 'player_provisioned'"
+        ).fetchone()
+        assert dict(event)["world_revision"] == 2
+    # the world now reads as playable: player visible in detail, context builds
+    detail = read_world(database_path, "campaign-1")
+    assert detail["player"]["name"] == "fate"
+    assert detail["player"]["location_name"] == "Settlement"
+    context = build_world_context(database_path, world_id="campaign-1")
+    assert context.player.id == "campaign-1-player"
+    assert validate_worlds(database_path) == []
+
+
+def test_provision_player_conflicts_and_validates(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _world_without_player(database_path)
+
+    world_provision_player(
+        database_path,
+        world_id="campaign-1",
+        operation_id="provision-2",
+        expected_revision=1,
+        player_name="fate",
+        location_name="Settlement",
+    )
+    with pytest.raises(WorldAdminConflict, match="already has a player"):
+        world_provision_player(
+            database_path,
+            world_id="campaign-1",
+            operation_id="provision-3",
+            expected_revision=2,
+            player_name="fate",
+            location_name="Settlement",
+        )
+    with pytest.raises(WorldAdminConflict, match="expected world revision"):
+        world_provision_player(
+            database_path,
+            world_id="campaign-1",
+            operation_id="provision-4",
+            expected_revision=1,
+            player_name="other",
+            location_name="Settlement",
+        )
+    with pytest.raises(WorldAdminConflict, match="player name must not be blank"):
+        world_provision_player(
+            database_path,
+            world_id="campaign-1",
+            operation_id="provision-5",
+            expected_revision=2,
+            player_name="   ",
+            location_name="Settlement",
+        )
+    with pytest.raises(WorldAdminNotFound):
+        world_provision_player(
+            database_path,
+            world_id="missing",
+            operation_id="provision-6",
+            expected_revision=0,
+            player_name="fate",
+            location_name="Settlement",
+        )
+
+
+def test_provision_player_replays_exact_request(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _world_without_player(database_path)
+
+    first = world_provision_player(
+        database_path,
+        world_id="campaign-1",
+        operation_id="provision-7",
+        expected_revision=1,
+        player_name="fate",
+        location_name="Settlement",
+    )
+    second = world_provision_player(
+        database_path,
+        world_id="campaign-1",
+        operation_id="provision-7",
+        expected_revision=1,
+        player_name="fate",
+        location_name="Settlement",
+    )
+    assert first["already_applied"] is False
+    assert second["already_applied"] is True
+    with connect_database(database_path) as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) AS count FROM entities WHERE world_id = 'campaign-1'"
+        ).fetchone()["count"]
+    assert count == 1
+
+
+def test_provision_player_reuses_name_across_worlds(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _world_without_player(database_path, world_id="campaign-1")
+    _instance(database_path, world_id="campaign-2", operation_id="world-instance-2")
+
+    world_provision_player(
+        database_path,
+        world_id="campaign-1",
+        operation_id="provision-8",
+        expected_revision=1,
+        player_name="fate",
+        location_name="Settlement",
+    )
+    world_provision_player(
+        database_path,
+        world_id="campaign-2",
+        operation_id="provision-9",
+        expected_revision=1,
+        player_name="fate",
+        location_name="Camp",
+    )
+    with connect_database(database_path) as connection:
+        players = connection.execute(
+            "SELECT e.world_id, e.name FROM entities e "
+            "JOIN characters c ON c.entity_id = e.id "
+            "WHERE c.role = 'player' ORDER BY e.world_id"
+        ).fetchall()
+    assert [dict(row) for row in players] == [
+        {"name": "fate", "world_id": "campaign-1"},
+        {"name": "fate", "world_id": "campaign-2"},
+    ]
+
+
+def test_cli_and_api_provision_player(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    database_path = _database(tmp_path)
+    db_args = ["--db-path", str(database_path)]
+    assert main([*db_args, "create-scenario", "--scenario-id", "aerthalon",
+                 "--operation-id", "op-1", "--title", "Aerthalon"]) == 0
+    capsys.readouterr()
+    assert main([*db_args, "create-world-from-scenario", "--world-id", "campaign-1",
+                 "--operation-id", "op-2", "--scenario-id", "aerthalon"]) == 0
+    capsys.readouterr()
+
+    assert main([*db_args, "provision-player", "--world-id", "campaign-1",
+                 "--operation-id", "op-3", "--expected-revision", "1",
+                 "--player-name", "fate", "--location-name", "Settlement"]) == 0
+    captured = capsys.readouterr()
+    assert '"world_revision": 2' in captured.out
+    assert "campaign-1-player" in captured.out
+
+    assert main([*db_args, "provision-player", "--world-id", "campaign-1",
+                 "--operation-id", "op-4", "--expected-revision", "2",
+                 "--player-name", "fate", "--location-name", "Settlement"]) == 2
+    captured = capsys.readouterr()
+    assert "already has a player" in captured.err
+
+    app = create_app(database_path)
+    status, body = asyncio.run(
+        _request(
+            app,
+            "POST",
+            "/api/worlds/campaign-2/player",
+            json={
+                "player_name": "fate",
+                "location_name": "Camp",
+                "operation_id": "api-provision-1",
+                "expected_revision": 0,
+            },
+        )
+    )
+    # campaign-2 does not exist yet; create it first
     assert status == 404
 
 

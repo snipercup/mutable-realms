@@ -103,6 +103,13 @@ npm run remove-world -- --world-id aerthalon-campaign --operation-id op-8 \
   --expected-revision 3
 ```
 
+A world instanced from a scenario has no player or locations until provisioned. Create a player (any name — the same name, e.g. `fate`, works in any world) and a starting location:
+
+```sh
+npm run provision-player -- --world-id aerthalon-campaign --operation-id op-9 \
+  --expected-revision 3 --player-name fate --location-name Settlement
+```
+
 Removal cascades every child table (locations, entities, elements, operations, events); the world's history is removed with it. World edits never touch the instancing scenario.
 
 ## HTTP API
@@ -121,8 +128,9 @@ Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup ap
 | Route | Purpose |
 | --- | --- |
 | `GET /api/worlds` | List worlds (including description and source scenario). |
-| `GET /api/worlds/{world_id}` | One world with its owned story elements. |
+| `GET /api/worlds/{world_id}` | One world with its owned story elements and player summary. |
 | `GET /api/worlds/{world_id}/player` | Current player and placement. |
+| `POST /api/worlds/{world_id}/player` | Provision a player + starting location (body `{player_name, location_name, operation_id, expected_revision}`). |
 | `GET /api/worlds/{world_id}/map` | Derived map: every location with entity-kind counts and linked locations, plus the player's location. |
 | `GET /api/worlds/{world_id}/locations/current` | Player's current location and generic contents. |
 | `GET /api/worlds/{world_id}/locations/{location_id}` | One location and its contents. |

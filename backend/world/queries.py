@@ -58,7 +58,20 @@ def read_world(database_path: str | Path, world_id: str) -> dict[str, Any]:
             "WHERE we.world_id = ? ORDER BY we.element_type",
             (world_id,),
         ).fetchall()
-    return {**dict(world), "elements": [dict(row) for row in elements]}
+        player = connection.execute(
+            "SELECT e.id, e.name, el.location_id, loc.name AS location_name "
+            "FROM entities e "
+            "JOIN characters c ON c.entity_id = e.id "
+            "LEFT JOIN entity_locations el ON el.entity_id = e.id "
+            "LEFT JOIN locations loc ON loc.id = el.location_id "
+            "WHERE e.world_id = ? AND c.role = 'player' ORDER BY e.id LIMIT 1",
+            (world_id,),
+        ).fetchone()
+    return {
+        **dict(world),
+        "elements": [dict(row) for row in elements],
+        "player": dict(player) if player is not None else None,
+    }
 
 
 def get_player(

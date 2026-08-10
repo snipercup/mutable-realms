@@ -23,8 +23,16 @@ class WorldElementRead(StrictReadModel):
     updated_at: str
 
 
+class PlayerSummaryRead(StrictReadModel):
+    id: str
+    name: str
+    location_id: str | None = None
+    location_name: str | None = None
+
+
 class WorldDetailRead(WorldRead):
     elements: list[WorldElementRead] = Field(default_factory=list)
+    player: PlayerSummaryRead | None = None
 
 
 class PlayerRead(StrictReadModel):
@@ -188,3 +196,10 @@ class WorldMutationResponse(StrictReadModel):
     already_applied: bool
     world_id: str
     world_revision: int = Field(ge=1)
+
+
+class WorldProvisionRequest(StrictReadModel):
+    player_name: str = Field(min_length=1)
+    location_name: str = Field(min_length=1)
+    operation_id: str
+    expected_revision: int = Field(ge=0)

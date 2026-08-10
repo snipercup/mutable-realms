@@ -21,6 +21,7 @@
     "update-world": "uv run python -m backend.cli update-world",
     "set-world-element": "uv run python -m backend.cli set-world-element",
     "remove-world": "uv run python -m backend.cli remove-world",
+    "provision-player": "uv run python -m backend.cli provision-player",
     "world-tools": "uv run python -m backend.world.mcp_server",
     "serve": "uv run uvicorn backend.app.main:app --host 0.0.0.0 --port ${MUTABLE_REALMS_PORT:-8790} --workers 1",
     "frontend-check": "tsc --noEmit",

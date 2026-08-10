@@ -29,6 +29,7 @@ _WORLD_ID_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 _WORLD_CREATED_EVENT = "world_created"
 _WORLD_UPDATED_EVENT = "world_updated"
 _WORLD_ELEMENT_UPDATED_EVENT = "world_element_updated"
+_PLAYER_PROVISIONED_EVENT = "player_provisioned"
 _MAX_ELEMENT_LENGTH = 20_000
 
 
@@ -467,6 +468,102 @@ def remove_world(
                 "world_revision": expected_revision,
                 "removed": True,
             }
+        except WorldAdminError:
+            connection.rollback()
+            raise
+        except sqlite3.Error:
+            connection.rollback()
+            raise
+
+
+def world_provision_player(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    player_name: str,
+    location_name: str,
+) -> dict[str, Any]:
+    """Provision a world for play: create a player and a starting location.
+
+    A world instanced from a scenario has no entities or locations, so it is
+    not playable until provisioned. This operation creates a starting location
+    (``{world_id}-start``) and a player character (``{world_id}-player`` with
+    role ``player``) placed there, atomically with a ``player_provisioned``
+    event. The player name is per-world: the same name (for example ``fate``)
+    can be used in any number of worlds, each with its own entity.
+    """
+    _validate_world_id(world_id)
+    _validate_operation_id(operation_id)
+    trimmed_player = player_name.strip()
+    trimmed_location = location_name.strip()
+    if not trimmed_player:
+        raise WorldAdminConflict("player name must not be blank")
+    if not trimmed_location:
+        raise WorldAdminConflict("location name must not be blank")
+    request = {"location_name": trimmed_location, "player_name": trimmed_player}
+    request_json = json.dumps(request, sort_keys=True, separators=(",", ":"))
+
+    with connect_database(database_path) as connection:
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            replay = _replay_or_conflict(
+                connection,
+                world_id=world_id,
+                operation_id=operation_id,
+                operation_type=_PLAYER_PROVISIONED_EVENT,
+                request_json=request_json,
+            )
+            if replay is not None:
+                connection.rollback()
+                return replay
+            world = _require_world(connection, world_id)
+            _check_revision(world, expected_revision)
+            existing = connection.execute(
+                "SELECT e.id FROM entities e "
+                "JOIN characters c ON c.entity_id = e.id "
+                "WHERE e.world_id = ? AND c.role = 'player' LIMIT 1",
+                (world_id,),
+            ).fetchone()
+            if existing is not None:
+                raise WorldAdminConflict(f"world already has a player: {existing['id']}")
+            player_entity_id = f"{world_id}-player"
+            location_id = f"{world_id}-start"
+            connection.execute(
+                "INSERT INTO locations (id, world_id, name, description) "
+                "VALUES (?, ?, ?, '')",
+                (location_id, world_id, trimmed_location),
+            )
+            connection.execute(
+                "INSERT INTO entities (id, world_id, kind, name) "
+                "VALUES (?, ?, 'character', ?)",
+                (player_entity_id, world_id, trimmed_player),
+            )
+            connection.execute(
+                "INSERT INTO characters (entity_id, role, condition, disposition) "
+                "VALUES (?, 'player', NULL, 'active')",
+                (player_entity_id,),
+            )
+            connection.execute(
+                "INSERT INTO entity_locations (entity_id, location_id) VALUES (?, ?)",
+                (player_entity_id, location_id),
+            )
+            result = _commit_world_mutation(
+                connection,
+                world_id=world_id,
+                operation_id=operation_id,
+                operation_type=_PLAYER_PROVISIONED_EVENT,
+                request_json=request_json,
+                event_identifier=event_id(world_id, operation_id),
+                summary=f"player {trimmed_player} provisioned at {trimmed_location}",
+                payload={"location_id": location_id, "player_id": player_entity_id},
+                expected_revision=expected_revision,
+            )
+            connection.commit()
+            result["location_id"] = location_id
+            result["player_id"] = player_entity_id
+            return result
         except WorldAdminError:
             connection.rollback()
             raise

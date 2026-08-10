@@ -30,6 +30,7 @@ from backend.app.read_models import (
     WorldEventRead,
     WorldMapRead,
     WorldMutationResponse,
+    WorldProvisionRequest,
     WorldRead,
     WorldUpdateRequest,
 )
@@ -76,6 +77,7 @@ from backend.world.worlds import (
     remove_world,
     set_world_element,
     update_world,
+    world_provision_player,
 )
 
 DEFAULT_FRONTEND_PATH = Path(__file__).resolve().parents[2] / "frontend" / "dist"
@@ -234,6 +236,27 @@ def create_app(
             return PlayerRead.model_validate(get_player(get_database_path(), world_id))
         except PlayerNotFound as error:
             raise HTTPException(status_code=404, detail="player not found") from error
+
+    @application.post("/api/worlds/{world_id}/player", tags=["world administration"])
+    def provision_player(world_id: str, request: WorldProvisionRequest) -> WorldMutationResponse:
+        try:
+            result = world_provision_player(
+                get_database_path(),
+                world_id=world_id,
+                operation_id=request.operation_id,
+                expected_revision=request.expected_revision,
+                player_name=request.player_name,
+                location_name=request.location_name,
+            )
+        except WorldAdminNotFound as error:
+            raise HTTPException(status_code=404, detail="world not found") from error
+        except WorldAdminConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return WorldMutationResponse(
+            already_applied=result["already_applied"],
+            world_id=result["world_id"],
+            world_revision=result["world_revision"],
+        )
 
     @application.get("/api/worlds/{world_id}/map", tags=["world reads"])
     def world_map(world_id: str) -> WorldMapRead:
