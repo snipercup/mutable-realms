@@ -4,27 +4,23 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Make instanced worlds playable — player provisioning — complete (2026-08-10)
+### World-scale worlds: world-aware narration, nested locations, thematic maps — scoped
 
-**Goal:** a world instanced from a scenario is not playable — it has no player and no locations, so selecting it in the play view shows `player not found` and keeps the previous world's view. Give the player a way to provision a starting state: create a player character with any name (e.g. `fate` — the same name works in any world; each world gets its own entity) and a starting location in a world that lacks them, then play there.
+**Goal:** make worlds bigger than one town actually playable and narratable. Three linked problems surfaced by the user's Virellea experiment: (1) the narration agent is hard-bound to one world (town-world/sailor) through its profile's MCP env, so it reads and narrates the *wrong world* whenever the page selects another — Fate-at-Elaris turns described Harbor Town, and the world's opening scene never reached the agent; (2) locations are a flat list + links, so a kingdom (regions → cities → districts → streets → buildings) cannot be represented; (3) the map is plain nodes+edges, not an artistic scoped view.
 
-**Scope:**
-- backend: atomic, revision-checked, idempotent `world_provision_player` — creates a starting location (`{world_id}-start`) + player character (`{world_id}-player`, role `player`) + placement + `player_provisioned` event; conflict if the world already has a player;
-- reads: `GET /api/worlds/{world_id}` gains the world's player summary (id, name, location);
-- CLI `provision-player` + HTTP `POST /api/worlds/{world_id}/player`;
-- manage page: world editor shows the existing player or a create form (player name + starting location name);
-- play view: a world without a player shows a clear empty state (with a hint to use Manage) instead of the error banner + stale view; the action form is unusable until a player exists;
-- administration only — not exposed through the turn policy or narration agent.
+**Scope (sequenced steps):**
+1. **World-aware narration** — the turn relay embeds the selected world's context (including story elements / opening scene) into the narration prompt; MCP tools (`world_status`, `world_context`, mutations) accept explicit `world_id`/`player_id` with the profile env as defaults, so the existing profile keeps working and the page's selected world is what the agent reads and mutates. Per-turn player-binding validation in `run_turn` already guards wrong-world mutations.
+2. **Narrator-driven world start** — a playerless world's Play view becomes "Begin your story": the player enters their character name, and a provisioning turn relays the selected world's context + player name to the narrator with a structured contract — read the world, choose the starting location (name + short description) from the opening scene, call the provisioning tool, then narrate the opening there. Requires extending `world_provision_player` with an optional location description and exposing it as one agent tool. Deliberate design change: starting *your own* character is player-scoped, not admin — the Manage-page form stays for advanced use; the op remains atomic, idempotent, no-double-provision.
+3. **Nested locations** — `locations.parent_id` (nullable self-FK) + `kind` (region/city/district/street/building, default building); a location-administration op (create location with optional parent, kind, and links); containment navigation (enter child, leave to parent, traverse links); breadcrumbs in `world_context`; map data scoped to the player's current container (children + links + adjacent containers) so a rendered map stays small; backward compatible — existing worlds are one root scope with no parents. After this lands, the narrator-driven start can grow a small hierarchy (city → district → hall).
+4. **Thematic per-scope maps** — derived, deterministic SVG per scope: containers as soft region shapes, buildings as house glyphs, streets as paths; stable seeded auto-layout; the map remains a view, never authoritative.
 
-**Out of scope:** multiple players per world; moving/renaming players later; provisioning beyond one starting location; scenario-level player templates.
+**Out of scope:** *procedural* kingdom-wide generation (many locations authored by code rather than by the narrator — a separate future idea); hand-authored map coordinates; cross-world travel; a live world-switching UI for the narration profile.
 
-**Verification:** op round-trips (provision → `world_context` shows the player at the starting location; the play view renders; a narrated turn works), double-provision and stale-revision conflicts, idempotent replay, CLI + HTTP, and a browser flow on a temporary world (provision from Manage → play).
+**Verification:** Step 1 — a relayed turn on a temporary world returns narration grounded in *that* world's context (opening scene referenced), mutations land in the selected world, and the profile-default binding still works. Step 2 — a playerless temporary world's begin-flow produces a player + starting location whose name/description reflect the opening scene, narration opens there, and the world is playable afterward. Step 3 — create nested locations via the op, move the player into a building, context shows breadcrumbs, the map returns the scoped subgraph, validation clean, migration compatible. Step 4 — the SVG renders per scope deterministically and reflects the nested state.
 
-**Suggested sequencing:**
-1. ✅ Backend — **complete (2026-08-10)**: `world_provision_player` in `backend/world/worlds.py` — atomic, revision-checked, exact-request idempotent; creates starting location (`{world_id}-start`) + player character (`{world_id}-player`, role `player`) + placement + `player_provisioned` event; conflict if the world already has a player; `GET /api/worlds/{world_id}` now returns the player summary; CLI `provision-player` + HTTP `POST /api/worlds/{world_id}/player` (404/409 mapping). `tests/backend/test_world_instancing.py` grew to 30 tests (5 new: provisioning round-trip incl. context build, conflicts, replay, name reuse across worlds, CLI + API). Suite 210 passed, lint clean.
-2. ✅ Manage-page player section + play-view empty state — **complete (2026-08-10)**: world editor shows "Player: name at location" once provisioned or a create form (player name + starting location) when not; the play view renders a clear empty state ("This world is not ready to play yet — provision a player…") instead of the `player not found` banner + stale previous world when the selected world has no player, and the action seam is inert until a player loads. Browser-verified reproducing the user's report on a temporary DB: playerless `world-of-earthalon` selected → empty state (no red bar, no stale map) → provisioned "fate" at "Settlement" from the Manage view (rev 1→2) → Play showed the map, Settlement, and "Entities here (1): fate" with zero JS errors.
+**Suggested sequencing:** 1 (world-aware narration) → 2 (narrator-driven world start) → 3 (nested locations) → 4 (thematic maps).
 
-**Commit:** suggested branch `player-provisioning` — `Add player provisioning for instanced worlds`.
+**Commit:** pending.
 
 ## Recently completed
 
@@ -32,6 +28,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 | --- | --- | --- |
 | Scenario authoring and world management (scenario CRUD + elements, world instancing, world update/elements/remove) | 2026-08-08 | on main via `scenario-authoring` · `world-instancing` · `world-management` |
 | World management interface (play ⇄ manage view, scenario/world CRUD UI, instancing, `#manage` deep link) | 2026-08-10 | on main via `world-management-interface` |
+| Player provisioning (create a player + starting location so instanced worlds are playable; play view empty state) | 2026-08-10 | on main via `player-provisioning` |
 
 ## How an idea becomes work
 
