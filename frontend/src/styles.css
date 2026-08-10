@@ -180,3 +180,42 @@ h1, h2, h3, p { margin: 0; }
 .manage-id { display: block; margin-top: 6px; color: var(--muted); font-size: .72rem; }
 .manage-description { margin-top: 8px; color: #c8d1df; font-size: .8rem; }
 .manage-meta { display: block; margin-top: 4px; color: var(--muted); font-size: .7rem; }
+
+.manage-form { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.manage-input, .manage-textarea {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--text);
+  background: var(--surface-raised);
+  font-size: .9rem;
+  font-family: inherit;
+}
+.manage-input { min-width: 160px; flex: 1 1 160px; }
+.manage-textarea { width: 100%; min-height: 90px; resize: vertical; }
+.manage-button {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 16px;
+  color: #08131f;
+  background: var(--accent);
+  font-weight: 700;
+  font-size: .85rem;
+  cursor: pointer;
+}
+.manage-button--ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+.manage-button--danger { background: #7f2d2d; color: #f3d9d9; }
+.manage-card .manage-button { margin-top: 10px; }
+.scenario-editor {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  background: var(--surface-raised);
+  margin-bottom: 18px;
+}
+.scenario-editor-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.scenario-elements { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.manage-field { display: block; margin: 10px 0; }
+.manage-field > span, .manage-field::first-line { color: var(--muted); font-size: .8rem; }
+.manage-field .manage-textarea { margin-top: 6px; }
+.manage-field .manage-button { margin-top: 6px; }

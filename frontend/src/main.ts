@@ -15,6 +15,16 @@ type Scenario = {
   created_at: string;
 };
 
+type ScenarioElement = {
+  element_type: string;
+  content: string;
+  updated_at: string;
+};
+
+type ScenarioDetail = Scenario & {
+  elements: ScenarioElement[];
+};
+
 type Player = {
   id: string;
   world_id: string;
@@ -139,7 +149,64 @@ root.innerHTML = `
     <section class="manage-view" id="manage-view" hidden aria-label="World management">
       <span class="eyebrow">World management</span>
       <h2 class="section-title">Scenarios</h2>
+      <form class="manage-form" id="scenario-create-form">
+        <input
+          class="manage-input"
+          id="scenario-create-id"
+          placeholder="scenario id (kebab-case)"
+          aria-label="Scenario id"
+          required
+        />
+        <input
+          class="manage-input"
+          id="scenario-create-title"
+          placeholder="Title"
+          aria-label="Scenario title"
+          required
+        />
+        <input
+          class="manage-input"
+          id="scenario-create-description"
+          placeholder="Description (optional)"
+          aria-label="Scenario description"
+        />
+        <button class="manage-button" type="submit">Create scenario</button>
+      </form>
       <div class="manage-grid" id="scenario-list"></div>
+      <div class="scenario-editor" id="scenario-editor" hidden>
+        <div class="scenario-editor-heading">
+          <h3 class="section-title" id="scenario-editor-name">Scenario</h3>
+          <button class="manage-button manage-button--ghost" id="scenario-editor-close" type="button">Close</button>
+        </div>
+        <label class="manage-field">
+          Title
+          <input class="manage-input" id="scenario-edit-title" />
+        </label>
+        <label class="manage-field">
+          Description
+          <textarea class="manage-textarea" id="scenario-edit-description"></textarea>
+        </label>
+        <button class="manage-button" id="scenario-edit-save" type="button">Save title &amp; description</button>
+        <div class="scenario-elements">
+          <span class="eyebrow">Story elements</span>
+          <label class="manage-field">
+            Author's note
+            <textarea class="manage-textarea" id="scenario-element-author_note"></textarea>
+            <button class="manage-button" data-element-save="author_note" type="button">Save note</button>
+          </label>
+          <label class="manage-field">
+            Plot essentials
+            <textarea class="manage-textarea" id="scenario-element-plot_essentials"></textarea>
+            <button class="manage-button" data-element-save="plot_essentials" type="button">Save</button>
+          </label>
+          <label class="manage-field">
+            Opening scene
+            <textarea class="manage-textarea" id="scenario-element-opening_scene"></textarea>
+            <button class="manage-button" data-element-save="opening_scene" type="button">Save</button>
+          </label>
+        </div>
+        <button class="manage-button manage-button--danger" id="scenario-delete" type="button">Delete scenario</button>
+      </div>
       <h2 class="section-title">Worlds</h2>
       <div class="manage-grid" id="world-list"></div>
     </section>
@@ -162,6 +229,17 @@ const viewManageButton = requireElement<HTMLButtonElement>("#view-manage");
 const manageView = requireElement<HTMLElement>("#manage-view");
 const scenarioList = requireElement<HTMLDivElement>("#scenario-list");
 const worldList = requireElement<HTMLDivElement>("#world-list");
+const scenarioCreateForm = requireElement<HTMLFormElement>("#scenario-create-form");
+const scenarioCreateId = requireElement<HTMLInputElement>("#scenario-create-id");
+const scenarioCreateTitle = requireElement<HTMLInputElement>("#scenario-create-title");
+const scenarioCreateDescription = requireElement<HTMLInputElement>("#scenario-create-description");
+const scenarioEditor = requireElement<HTMLDivElement>("#scenario-editor");
+const scenarioEditorName = requireElement<HTMLElement>("#scenario-editor-name");
+const scenarioEditTitle = requireElement<HTMLInputElement>("#scenario-edit-title");
+const scenarioEditDescription = requireElement<HTMLTextAreaElement>("#scenario-edit-description");
+const scenarioEditSave = requireElement<HTMLButtonElement>("#scenario-edit-save");
+const scenarioEditorClose = requireElement<HTMLButtonElement>("#scenario-editor-close");
+const scenarioDelete = requireElement<HTMLButtonElement>("#scenario-delete");
 
 let worlds: World[] = [];
 let selectedWorldId: string | null = null;
@@ -169,6 +247,7 @@ let currentPlayerId: string | null = null;
 let loading = false;
 let actionPending = false;
 let manageLoading = false;
+let editingScenarioId: string | null = null;
 let lastUpdated: Date | null = null;
 
 function requireElement<T extends Element>(selector: string): T {
@@ -204,6 +283,19 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+    throw new Error(payload?.detail ?? `Request failed with status ${response.status}`);
+  }
+  return (await response.json()) as T;
+}
+
+async function requestJson<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const response = await fetch(path, {
+    method,
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
@@ -561,7 +653,7 @@ function renderScenarioList(scenarios: Scenario[]): void {
   scenarioList.replaceChildren();
   if (scenarios.length === 0) {
     scenarioList.append(
-      element("p", "empty-state", "No scenarios yet. Create one from the management page."),
+      element("p", "empty-state", "No scenarios yet. Use the form above to create one."),
     );
     return;
   }
@@ -573,6 +665,10 @@ function renderScenarioList(scenarios: Scenario[]): void {
       card.append(element("p", "manage-description", scenario.description));
     }
     card.append(element("span", "manage-meta", `created ${scenario.created_at}`));
+    const editButton = element("button", "manage-button", "Edit");
+    editButton.type = "button";
+    editButton.addEventListener("click", () => void openScenarioEditor(scenario.id));
+    card.append(editButton);
     scenarioList.append(card);
   }
 }
@@ -606,6 +702,143 @@ function setViewMode(mode: "play" | "manage"): void {
   viewPlayButton.classList.toggle("is-active", playActive);
   viewManageButton.classList.toggle("is-active", !playActive);
   if (!playActive) void loadManage();
+}
+
+function elementTextarea(elementType: string): HTMLTextAreaElement {
+  const textarea = root?.querySelector<HTMLTextAreaElement>(
+    `#scenario-element-${elementType}`,
+  );
+  if (textarea === null || textarea === undefined) {
+    throw new Error(`Missing element textarea: ${elementType}`);
+  }
+  return textarea;
+}
+
+async function openScenarioEditor(scenarioId: string): Promise<void> {
+  editingScenarioId = scenarioId;
+  scenarioEditor.hidden = false;
+  scenarioEditorName.textContent = scenarioId;
+  scenarioEditTitle.value = "";
+  scenarioEditDescription.value = "";
+  for (const elementType of ["author_note", "plot_essentials", "opening_scene"]) {
+    elementTextarea(elementType).value = "";
+  }
+  setError(null);
+  await loadScenarioDetail(scenarioId);
+}
+
+async function loadScenarioDetail(scenarioId: string): Promise<void> {
+  try {
+    const detail = await fetchJson<ScenarioDetail>(`/api/scenarios/${encodeURIComponent(scenarioId)}`);
+    scenarioEditorName.textContent = detail.id;
+    scenarioEditTitle.value = detail.title;
+    scenarioEditDescription.value = detail.description ?? "";
+    const byType = new Map(detail.elements.map((element) => [element.element_type, element.content]));
+    for (const elementType of ["author_note", "plot_essentials", "opening_scene"]) {
+      elementTextarea(elementType).value = byType.get(elementType) ?? "";
+    }
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to load scenario");
+  }
+}
+
+async function saveScenarioDetails(): Promise<void> {
+  if (editingScenarioId === null) return;
+  const title = scenarioEditTitle.value.trim();
+  if (title === "") {
+    setError("Title must not be blank");
+    return;
+  }
+  setError(null);
+  try {
+    await requestJson("PATCH", `/api/scenarios/${encodeURIComponent(editingScenarioId)}`, {
+      title,
+      description: scenarioEditDescription.value.trim() || null,
+      operation_id: crypto.randomUUID(),
+    });
+    await Promise.all([loadManage(), loadScenarioDetail(editingScenarioId)]);
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to save scenario");
+  }
+}
+
+async function saveScenarioElement(elementType: string): Promise<void> {
+  if (editingScenarioId === null) return;
+  const content = elementTextarea(elementType).value;
+  setError(null);
+  try {
+    await requestJson(
+      "PUT",
+      `/api/scenarios/${encodeURIComponent(editingScenarioId)}/elements/${elementType}`,
+      { content, operation_id: crypto.randomUUID() },
+    );
+    await Promise.all([loadManage(), loadScenarioDetail(editingScenarioId)]);
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to save element");
+  }
+}
+
+function closeScenarioEditor(): void {
+  editingScenarioId = null;
+  scenarioEditor.hidden = true;
+}
+
+async function deleteScenario(): Promise<void> {
+  if (editingScenarioId === null) return;
+  const scenarioId = editingScenarioId;
+  if (!window.confirm(`Delete scenario "${scenarioId}"? This cannot be undone.`)) {
+    return;
+  }
+  setError(null);
+  try {
+    await requestJson(
+      "DELETE",
+      `/api/scenarios/${encodeURIComponent(scenarioId)}?operation_id=${crypto.randomUUID()}`,
+    );
+    closeScenarioEditor();
+    await loadManage();
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to delete scenario");
+  }
+}
+
+async function createScenario(): Promise<void> {
+  const scenarioId = scenarioCreateId.value.trim();
+  const title = scenarioCreateTitle.value.trim();
+  if (scenarioId === "" || title === "") {
+    setError("Scenario id and title are required");
+    return;
+  }
+  setError(null);
+  try {
+    await postJson("/api/scenarios", {
+      scenario_id: scenarioId,
+      title,
+      description: scenarioCreateDescription.value.trim() || null,
+      operation_id: crypto.randomUUID(),
+    });
+    scenarioCreateId.value = "";
+    scenarioCreateTitle.value = "";
+    scenarioCreateDescription.value = "";
+    await loadManage();
+    await openScenarioEditor(scenarioId);
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to create scenario");
+  }
+}
+
+scenarioCreateForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void createScenario();
+});
+scenarioEditSave.addEventListener("click", () => void saveScenarioDetails());
+scenarioEditorClose.addEventListener("click", closeScenarioEditor);
+scenarioDelete.addEventListener("click", () => void deleteScenario());
+for (const button of root?.querySelectorAll<HTMLButtonElement>("[data-element-save]") ?? []) {
+  const elementType = button.dataset.elementSave;
+  if (elementType !== undefined) {
+    button.addEventListener("click", () => void saveScenarioElement(elementType));
+  }
 }
 
 viewPlayButton.addEventListener("click", () => setViewMode("play"));

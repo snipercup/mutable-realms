@@ -4,7 +4,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### World management interface — in progress (Step 1 complete)
+### World management interface — in progress (Steps 1–2 complete)
 
 **Goal:** give the player a management view alongside the existing play view. On one page the player plays in an instanced world (map + narration); at any point they can switch to a management page that supports CRUD for worlds and scenarios: create/read/update/remove scenarios (title, description, and the three story elements), list worlds, instance a new world from a scenario, and update/remove worlds (title, description, elements). Editing a scenario never changes instanced worlds — the copy semantics are enforced by the backend and the UI must preserve them (scenario editors write scenario data only).
 
@@ -23,7 +23,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 **Suggested sequencing:**
 1. ✅ Navigation shell + read-only management view — **complete (2026-08-08)**: Play ⇄ Manage toggle in the topbar (plain TypeScript + DOM, no framework); management view renders scenario and world lists from `GET /api/scenarios` and `GET /api/worlds` (world cards show revision + source scenario); play state (selected world, narration log) survives switching; empty states and error banner reused. `frontend-check` + `frontend-build` clean, backend suite unchanged (203 passed). Browser-verified on a temporary DB: Manage shows Aerthalon scenario + three worlds (Aerthalon rev 1 from scenario aerthalon, Harbor Town, Recovery Ward), Play restores with selection intact, no JS errors.
-2. Scenario management UI: create, edit title/description, elements editor, delete.
+2. ✅ Scenario management UI — **complete (2026-08-10)**: create form (id/title/description), scenario editor panel (edit title/description via PATCH, per-element save buttons for the three story elements via PUT, delete with confirmation via DELETE), client-generated operation IDs (`crypto.randomUUID()`), lists re-fetch after every mutation and the editor reloads server truth. `frontend-check` + `frontend-build` clean, backend suite unchanged (203 passed). Browser-verified on a temporary DB: created "aerthalon" through the form (editor auto-opened), renamed it via Save, saved an opening scene element, deleted it with confirmation — all persisted (revision/event linkage verified in SQLite) with zero JS errors. Pitfall caught and fixed during verification: `requestJson(method, path, body)` calls had the argument order swapped, which threw before any fetch; corrected at all three call sites.
 3. World management UI: instance-from-scenario, edit, elements, delete (revision-aware).
 4. Integration polish: state survives switches, re-poll on return, `#manage` deep link, empty/error states; end-to-end browser verification.
 
