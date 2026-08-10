@@ -316,6 +316,7 @@ let manageLoading = false;
 let editingScenarioId: string | null = null;
 let editingWorldId: string | null = null;
 let editingWorldRevision = 0;
+let manageBusy = false;
 let lastUpdated: Date | null = null;
 
 function requireElement<T extends Element>(selector: string): T {
@@ -399,7 +400,8 @@ async function loadWorlds(): Promise<void> {
     throw new Error("No worlds exist in the authoritative database");
   }
 
-  const requested = new URL(window.location.href).searchParams.get("world");
+  const requested =
+    new URL(window.location.href).searchParams.get("world") ?? worldSelect.value;
   selectedWorldId = worlds.some((world) => world.id === requested)
     ? requested
     : worlds[0].id;
@@ -639,14 +641,14 @@ function updateFreshness(): void {
     lastUpdated === null ? "Not loaded" : `Updated ${lastUpdated.toLocaleTimeString()}`;
 }
 
-async function refresh(): Promise<void> {
+async function refresh(forceWorlds = false): Promise<void> {
   if (loading) return;
   loading = true;
   refreshButton.disabled = true;
   worldSelect.disabled = true;
   setError(null);
   try {
-    if (worlds.length === 0) await loadWorlds();
+    if (forceWorlds || worlds.length === 0) await loadWorlds();
     const state = await loadState();
     currentPlayerId = state.player.id;
     narrationRevision.textContent = `r${state.location.revision}`;
@@ -798,7 +800,13 @@ function setViewMode(mode: "play" | "manage"): void {
   manageView.hidden = playActive;
   viewPlayButton.classList.toggle("is-active", playActive);
   viewManageButton.classList.toggle("is-active", !playActive);
-  if (!playActive) void loadManage();
+  if (!playActive) {
+    void loadManage();
+  } else {
+    void refresh(true);
+  }
+  const targetHash = playActive ? "" : "#manage";
+  if (location.hash !== targetHash) location.hash = targetHash;
 }
 
 function elementTextarea(elementType: string): HTMLTextAreaElement {
@@ -840,13 +848,14 @@ async function loadScenarioDetail(scenarioId: string): Promise<void> {
 }
 
 async function saveScenarioDetails(): Promise<void> {
-  if (editingScenarioId === null) return;
+  if (editingScenarioId === null || manageBusy) return;
   const title = scenarioEditTitle.value.trim();
   if (title === "") {
     setError("Title must not be blank");
     return;
   }
   setError(null);
+  manageBusy = true;
   try {
     await requestJson("PATCH", `/api/scenarios/${encodeURIComponent(editingScenarioId)}`, {
       title,
@@ -856,13 +865,16 @@ async function saveScenarioDetails(): Promise<void> {
     await Promise.all([loadManage(), loadScenarioDetail(editingScenarioId)]);
   } catch (error) {
     setError(error instanceof Error ? error.message : "Unable to save scenario");
+  } finally {
+    manageBusy = false;
   }
 }
 
 async function saveScenarioElement(elementType: string): Promise<void> {
-  if (editingScenarioId === null) return;
+  if (editingScenarioId === null || manageBusy) return;
   const content = elementTextarea(elementType).value;
   setError(null);
+  manageBusy = true;
   try {
     await requestJson(
       "PUT",
@@ -872,6 +884,8 @@ async function saveScenarioElement(elementType: string): Promise<void> {
     await Promise.all([loadManage(), loadScenarioDetail(editingScenarioId)]);
   } catch (error) {
     setError(error instanceof Error ? error.message : "Unable to save element");
+  } finally {
+    manageBusy = false;
   }
 }
 
@@ -881,12 +895,13 @@ function closeScenarioEditor(): void {
 }
 
 async function deleteScenario(): Promise<void> {
-  if (editingScenarioId === null) return;
+  if (editingScenarioId === null || manageBusy) return;
   const scenarioId = editingScenarioId;
   if (!window.confirm(`Delete scenario "${scenarioId}"? This cannot be undone.`)) {
     return;
   }
   setError(null);
+  manageBusy = true;
   try {
     await requestJson(
       "DELETE",
@@ -896,10 +911,13 @@ async function deleteScenario(): Promise<void> {
     await loadManage();
   } catch (error) {
     setError(error instanceof Error ? error.message : "Unable to delete scenario");
+  } finally {
+    manageBusy = false;
   }
 }
 
 async function createScenario(): Promise<void> {
+  if (manageBusy) return;
   const scenarioId = scenarioCreateId.value.trim();
   const title = scenarioCreateTitle.value.trim();
   if (scenarioId === "" || title === "") {
@@ -907,6 +925,7 @@ async function createScenario(): Promise<void> {
     return;
   }
   setError(null);
+  manageBusy = true;
   try {
     await postJson("/api/scenarios", {
       scenario_id: scenarioId,
@@ -921,6 +940,8 @@ async function createScenario(): Promise<void> {
     await openScenarioEditor(scenarioId);
   } catch (error) {
     setError(error instanceof Error ? error.message : "Unable to create scenario");
+  } finally {
+    manageBusy = false;
   }
 }
 
@@ -981,13 +1002,14 @@ async function loadWorldDetail(worldId: string): Promise<void> {
 }
 
 async function saveWorldDetails(): Promise<void> {
-  if (editingWorldId === null) return;
+  if (editingWorldId === null || manageBusy) return;
   const title = worldEditName.value.trim();
   if (title === "") {
     setError("Name must not be blank");
     return;
   }
   setError(null);
+  manageBusy = true;
   try {
     const response = await requestJson<{ world_revision: number }>(
       "PATCH",
@@ -1003,13 +1025,16 @@ async function saveWorldDetails(): Promise<void> {
     await Promise.all([loadManage(), loadWorldDetail(editingWorldId)]);
   } catch (error) {
     setError(error instanceof Error ? error.message : "Unable to save world");
+  } finally {
+    manageBusy = false;
   }
 }
 
 async function saveWorldElement(elementType: string): Promise<void> {
-  if (editingWorldId === null) return;
+  if (editingWorldId === null || manageBusy) return;
   const content = worldElementTextarea(elementType).value;
   setError(null);
+  manageBusy = true;
   try {
     const response = await requestJson<{ world_revision: number }>(
       "PUT",
@@ -1024,6 +1049,8 @@ async function saveWorldElement(elementType: string): Promise<void> {
     await Promise.all([loadManage(), loadWorldDetail(editingWorldId)]);
   } catch (error) {
     setError(error instanceof Error ? error.message : "Unable to save element");
+  } finally {
+    manageBusy = false;
   }
 }
 
@@ -1034,12 +1061,13 @@ function closeWorldEditor(): void {
 }
 
 async function deleteWorld(): Promise<void> {
-  if (editingWorldId === null) return;
+  if (editingWorldId === null || manageBusy) return;
   const worldId = editingWorldId;
   if (!window.confirm(`Delete world "${worldId}"? All of its state will be removed.`)) {
     return;
   }
   setError(null);
+  manageBusy = true;
   try {
     await requestJson(
       "DELETE",
@@ -1049,10 +1077,13 @@ async function deleteWorld(): Promise<void> {
     await loadManage();
   } catch (error) {
     setError(error instanceof Error ? error.message : "Unable to delete world");
+  } finally {
+    manageBusy = false;
   }
 }
 
 async function createWorldFromScenario(): Promise<void> {
+  if (manageBusy) return;
   const scenarioId = worldCreateScenario.value;
   const worldId = worldCreateId.value.trim();
   if (scenarioId === "" || worldId === "") {
@@ -1060,6 +1091,7 @@ async function createWorldFromScenario(): Promise<void> {
     return;
   }
   setError(null);
+  manageBusy = true;
   try {
     await postJson("/api/worlds", {
       world_id: worldId,
@@ -1071,6 +1103,8 @@ async function createWorldFromScenario(): Promise<void> {
     await openWorldEditor(worldId);
   } catch (error) {
     setError(error instanceof Error ? error.message : "Unable to instance world");
+  } finally {
+    manageBusy = false;
   }
 }
 
@@ -1103,4 +1137,8 @@ worldSelect.addEventListener("change", () => {
 });
 refreshButton.addEventListener("click", () => void refresh());
 window.setInterval(() => void refresh(), POLL_INTERVAL_MS);
+window.addEventListener("hashchange", () => {
+  setViewMode(location.hash === "#manage" ? "manage" : "play");
+});
 void refresh();
+if (location.hash === "#manage") setViewMode("manage");
