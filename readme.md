@@ -73,7 +73,7 @@ The player may therefore experience the same world through both narration and a 
 
 * **Authoritative world state** — a versioned SQLite database holds worlds, locations, entities, placement, operations, and events; every meaningful change is an atomic, idempotent, revision-checked operation.
 * **AI narration with real consequences** — a Hermes narration agent reads the world, interprets free-form player actions, applies at most one supported operation per turn, and narrates only what actually committed.
-* **Direct player interface** — the web page shows the world map, current location, entities, and persistent events, with a "What do you do?" input that relays actions to the narration agent.
+* **Direct player interface** — the web page shows the world map, current location, entities, and persistent events, with a "What do you do?" input that relays actions to the narration agent, plus a Play ⇄ Manage toggle to a world/scenario management view.
 * **Open-ended scenarios** — the core is scenario-neutral; the ward, harbor town, or a future starship are optional capabilities, not built-in game types.
 * **Growing capabilities** — when play demands something the world cannot yet persist, infrastructure can evolve one deliberate slice at a time instead of predicting every mechanic in advance.
 

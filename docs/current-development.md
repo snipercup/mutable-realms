@@ -4,7 +4,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### World management interface — scoped
+### World management interface — in progress (Step 1 complete)
 
 **Goal:** give the player a management view alongside the existing play view. On one page the player plays in an instanced world (map + narration); at any point they can switch to a management page that supports CRUD for worlds and scenarios: create/read/update/remove scenarios (title, description, and the three story elements), list worlds, instance a new world from a scenario, and update/remove worlds (title, description, elements). Editing a scenario never changes instanced worlds — the copy semantics are enforced by the backend and the UI must preserve them (scenario editors write scenario data only).
 
@@ -22,7 +22,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 **Verification:** `frontend-check` + `frontend-build` + full backend suite (unchanged); browser DOM assertions for the flows (lists render from the APIs, create/edit/delete complete, an instanced world appears in the world list, scenario edits leave instanced worlds' content unchanged); a narrated turn still works after switching views.
 
 **Suggested sequencing:**
-1. Navigation shell + read-only management view: Play/Manage toggle, scenario list and world list rendered from the GET endpoints; nothing mutates yet.
+1. ✅ Navigation shell + read-only management view — **complete (2026-08-08)**: Play ⇄ Manage toggle in the topbar (plain TypeScript + DOM, no framework); management view renders scenario and world lists from `GET /api/scenarios` and `GET /api/worlds` (world cards show revision + source scenario); play state (selected world, narration log) survives switching; empty states and error banner reused. `frontend-check` + `frontend-build` clean, backend suite unchanged (203 passed). Browser-verified on a temporary DB: Manage shows Aerthalon scenario + three worlds (Aerthalon rev 1 from scenario aerthalon, Harbor Town, Recovery Ward), Play restores with selection intact, no JS errors.
 2. Scenario management UI: create, edit title/description, elements editor, delete.
 3. World management UI: instance-from-scenario, edit, elements, delete (revision-aware).
 4. Integration polish: state survives switches, re-poll on return, `#manage` deep link, empty/error states; end-to-end browser verification.

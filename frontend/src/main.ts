@@ -4,6 +4,15 @@ type World = {
   id: string;
   name: string;
   revision: number;
+  description: string | null;
+  source_scenario_id: string | null;
+};
+
+type Scenario = {
+  id: string;
+  title: string;
+  description: string | null;
+  created_at: string;
 };
 
 type Player = {
@@ -92,6 +101,10 @@ root.innerHTML = `
         <h1 class="brand-title">Mutable Realms</h1>
       </div>
       <div class="controls">
+        <div class="view-toggle" role="group" aria-label="View">
+          <button class="view-toggle-button is-active" id="view-play" type="button">Play</button>
+          <button class="view-toggle-button" id="view-manage" type="button">Manage</button>
+        </div>
         <label class="world-control">
           <span>World</span>
           <select id="world-select" aria-label="Select world"></select>
@@ -102,7 +115,7 @@ root.innerHTML = `
     </header>
     <div class="status-banner" id="status" role="alert" hidden></div>
     <section id="world-view" aria-live="polite"></section>
-    <section class="panel narration-panel" aria-label="Narration">
+    <section class="panel narration-panel" id="narration-panel" aria-label="Narration">
       <div class="narration-heading">
         <div>
           <span class="eyebrow">Narration agent</span>
@@ -123,6 +136,13 @@ root.innerHTML = `
         <button class="action-button" id="action-submit" type="submit">Act</button>
       </form>
     </section>
+    <section class="manage-view" id="manage-view" hidden aria-label="World management">
+      <span class="eyebrow">World management</span>
+      <h2 class="section-title">Scenarios</h2>
+      <div class="manage-grid" id="scenario-list"></div>
+      <h2 class="section-title">Worlds</h2>
+      <div class="manage-grid" id="world-list"></div>
+    </section>
   </main>
 `;
 
@@ -131,17 +151,24 @@ const refreshButton = requireElement<HTMLButtonElement>("#refresh");
 const freshness = requireElement<HTMLSpanElement>("#freshness");
 const statusBanner = requireElement<HTMLDivElement>("#status");
 const worldView = requireElement<HTMLElement>("#world-view");
+const narrationPanel = requireElement<HTMLElement>("#narration-panel");
 const narrationLog = requireElement<HTMLDivElement>("#narration-log");
 const narrationRevision = requireElement<HTMLSpanElement>("#narration-revision");
 const actionForm = requireElement<HTMLFormElement>("#action-form");
 const actionInput = requireElement<HTMLInputElement>("#action-input");
 const actionSubmit = requireElement<HTMLButtonElement>("#action-submit");
+const viewPlayButton = requireElement<HTMLButtonElement>("#view-play");
+const viewManageButton = requireElement<HTMLButtonElement>("#view-manage");
+const manageView = requireElement<HTMLElement>("#manage-view");
+const scenarioList = requireElement<HTMLDivElement>("#scenario-list");
+const worldList = requireElement<HTMLDivElement>("#world-list");
 
 let worlds: World[] = [];
 let selectedWorldId: string | null = null;
 let currentPlayerId: string | null = null;
 let loading = false;
 let actionPending = false;
+let manageLoading = false;
 let lastUpdated: Date | null = null;
 
 function requireElement<T extends Element>(selector: string): T {
@@ -511,6 +538,78 @@ actionForm.addEventListener("submit", (event) => {
   actionInput.value = "";
   void runPlayerAction(action);
 });
+
+async function loadManage(): Promise<void> {
+  if (manageLoading) return;
+  manageLoading = true;
+  setError(null);
+  try {
+    const [scenarios, allWorlds] = await Promise.all([
+      fetchJson<Scenario[]>("/api/scenarios"),
+      fetchJson<World[]>("/api/worlds"),
+    ]);
+    renderScenarioList(scenarios);
+    renderWorldList(allWorlds);
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to load management data");
+  } finally {
+    manageLoading = false;
+  }
+}
+
+function renderScenarioList(scenarios: Scenario[]): void {
+  scenarioList.replaceChildren();
+  if (scenarios.length === 0) {
+    scenarioList.append(
+      element("p", "empty-state", "No scenarios yet. Create one from the management page."),
+    );
+    return;
+  }
+  for (const scenario of scenarios) {
+    const card = element("article", "manage-card");
+    card.append(element("h3", "manage-name", scenario.title));
+    card.append(element("code", "manage-id", scenario.id));
+    if (scenario.description !== null) {
+      card.append(element("p", "manage-description", scenario.description));
+    }
+    card.append(element("span", "manage-meta", `created ${scenario.created_at}`));
+    scenarioList.append(card);
+  }
+}
+
+function renderWorldList(allWorlds: World[]): void {
+  worldList.replaceChildren();
+  if (allWorlds.length === 0) {
+    worldList.append(element("p", "empty-state", "No worlds exist yet."));
+    return;
+  }
+  for (const world of allWorlds) {
+    const card = element("article", "manage-card");
+    card.append(element("h3", "manage-name", world.name));
+    card.append(element("code", "manage-id", world.id));
+    card.append(element("span", "manage-meta", `revision ${world.revision}`));
+    if (world.source_scenario_id !== null) {
+      card.append(element("span", "manage-meta", `from scenario ${world.source_scenario_id}`));
+    }
+    if (world.description !== null) {
+      card.append(element("p", "manage-description", world.description));
+    }
+    worldList.append(card);
+  }
+}
+
+function setViewMode(mode: "play" | "manage"): void {
+  const playActive = mode === "play";
+  worldView.hidden = !playActive;
+  narrationPanel.hidden = !playActive;
+  manageView.hidden = playActive;
+  viewPlayButton.classList.toggle("is-active", playActive);
+  viewManageButton.classList.toggle("is-active", !playActive);
+  if (!playActive) void loadManage();
+}
+
+viewPlayButton.addEventListener("click", () => setViewMode("play"));
+viewManageButton.addEventListener("click", () => setViewMode("manage"));
 
 worldSelect.addEventListener("change", () => {
   selectedWorldId = worldSelect.value;

@@ -169,3 +169,14 @@ h1, h2, h3, p { margin: 0; }
   cursor: pointer;
 }
 .action-button:disabled { opacity: .6; cursor: default; }
+
+.view-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.view-toggle-button { border: 0; background: transparent; color: var(--muted); padding: 8px 14px; font-size: .85rem; cursor: pointer; }
+.view-toggle-button.is-active { background: var(--accent); color: #08131f; font-weight: 700; }
+.manage-view { padding: 22px; }
+.manage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.manage-card { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--surface-raised); }
+.manage-name { font-size: .95rem; }
+.manage-id { display: block; margin-top: 6px; color: var(--muted); font-size: .72rem; }
+.manage-description { margin-top: 8px; color: #c8d1df; font-size: .8rem; }
+.manage-meta { display: block; margin-top: 4px; color: var(--muted); font-size: .7rem; }
