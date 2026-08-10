@@ -13,6 +13,8 @@ class WorldRead(StrictReadModel):
     id: str
     name: str
     revision: int = Field(ge=0)
+    description: str | None = None
+    source_scenario_id: str | None = None
 
 
 class PlayerRead(StrictReadModel):
@@ -144,3 +146,16 @@ class ScenarioElementRequest(StrictReadModel):
 class ScenarioMutationResponse(StrictReadModel):
     already_applied: bool
     scenario_id: str
+
+
+class WorldCreateRequest(StrictReadModel):
+    world_id: str
+    scenario_id: str
+    operation_id: str
+
+
+class WorldCreateResponse(StrictReadModel):
+    already_applied: bool
+    world_id: str
+    world_revision: int = Field(ge=1)
+    source_scenario_id: str

@@ -45,7 +45,7 @@ Future narration grounded in the changed world
 
 ## System inventory
 
-The full command, API, MCP tool, and environment-variable reference lives in [interfaces-and-tools.md](interfaces-and-tools.md). At a glance: six additive migrations (`0001` initial through `0006` location links); five atomic operations (`world_move_entity`, `world_treat_and_discharge_patient`, `world_record_social_interaction`, `world_transfer_resource`, `world_update_location`); and the `POST /api/worlds/{world_id}/turns` relay (deterministic with `decision_json`, narrated without it).
+The full command, API, MCP tool, and environment-variable reference lives in [interfaces-and-tools.md](interfaces-and-tools.md). At a glance: nine additive migrations (`0001` initial through `0009` world_elements); five agent-facing atomic operations (`world_move_entity`, `world_treat_and_discharge_patient`, `world_record_social_interaction`, `world_transfer_resource`, `world_update_location`); administration services for scenarios and world instancing (scenario CRUD/elements + `create_world_from_scenario`) exposed through CLI and HTTP only; and the `POST /api/worlds/{world_id}/turns` relay (deterministic with `decision_json`, narrated without it).
 
 ## Adding a capability — the vertical slice
 

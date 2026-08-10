@@ -23,6 +23,8 @@ from backend.app.read_models import (
     ScenarioUpdateRequest,
     TurnRequest,
     TurnResponse,
+    WorldCreateRequest,
+    WorldCreateResponse,
     WorldEventRead,
     WorldMapRead,
     WorldRead,
@@ -62,6 +64,7 @@ from backend.world.scenarios import (
     update_scenario,
 )
 from backend.world.turns import TurnDecision, run_turn
+from backend.world.worlds import WorldAdminConflict, create_world_from_scenario
 
 DEFAULT_FRONTEND_PATH = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
@@ -111,6 +114,26 @@ def create_app(
     @application.get("/api/worlds", tags=["world reads"])
     def worlds() -> list[WorldRead]:
         return [WorldRead.model_validate(world) for world in list_worlds(get_database_path())]
+
+    @application.post("/api/worlds", tags=["world administration"], status_code=201)
+    def create_world(request: WorldCreateRequest) -> WorldCreateResponse:
+        try:
+            result = create_world_from_scenario(
+                get_database_path(),
+                world_id=request.world_id,
+                operation_id=request.operation_id,
+                scenario_id=request.scenario_id,
+            )
+        except ScenarioNotFound as error:
+            raise HTTPException(status_code=404, detail="scenario not found") from error
+        except WorldAdminConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return WorldCreateResponse(
+            already_applied=result["already_applied"],
+            world_id=result["world_id"],
+            world_revision=result["world_revision"],
+            source_scenario_id=result["source_scenario_id"],
+        )
 
     @application.get("/api/worlds/{world_id}/player", tags=["world reads"])
     def current_player(world_id: str) -> PlayerRead:

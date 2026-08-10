@@ -32,6 +32,7 @@ from backend.world.scenarios import (
 )
 from backend.world.turns import TurnDecision, run_turn
 from backend.world.validation import validate_worlds
+from backend.world.worlds import WorldAdminError, create_world_from_scenario
 
 _COMMANDS = (
     "migrate",
@@ -45,6 +46,7 @@ _COMMANDS = (
     "update-scenario",
     "set-scenario-element",
     "remove-scenario",
+    "create-world-from-scenario",
 )
 
 
@@ -309,6 +311,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(json.dumps(result, sort_keys=True))
             return 0
 
+        if args.command == "create-world-from-scenario":
+            required = {
+                "--world-id": args.world_id,
+                "--operation-id": args.operation_id,
+                "--scenario-id": args.scenario_id,
+            }
+            missing = [name for name, value in required.items() if value is None]
+            if missing:
+                raise ValueError(
+                    "create-world-from-scenario requires " + ", ".join(missing)
+                )
+            result = create_world_from_scenario(
+                database_path,
+                world_id=args.world_id,
+                operation_id=args.operation_id,
+                scenario_id=args.scenario_id,
+            )
+            print(json.dumps(result, sort_keys=True))
+            return 0
+
         if args.command == "backup":
             return _backup(database_path, args.backup_dir)
 
@@ -324,6 +346,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         MigrationError,
         MutationError,
         ScenarioError,
+        WorldAdminError,
         WorldQueryError,
         sqlite3.Error,
         OSError,

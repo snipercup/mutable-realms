@@ -4,7 +4,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Scenario authoring and world management — in progress (Step 1 complete)
+### Scenario authoring and world management — in progress (Steps 1–2 complete)
 
 **Goal:** define reusable **scenarios** — a title, description, and story elements (author's note, plot essentials, opening scene) — from which many worlds can be made. Creating a world from a scenario *instances* that content: the new world owns its own copy (title, description, elements), the scenario stays unchanged, and later edits to either side do not affect the other. Worlds remain individually manageable (rename, re-describe, set elements, remove).
 
@@ -30,7 +30,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 **Suggested sequencing:**
 1. ✅ Scenario authoring — **complete (2026-08-08)**: migration `0007_scenarios` (scenarios + scenario_elements + scenario_operations), `backend/world/scenarios.py` (create/update/set-element/remove + reads), CLI (`create-scenario`, `update-scenario`, `set-scenario-element`, `remove-scenario` + npm scripts), HTTP (`GET/POST /api/scenarios`, `PATCH`, `PUT …/elements/{type}`, `DELETE`), and `tests/backend/test_scenarios.py` (20 tests: persistence, exact-request idempotent replay, duplicate-id and operation-reuse conflicts, element upsert/validation, cascade removal, CLI roundtrip, API roundtrip with 404/409; suite 180 passed, lint clean). Live-verified via CLI and HTTP on a temporary database only.
-2. Instantiation: migrations `0008_world_metadata`/`0009_world_elements` + `create_world_from_scenario` + copy-semantics tests (scenario unchanged; edits diverge).
+2. ✅ Instantiation — **complete (2026-08-08)**: migrations `0008_world_metadata` (`worlds.description` + `worlds.source_scenario_id` ON DELETE SET NULL) and `0009_world_elements` (world-owned element ledger linked to events); `backend/world/worlds.py::create_world_from_scenario` (copies title/description/elements, revision 0 → 1, `world_created` event, operation-ID idempotency); CLI `create-world-from-scenario` + `POST /api/worlds`; `world_context` and world reads now expose description, source scenario, and `world_elements`; validation gained the `world_element_updated_event_mismatch` coherence check. `tests/backend/test_world_instancing.py` (13 tests: copy semantics, scenario unchanged, divergence on scenario edit, replay, conflicts, scenario deletion keeps worlds with NULL source, context readback, validation corruption, CLI + API roundtrips; suite 193 passed, lint clean). Live-verified via CLI and HTTP on a temporary database only — the scenario stayed byte-identical after instancing.
 3. World management remainder: `update_world`, `set_world_element`, `remove_world` + cascade tests.
 
 **Commit:** pending.

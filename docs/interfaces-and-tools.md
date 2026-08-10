@@ -33,6 +33,7 @@ The live database lives outside Git in a bind-mounted state directory; backups a
 | `npm run update-scenario -- …` | Update a scenario's title and/or description. |
 | `npm run set-scenario-element -- …` | Upsert one scenario story element. |
 | `npm run remove-scenario -- …` | Remove a scenario and its elements (destructive). |
+| `npm run create-world-from-scenario -- …` | Instance a new world from a scenario (copies title/description/elements). |
 | `npm run world-tools` | Run the MCP tool server over stdio. |
 
 ## CLI commands
@@ -79,6 +80,15 @@ npm run remove-scenario -- --scenario-id aerthalon --operation-id op-4
 
 Element types: `author_note`, `plot_essentials`, `opening_scene` (content 1–20000 characters). Scenario mutations are idempotent by caller operation ID; a removed scenario leaves no trace (its elements and operation records cascade).
 
+### World instancing
+
+Instancing copies the scenario's title, description, and story elements into a fresh world (revision 0 → 1 with a `world_created` event) and records `source_scenario_id`. The scenario is never modified; the world owns its copies, so the two diverge independently. Deleting a scenario leaves its instanced worlds intact (`source_scenario_id` becomes NULL).
+
+```sh
+npm run create-world-from-scenario -- --world-id aerthalon-campaign \
+  --operation-id op-5 --scenario-id aerthalon
+```
+
 ## HTTP API
 
 Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup applies pending migrations and fails if history is invalid.
@@ -94,7 +104,7 @@ Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup ap
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/worlds` | List worlds. |
+| `GET /api/worlds` | List worlds (including description and source scenario). |
 | `GET /api/worlds/{world_id}/player` | Current player and placement. |
 | `GET /api/worlds/{world_id}/map` | Derived map: every location with entity-kind counts and linked locations, plus the player's location. |
 | `GET /api/worlds/{world_id}/locations/current` | Player's current location and generic contents. |
@@ -102,6 +112,14 @@ Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup ap
 | `GET /api/worlds/{world_id}/entities/{entity_id}` | One entity and optional character state. |
 | `GET /api/worlds/{world_id}/events?limit=20` | Newest-first events (limit 1–100). |
 | `GET /api/worlds/{world_id}/capabilities/ward/locations/{location_id}` | Optional ward bed occupancy. |
+
+### World administration
+
+| Route | Purpose |
+| --- | --- |
+| `POST /api/worlds` | Instance a world from a scenario — body `{world_id, scenario_id, operation_id}`. Returns `{already_applied, world_id, world_revision, source_scenario_id}`. |
+
+Errors: `404` unknown scenario · `409` duplicate world id or operation-ID reuse.
 
 ### Scenario authoring
 

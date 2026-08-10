@@ -22,7 +22,13 @@ def test_builds_scenario_neutral_context_for_current_location(tmp_path: Path) ->
     context = build_world_context(database_path, world_id=GENERAL_WORLD_ID)
 
     assert context.model_dump() == {
-        "world": {"id": GENERAL_WORLD_ID, "name": "Open World", "revision": 0},
+        "world": {
+            "id": GENERAL_WORLD_ID,
+            "name": "Open World",
+            "revision": 0,
+            "description": None,
+            "source_scenario_id": None,
+        },
         "player": {
             "id": "farmer",
             "world_id": GENERAL_WORLD_ID,
@@ -72,6 +78,7 @@ def test_builds_scenario_neutral_context_for_current_location(tmp_path: Path) ->
         "relationships": [],
         "memories": [],
         "resources": [],
+        "world_elements": [],
     }
 
 

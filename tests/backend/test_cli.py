@@ -187,6 +187,8 @@ def test_world_context_command_returns_deterministic_json(
         "id": GENERAL_WORLD_ID,
         "name": "Open World",
         "revision": 0,
+        "description": None,
+        "source_scenario_id": None,
     }
     assert payload["player"]["id"] == "farmer"
     assert payload["current_location"]["id"] == "ocean-farm"

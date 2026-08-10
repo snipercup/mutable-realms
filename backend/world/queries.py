@@ -35,7 +35,8 @@ def list_worlds(database_path: str | Path) -> list[WorldRecord]:
     """Return available worlds in stable name/ID order."""
     with connect_readonly_database(database_path) as connection:
         rows = connection.execute(
-            "SELECT id, name, revision FROM worlds ORDER BY name, id"
+            "SELECT id, name, revision, description, source_scenario_id "
+            "FROM worlds ORDER BY name, id"
         ).fetchall()
     return [dict(row) for row in rows]
 
@@ -207,7 +208,9 @@ def get_world_map(database_path: str | Path, *, world_id: str) -> dict[str, Any]
     """Return the derived map read model for one world on one snapshot."""
     with connect_readonly_database(database_path) as connection:
         world = connection.execute(
-            "SELECT id, name, revision FROM worlds WHERE id = ?", (world_id,)
+            "SELECT id, name, revision, description, source_scenario_id "
+            "FROM worlds WHERE id = ?",
+            (world_id,),
         ).fetchone()
         if world is None:
             raise WorldNotFound(f"World {world_id!r} was not found")

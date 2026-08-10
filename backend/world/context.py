@@ -28,6 +28,8 @@ class ContextWorld(ContextModel):
     id: str
     name: str
     revision: int = Field(ge=0)
+    description: str | None = None
+    source_scenario_id: str | None = None
 
 
 class ContextPlayer(ContextModel):
@@ -81,6 +83,7 @@ class WorldContext(ContextModel):
     relationships: list[dict[str, Any]]
     memories: list[dict[str, Any]]
     resources: list[dict[str, Any]]
+    world_elements: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def build_world_context(
@@ -96,10 +99,18 @@ def build_world_context(
     with closing(connect_readonly_database(database_path)) as connection:
         connection.execute("BEGIN")
         world = connection.execute(
-            "SELECT id, name, revision FROM worlds WHERE id = ?", (world_id,)
+            "SELECT id, name, revision, description, source_scenario_id "
+            "FROM worlds WHERE id = ?",
+            (world_id,),
         ).fetchone()
         if world is None:
             raise WorldNotFound(f"World {world_id!r} was not found")
+
+        world_elements = connection.execute(
+            "SELECT element_type, content FROM world_elements "
+            "WHERE world_id = ? ORDER BY element_type",
+            (world_id,),
+        ).fetchall()
 
         player = get_player(database_path, world_id, _connection=connection)
         location_id = player["location_id"]
@@ -147,6 +158,7 @@ def build_world_context(
             "player": player,
             "current_location": location,
             "recent_events": events,
+            "world_elements": [dict(element) for element in world_elements],
             **social,
             **resources,
         }
