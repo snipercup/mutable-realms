@@ -25,6 +25,7 @@ from backend.app.read_models import (
     TurnResponse,
     WorldCreateRequest,
     WorldCreateResponse,
+    WorldDetailRead,
     WorldElementRequest,
     WorldEventRead,
     WorldMapRead,
@@ -55,6 +56,7 @@ from backend.world.queries import (
     get_world_map,
     list_recent_events,
     list_worlds,
+    read_world,
 )
 from backend.world.scenarios import (
     ScenarioConflict,
@@ -124,6 +126,15 @@ def create_app(
     @application.get("/api/worlds", tags=["world reads"])
     def worlds() -> list[WorldRead]:
         return [WorldRead.model_validate(world) for world in list_worlds(get_database_path())]
+
+    @application.get("/api/worlds/{world_id}", tags=["world reads"])
+    def world_detail(world_id: str) -> WorldDetailRead:
+        try:
+            return WorldDetailRead.model_validate(
+                read_world(get_database_path(), world_id)
+            )
+        except WorldNotFound as error:
+            raise HTTPException(status_code=404, detail="world not found") from error
 
     @application.post("/api/worlds", tags=["world administration"], status_code=201)
     def create_world(request: WorldCreateRequest) -> WorldCreateResponse:

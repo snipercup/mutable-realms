@@ -121,6 +121,7 @@ Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup ap
 | Route | Purpose |
 | --- | --- |
 | `GET /api/worlds` | List worlds (including description and source scenario). |
+| `GET /api/worlds/{world_id}` | One world with its owned story elements. |
 | `GET /api/worlds/{world_id}/player` | Current player and placement. |
 | `GET /api/worlds/{world_id}/map` | Derived map: every location with entity-kind counts and linked locations, plus the player's location. |
 | `GET /api/worlds/{world_id}/locations/current` | Player's current location and generic contents. |

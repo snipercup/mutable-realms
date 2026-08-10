@@ -41,6 +41,26 @@ def list_worlds(database_path: str | Path) -> list[WorldRecord]:
     return [dict(row) for row in rows]
 
 
+def read_world(database_path: str | Path, world_id: str) -> dict[str, Any]:
+    """Return one world with its owned story elements."""
+    with connect_readonly_database(database_path) as connection:
+        world = connection.execute(
+            "SELECT id, name, revision, description, source_scenario_id "
+            "FROM worlds WHERE id = ?",
+            (world_id,),
+        ).fetchone()
+        if world is None:
+            raise WorldNotFound(f"World '{world_id}' does not exist")
+        elements = connection.execute(
+            "SELECT we.element_type, we.content, ev.occurred_at AS updated_at "
+            "FROM world_elements we "
+            "JOIN events ev ON ev.id = we.updated_event_id "
+            "WHERE we.world_id = ? ORDER BY we.element_type",
+            (world_id,),
+        ).fetchall()
+    return {**dict(world), "elements": [dict(row) for row in elements]}
+
+
 def get_player(
     database_path: str | Path,
     world_id: str,

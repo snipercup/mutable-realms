@@ -12,6 +12,7 @@ from backend.cli import main
 from backend.persistence.database import connect_database
 from backend.persistence.migrations import migrate_database
 from backend.world.context import build_world_context
+from backend.world.queries import WorldQueryError, read_world
 from backend.world.scenarios import (
     ScenarioNotFound,
     create_scenario,
@@ -404,6 +405,38 @@ def test_world_api_create_from_scenario_roundtrip(tmp_path: Path) -> None:
             },
         )
     )
+    assert status == 404
+
+
+def test_read_world_returns_metadata_and_elements(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _instanced(database_path)
+
+    detail = read_world(database_path, "campaign-1")
+
+    assert detail["name"] == "Aerthalon"
+    assert detail["description"] == "A vast ancient fantasy world."
+    assert detail["source_scenario_id"] == "aerthalon"
+    assert detail["revision"] == 1
+    element_types = [element["element_type"] for element in detail["elements"]]
+    assert element_types == ["author_note", "opening_scene", "plot_essentials"]
+    with pytest.raises(WorldQueryError):
+        read_world(database_path, "missing")
+
+
+def test_world_api_detail_endpoint(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _instanced(database_path)
+    app = create_app(database_path)
+
+    status, body = asyncio.run(_request(app, "GET", "/api/worlds/campaign-1"))
+    assert status == 200
+    assert body["name"] == "Aerthalon"
+    assert body["source_scenario_id"] == "aerthalon"
+    assert len(body["elements"]) == 3
+    assert body["elements"][0]["element_type"] == "author_note"
+
+    status, _ = asyncio.run(_request(app, "GET", "/api/worlds/missing"))
     assert status == 404
 
 

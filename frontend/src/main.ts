@@ -25,6 +25,10 @@ type ScenarioDetail = Scenario & {
   elements: ScenarioElement[];
 };
 
+type WorldDetail = World & {
+  elements: ScenarioElement[];
+};
+
 type Player = {
   id: string;
   world_id: string;
@@ -208,7 +212,57 @@ root.innerHTML = `
         <button class="manage-button manage-button--danger" id="scenario-delete" type="button">Delete scenario</button>
       </div>
       <h2 class="section-title">Worlds</h2>
+      <form class="manage-form" id="world-create-form">
+        <select class="manage-input" id="world-create-scenario" aria-label="Scenario to instance">
+          <option value="">Select a scenario…</option>
+        </select>
+        <input
+          class="manage-input"
+          id="world-create-id"
+          placeholder="world id (kebab-case)"
+          aria-label="World id"
+          required
+        />
+        <button class="manage-button" id="world-create-submit" type="submit">Instance world</button>
+      </form>
       <div class="manage-grid" id="world-list"></div>
+      <div class="scenario-editor" id="world-editor" hidden>
+        <div class="scenario-editor-heading">
+          <div>
+            <h3 class="section-title" id="world-editor-name">World</h3>
+            <span class="manage-meta" id="world-editor-revision"></span>
+          </div>
+          <button class="manage-button manage-button--ghost" id="world-editor-close" type="button">Close</button>
+        </div>
+        <label class="manage-field">
+          Name (title)
+          <input class="manage-input" id="world-edit-name" />
+        </label>
+        <label class="manage-field">
+          Description
+          <textarea class="manage-textarea" id="world-edit-description"></textarea>
+        </label>
+        <button class="manage-button" id="world-edit-save" type="button">Save name &amp; description</button>
+        <div class="scenario-elements">
+          <span class="eyebrow">Story elements</span>
+          <label class="manage-field">
+            Author's note
+            <textarea class="manage-textarea" id="world-element-author_note"></textarea>
+            <button class="manage-button" data-world-element-save="author_note" type="button">Save note</button>
+          </label>
+          <label class="manage-field">
+            Plot essentials
+            <textarea class="manage-textarea" id="world-element-plot_essentials"></textarea>
+            <button class="manage-button" data-world-element-save="plot_essentials" type="button">Save</button>
+          </label>
+          <label class="manage-field">
+            Opening scene
+            <textarea class="manage-textarea" id="world-element-opening_scene"></textarea>
+            <button class="manage-button" data-world-element-save="opening_scene" type="button">Save</button>
+          </label>
+        </div>
+        <button class="manage-button manage-button--danger" id="world-delete" type="button">Delete world</button>
+      </div>
     </section>
   </main>
 `;
@@ -240,6 +294,18 @@ const scenarioEditDescription = requireElement<HTMLTextAreaElement>("#scenario-e
 const scenarioEditSave = requireElement<HTMLButtonElement>("#scenario-edit-save");
 const scenarioEditorClose = requireElement<HTMLButtonElement>("#scenario-editor-close");
 const scenarioDelete = requireElement<HTMLButtonElement>("#scenario-delete");
+const worldCreateForm = requireElement<HTMLFormElement>("#world-create-form");
+const worldCreateScenario = requireElement<HTMLSelectElement>("#world-create-scenario");
+const worldCreateId = requireElement<HTMLInputElement>("#world-create-id");
+const worldCreateSubmit = requireElement<HTMLButtonElement>("#world-create-submit");
+const worldEditor = requireElement<HTMLDivElement>("#world-editor");
+const worldEditorName = requireElement<HTMLElement>("#world-editor-name");
+const worldEditorRevision = requireElement<HTMLElement>("#world-editor-revision");
+const worldEditName = requireElement<HTMLInputElement>("#world-edit-name");
+const worldEditDescription = requireElement<HTMLTextAreaElement>("#world-edit-description");
+const worldEditSave = requireElement<HTMLButtonElement>("#world-edit-save");
+const worldEditorClose = requireElement<HTMLButtonElement>("#world-editor-close");
+const worldDelete = requireElement<HTMLButtonElement>("#world-delete");
 
 let worlds: World[] = [];
 let selectedWorldId: string | null = null;
@@ -248,6 +314,8 @@ let loading = false;
 let actionPending = false;
 let manageLoading = false;
 let editingScenarioId: string | null = null;
+let editingWorldId: string | null = null;
+let editingWorldRevision = 0;
 let lastUpdated: Date | null = null;
 
 function requireElement<T extends Element>(selector: string): T {
@@ -641,6 +709,7 @@ async function loadManage(): Promise<void> {
       fetchJson<World[]>("/api/worlds"),
     ]);
     renderScenarioList(scenarios);
+    populateWorldScenarioSelect(scenarios);
     renderWorldList(allWorlds);
   } catch (error) {
     setError(error instanceof Error ? error.message : "Unable to load management data");
@@ -690,8 +759,36 @@ function renderWorldList(allWorlds: World[]): void {
     if (world.description !== null) {
       card.append(element("p", "manage-description", world.description));
     }
+    const editButton = element("button", "manage-button", "Edit");
+    editButton.type = "button";
+    editButton.addEventListener("click", () => void openWorldEditor(world.id));
+    card.append(editButton);
     worldList.append(card);
   }
+}
+
+function populateWorldScenarioSelect(scenarios: Scenario[]): void {
+  worldCreateScenario.replaceChildren();
+  if (scenarios.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No scenarios yet — create one first";
+    option.disabled = true;
+    worldCreateScenario.append(option);
+    worldCreateSubmit.disabled = true;
+    return;
+  }
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select a scenario…";
+  worldCreateScenario.append(placeholder);
+  for (const scenario of scenarios) {
+    const option = document.createElement("option");
+    option.value = scenario.id;
+    option.textContent = `${scenario.title} (${scenario.id})`;
+    worldCreateScenario.append(option);
+  }
+  worldCreateSubmit.disabled = false;
 }
 
 function setViewMode(mode: "play" | "manage"): void {
@@ -838,6 +935,156 @@ for (const button of root?.querySelectorAll<HTMLButtonElement>("[data-element-sa
   const elementType = button.dataset.elementSave;
   if (elementType !== undefined) {
     button.addEventListener("click", () => void saveScenarioElement(elementType));
+  }
+}
+
+function worldElementTextarea(elementType: string): HTMLTextAreaElement {
+  const textarea = root?.querySelector<HTMLTextAreaElement>(
+    `#world-element-${elementType}`,
+  );
+  if (textarea === null || textarea === undefined) {
+    throw new Error(`Missing world element textarea: ${elementType}`);
+  }
+  return textarea;
+}
+
+async function openWorldEditor(worldId: string): Promise<void> {
+  editingWorldId = worldId;
+  editingWorldRevision = 0;
+  worldEditor.hidden = false;
+  worldEditorName.textContent = worldId;
+  worldEditorRevision.textContent = "";
+  worldEditName.value = "";
+  worldEditDescription.value = "";
+  for (const elementType of ["author_note", "plot_essentials", "opening_scene"]) {
+    worldElementTextarea(elementType).value = "";
+  }
+  setError(null);
+  await loadWorldDetail(worldId);
+}
+
+async function loadWorldDetail(worldId: string): Promise<void> {
+  try {
+    const detail = await fetchJson<WorldDetail>(`/api/worlds/${encodeURIComponent(worldId)}`);
+    worldEditorName.textContent = detail.id;
+    editingWorldRevision = detail.revision;
+    worldEditorRevision.textContent = `revision ${detail.revision}`;
+    worldEditName.value = detail.name;
+    worldEditDescription.value = detail.description ?? "";
+    const byType = new Map(detail.elements.map((element) => [element.element_type, element.content]));
+    for (const elementType of ["author_note", "plot_essentials", "opening_scene"]) {
+      worldElementTextarea(elementType).value = byType.get(elementType) ?? "";
+    }
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to load world");
+  }
+}
+
+async function saveWorldDetails(): Promise<void> {
+  if (editingWorldId === null) return;
+  const title = worldEditName.value.trim();
+  if (title === "") {
+    setError("Name must not be blank");
+    return;
+  }
+  setError(null);
+  try {
+    const response = await requestJson<{ world_revision: number }>(
+      "PATCH",
+      `/api/worlds/${encodeURIComponent(editingWorldId)}`,
+      {
+        title,
+        description: worldEditDescription.value.trim() || null,
+        operation_id: crypto.randomUUID(),
+        expected_revision: editingWorldRevision,
+      },
+    );
+    editingWorldRevision = response.world_revision;
+    await Promise.all([loadManage(), loadWorldDetail(editingWorldId)]);
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to save world");
+  }
+}
+
+async function saveWorldElement(elementType: string): Promise<void> {
+  if (editingWorldId === null) return;
+  const content = worldElementTextarea(elementType).value;
+  setError(null);
+  try {
+    const response = await requestJson<{ world_revision: number }>(
+      "PUT",
+      `/api/worlds/${encodeURIComponent(editingWorldId)}/elements/${elementType}`,
+      {
+        content,
+        operation_id: crypto.randomUUID(),
+        expected_revision: editingWorldRevision,
+      },
+    );
+    editingWorldRevision = response.world_revision;
+    await Promise.all([loadManage(), loadWorldDetail(editingWorldId)]);
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to save element");
+  }
+}
+
+function closeWorldEditor(): void {
+  editingWorldId = null;
+  editingWorldRevision = 0;
+  worldEditor.hidden = true;
+}
+
+async function deleteWorld(): Promise<void> {
+  if (editingWorldId === null) return;
+  const worldId = editingWorldId;
+  if (!window.confirm(`Delete world "${worldId}"? All of its state will be removed.`)) {
+    return;
+  }
+  setError(null);
+  try {
+    await requestJson(
+      "DELETE",
+      `/api/worlds/${encodeURIComponent(worldId)}?operation_id=${crypto.randomUUID()}&expected_revision=${editingWorldRevision}`,
+    );
+    closeWorldEditor();
+    await loadManage();
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to delete world");
+  }
+}
+
+async function createWorldFromScenario(): Promise<void> {
+  const scenarioId = worldCreateScenario.value;
+  const worldId = worldCreateId.value.trim();
+  if (scenarioId === "" || worldId === "") {
+    setError("Choose a scenario and enter a world id");
+    return;
+  }
+  setError(null);
+  try {
+    await postJson("/api/worlds", {
+      world_id: worldId,
+      scenario_id: scenarioId,
+      operation_id: crypto.randomUUID(),
+    });
+    worldCreateId.value = "";
+    await loadManage();
+    await openWorldEditor(worldId);
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to instance world");
+  }
+}
+
+worldCreateForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void createWorldFromScenario();
+});
+worldEditSave.addEventListener("click", () => void saveWorldDetails());
+worldEditorClose.addEventListener("click", closeWorldEditor);
+worldDelete.addEventListener("click", () => void deleteWorld());
+for (const button of root?.querySelectorAll<HTMLButtonElement>("[data-world-element-save]") ?? []) {
+  const elementType = button.dataset.worldElementSave;
+  if (elementType !== undefined) {
+    button.addEventListener("click", () => void saveWorldElement(elementType));
   }
 }
 

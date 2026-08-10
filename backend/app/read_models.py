@@ -17,6 +17,16 @@ class WorldRead(StrictReadModel):
     source_scenario_id: str | None = None
 
 
+class WorldElementRead(StrictReadModel):
+    element_type: str
+    content: str
+    updated_at: str
+
+
+class WorldDetailRead(WorldRead):
+    elements: list[WorldElementRead] = Field(default_factory=list)
+
+
 class PlayerRead(StrictReadModel):
     id: str
     world_id: str
