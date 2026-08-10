@@ -34,6 +34,9 @@ The live database lives outside Git in a bind-mounted state directory; backups a
 | `npm run set-scenario-element -- …` | Upsert one scenario story element. |
 | `npm run remove-scenario -- …` | Remove a scenario and its elements (destructive). |
 | `npm run create-world-from-scenario -- …` | Instance a new world from a scenario (copies title/description/elements). |
+| `npm run update-world -- …` | Update a world's title and/or description (revision-checked). |
+| `npm run set-world-element -- …` | Upsert one world-owned story element (revision-checked). |
+| `npm run remove-world -- …` | Remove a world and all of its state (destructive, revision-checked). |
 | `npm run world-tools` | Run the MCP tool server over stdio. |
 
 ## CLI commands
@@ -89,6 +92,19 @@ npm run create-world-from-scenario -- --world-id aerthalon-campaign \
   --operation-id op-5 --scenario-id aerthalon
 ```
 
+World management after creation is revision-checked (pass the revision your decision was based on) and idempotent by operation ID:
+
+```sh
+npm run update-world -- --world-id aerthalon-campaign --operation-id op-6 \
+  --expected-revision 1 --title "Aerthalon Reborn"
+npm run set-world-element -- --world-id aerthalon-campaign --operation-id op-7 \
+  --expected-revision 2 --element-type opening_scene --content "New opening."
+npm run remove-world -- --world-id aerthalon-campaign --operation-id op-8 \
+  --expected-revision 3
+```
+
+Removal cascades every child table (locations, entities, elements, operations, events); the world's history is removed with it. World edits never touch the instancing scenario.
+
 ## HTTP API
 
 Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup applies pending migrations and fails if history is invalid.
@@ -118,8 +134,11 @@ Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup ap
 | Route | Purpose |
 | --- | --- |
 | `POST /api/worlds` | Instance a world from a scenario — body `{world_id, scenario_id, operation_id}`. Returns `{already_applied, world_id, world_revision, source_scenario_id}`. |
+| `PATCH /api/worlds/{world_id}` | Update title/description — body `{title?, description?, operation_id, expected_revision}`. |
+| `PUT /api/worlds/{world_id}/elements/{element_type}` | Upsert one world element — body `{content, operation_id, expected_revision}`. |
+| `DELETE /api/worlds/{world_id}?operation_id=…&expected_revision=…` | Remove a world and all of its state (destructive). |
 
-Errors: `404` unknown scenario · `409` duplicate world id or operation-ID reuse.
+Errors: `404` unknown scenario or world · `409` duplicate id, operation-ID reuse, or stale revision.
 
 ### Scenario authoring
 

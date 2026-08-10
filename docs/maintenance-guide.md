@@ -131,5 +131,6 @@ The infrastructure side then implements the general capability as a vertical sli
 | Phase 14 | Derived SVG map view | 2026-08 |
 | Phase 15 | Direct player interface: turn relay + page input | 2026-08-08 |
 | §22 slice | `backup` command with verified artifacts | 2026-08-08 |
+| Scenario + worlds idea | Scenarios (templates) · world instancing · world management (create/update/elements/remove) · `0007`–`0009` | 2026-08-08 |
 
 The current live state (2026-08-08): ward-world and town-world both at revision 2; the narration profile is bound to town-world / sailor; the page accepts player actions for that world.

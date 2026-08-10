@@ -25,9 +25,12 @@ from backend.app.read_models import (
     TurnResponse,
     WorldCreateRequest,
     WorldCreateResponse,
+    WorldElementRequest,
     WorldEventRead,
     WorldMapRead,
+    WorldMutationResponse,
     WorldRead,
+    WorldUpdateRequest,
 )
 from backend.persistence.migrations import (
     MigrationError,
@@ -64,7 +67,14 @@ from backend.world.scenarios import (
     update_scenario,
 )
 from backend.world.turns import TurnDecision, run_turn
-from backend.world.worlds import WorldAdminConflict, create_world_from_scenario
+from backend.world.worlds import (
+    WorldAdminConflict,
+    WorldAdminNotFound,
+    create_world_from_scenario,
+    remove_world,
+    set_world_element,
+    update_world,
+)
 
 DEFAULT_FRONTEND_PATH = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
@@ -133,6 +143,78 @@ def create_app(
             world_id=result["world_id"],
             world_revision=result["world_revision"],
             source_scenario_id=result["source_scenario_id"],
+        )
+
+    @application.patch("/api/worlds/{world_id}", tags=["world administration"])
+    def update_world_route(
+        world_id: str, request: WorldUpdateRequest
+    ) -> WorldMutationResponse:
+        try:
+            result = update_world(
+                get_database_path(),
+                world_id=world_id,
+                operation_id=request.operation_id,
+                expected_revision=request.expected_revision,
+                title=request.title,
+                description=request.description,
+            )
+        except WorldAdminNotFound as error:
+            raise HTTPException(status_code=404, detail="world not found") from error
+        except WorldAdminConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return WorldMutationResponse(
+            already_applied=result["already_applied"],
+            world_id=result["world_id"],
+            world_revision=result["world_revision"],
+        )
+
+    @application.put(
+        "/api/worlds/{world_id}/elements/{element_type}",
+        tags=["world administration"],
+    )
+    def set_world_element_route(
+        world_id: str, element_type: str, request: WorldElementRequest
+    ) -> WorldMutationResponse:
+        try:
+            result = set_world_element(
+                get_database_path(),
+                world_id=world_id,
+                operation_id=request.operation_id,
+                expected_revision=request.expected_revision,
+                element_type=element_type,
+                content=request.content,
+            )
+        except WorldAdminNotFound as error:
+            raise HTTPException(status_code=404, detail="world not found") from error
+        except WorldAdminConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return WorldMutationResponse(
+            already_applied=result["already_applied"],
+            world_id=result["world_id"],
+            world_revision=result["world_revision"],
+        )
+
+    @application.delete("/api/worlds/{world_id}", tags=["world administration"])
+    def remove_world_route(
+        world_id: str,
+        operation_id: str = Query(...),
+        expected_revision: int = Query(..., ge=0),
+    ) -> WorldMutationResponse:
+        try:
+            result = remove_world(
+                get_database_path(),
+                world_id=world_id,
+                operation_id=operation_id,
+                expected_revision=expected_revision,
+            )
+        except WorldAdminNotFound as error:
+            raise HTTPException(status_code=404, detail="world not found") from error
+        except WorldAdminConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return WorldMutationResponse(
+            already_applied=result["already_applied"],
+            world_id=result["world_id"],
+            world_revision=result["world_revision"],
         )
 
     @application.get("/api/worlds/{world_id}/player", tags=["world reads"])

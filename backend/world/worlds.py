@@ -5,6 +5,12 @@ scenario: the scenario's title, description, and story elements are copied
 into the new world, which records its source scenario for traceability. Copy
 semantics are the contract — the scenario is never modified, and the world
 owns its copies so the two diverge independently afterward.
+
+``update_world``, ``set_world_element``, and ``remove_world`` manage a world
+after creation. They are revision-checked, idempotent, and (like every world
+mutation) record an operation and an event; ``remove_world`` is destructive
+by design — the world's history is removed with it (the same accepted
+trade-off as removing a scenario).
 """
 
 from __future__ import annotations
@@ -17,10 +23,13 @@ from typing import Any
 
 from backend.persistence.database import connect_database
 from backend.world.mutations import event_id
-from backend.world.scenarios import ScenarioNotFound
+from backend.world.scenarios import SCENARIO_ELEMENT_TYPES, ScenarioNotFound
 
 _WORLD_ID_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 _WORLD_CREATED_EVENT = "world_created"
+_WORLD_UPDATED_EVENT = "world_updated"
+_WORLD_ELEMENT_UPDATED_EVENT = "world_element_updated"
+_MAX_ELEMENT_LENGTH = 20_000
 
 
 class WorldAdminError(RuntimeError):
@@ -29,6 +38,10 @@ class WorldAdminError(RuntimeError):
 
 class WorldAdminConflict(WorldAdminError):
     """A world administration operation violates its preconditions."""
+
+
+class WorldAdminNotFound(WorldAdminError):
+    """A world administration operation references a missing world."""
 
 
 def _validate_world_id(world_id: str) -> None:
@@ -41,6 +54,129 @@ def _validate_world_id(world_id: str) -> None:
 def _validate_operation_id(operation_id: str) -> None:
     if not operation_id.strip():
         raise WorldAdminConflict("operation ID must not be blank")
+
+
+def _validate_element_type(element_type: str) -> None:
+    if element_type not in SCENARIO_ELEMENT_TYPES:
+        raise WorldAdminConflict(
+            "element type must be one of: " + ", ".join(SCENARIO_ELEMENT_TYPES)
+        )
+
+
+def _validate_content(content: str) -> str:
+    trimmed = content.strip()
+    if not trimmed:
+        raise WorldAdminConflict("element content must not be blank")
+    if len(trimmed) > _MAX_ELEMENT_LENGTH:
+        raise WorldAdminConflict(
+            f"element content must be at most {_MAX_ELEMENT_LENGTH} characters"
+        )
+    return trimmed
+
+
+def _normalize_description(description: str | None) -> str | None:
+    if description is None:
+        return None
+    return description.strip() or None
+
+
+def _replay_or_conflict(
+    connection: sqlite3.Connection,
+    *,
+    world_id: str,
+    operation_id: str,
+    operation_type: str,
+    request_json: str,
+) -> dict[str, Any] | None:
+    """Return the stored result for an exact-request replay, else None.
+
+    Raises ``WorldAdminConflict`` when the operation ID was already used for a
+    different request.
+    """
+    existing = connection.execute(
+        "SELECT operation_type, request_json, result_json FROM operations "
+        "WHERE world_id = ? AND operation_id = ?",
+        (world_id, operation_id),
+    ).fetchone()
+    if existing is None:
+        return None
+    if (
+        existing["operation_type"] != operation_type
+        or existing["request_json"] != request_json
+    ):
+        raise WorldAdminConflict("operation ID was already used for a different request")
+    result = json.loads(existing["result_json"])
+    result["already_applied"] = True
+    return result
+
+
+def _require_world(connection: sqlite3.Connection, world_id: str) -> dict[str, Any]:
+    row = connection.execute(
+        "SELECT id, name, revision FROM worlds WHERE id = ?", (world_id,)
+    ).fetchone()
+    if row is None:
+        raise WorldAdminNotFound(f"world not found: {world_id}")
+    return dict(row)
+
+
+def _check_revision(world: dict[str, Any], expected_revision: int) -> None:
+    if world["revision"] != expected_revision:
+        raise WorldAdminConflict(
+            f"expected world revision {expected_revision}, "
+            f"found {world['revision']}"
+        )
+
+
+def _commit_world_mutation(
+    connection: sqlite3.Connection,
+    *,
+    world_id: str,
+    operation_id: str,
+    operation_type: str,
+    request_json: str,
+    event_identifier: str,
+    summary: str,
+    payload: dict[str, Any],
+    expected_revision: int,
+) -> dict[str, Any]:
+    """Record the operation + event, bump the revision, and return the result."""
+    next_revision = expected_revision + 1
+    result = {"already_applied": False, "world_id": world_id, "world_revision": next_revision}
+    result_json = json.dumps(result, sort_keys=True, separators=(",", ":"))
+    connection.execute(
+        "UPDATE worlds SET revision = ? WHERE id = ? AND revision = ?",
+        (next_revision, world_id, expected_revision),
+    )
+    connection.execute(
+        "INSERT INTO operations("
+        "world_id, operation_id, operation_type, request_json, result_json, "
+        "completed_revision) VALUES (?, ?, ?, ?, ?, ?)",
+        (
+            world_id,
+            operation_id,
+            operation_type,
+            request_json,
+            result_json,
+            next_revision,
+        ),
+    )
+    connection.execute(
+        """INSERT INTO events(
+            id, world_id, operation_id, event_type, actor_entity_id,
+            summary, payload_json, world_revision
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            event_identifier,
+            world_id,
+            operation_id,
+            operation_type,
+            None,
+            summary,
+            json.dumps(payload, sort_keys=True, separators=(",", ":")),
+            next_revision,
+        ),
+    )
+    return result
 
 
 def create_world_from_scenario(
@@ -163,6 +299,175 @@ def create_world_from_scenario(
             connection.commit()
             return result
         except (WorldAdminError, ScenarioNotFound):
+            connection.rollback()
+            raise
+        except sqlite3.Error:
+            connection.rollback()
+            raise
+
+
+def update_world(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    title: str | None = None,
+    description: str | None = None,
+) -> dict[str, Any]:
+    """Update a world's title and/or description atomically."""
+    _validate_world_id(world_id)
+    _validate_operation_id(operation_id)
+    if title is None and description is None:
+        raise WorldAdminConflict("update requires title or description")
+    trimmed_title = title.strip() if title is not None else None
+    if title is not None and not trimmed_title:
+        raise WorldAdminConflict("title must not be blank")
+    normalized_description = _normalize_description(description)
+    request = {"description": normalized_description, "title": trimmed_title}
+    request_json = json.dumps(request, sort_keys=True, separators=(",", ":"))
+
+    with connect_database(database_path) as connection:
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            replay = _replay_or_conflict(
+                connection,
+                world_id=world_id,
+                operation_id=operation_id,
+                operation_type=_WORLD_UPDATED_EVENT,
+                request_json=request_json,
+            )
+            if replay is not None:
+                connection.rollback()
+                return replay
+            world = _require_world(connection, world_id)
+            _check_revision(world, expected_revision)
+            if trimmed_title is not None:
+                connection.execute(
+                    "UPDATE worlds SET name = ? WHERE id = ?",
+                    (trimmed_title, world_id),
+                )
+            if normalized_description is not None:
+                connection.execute(
+                    "UPDATE worlds SET description = ? WHERE id = ?",
+                    (normalized_description, world_id),
+                )
+            payload = {"description": normalized_description, "title": trimmed_title}
+            result = _commit_world_mutation(
+                connection,
+                world_id=world_id,
+                operation_id=operation_id,
+                operation_type=_WORLD_UPDATED_EVENT,
+                request_json=request_json,
+                event_identifier=event_id(world_id, operation_id),
+                summary=f"world {world_id} updated",
+                payload=payload,
+                expected_revision=expected_revision,
+            )
+            connection.commit()
+            return result
+        except WorldAdminError:
+            connection.rollback()
+            raise
+        except sqlite3.Error:
+            connection.rollback()
+            raise
+
+
+def set_world_element(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    element_type: str,
+    content: str,
+) -> dict[str, Any]:
+    """Upsert one world-owned story element atomically."""
+    _validate_world_id(world_id)
+    _validate_operation_id(operation_id)
+    _validate_element_type(element_type)
+    trimmed_content = _validate_content(content)
+    request = {"content": trimmed_content, "element_type": element_type}
+    request_json = json.dumps(request, sort_keys=True, separators=(",", ":"))
+
+    with connect_database(database_path) as connection:
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            replay = _replay_or_conflict(
+                connection,
+                world_id=world_id,
+                operation_id=operation_id,
+                operation_type=_WORLD_ELEMENT_UPDATED_EVENT,
+                request_json=request_json,
+            )
+            if replay is not None:
+                connection.rollback()
+                return replay
+            world = _require_world(connection, world_id)
+            _check_revision(world, expected_revision)
+            event_identifier = event_id(world_id, operation_id)
+            result = _commit_world_mutation(
+                connection,
+                world_id=world_id,
+                operation_id=operation_id,
+                operation_type=_WORLD_ELEMENT_UPDATED_EVENT,
+                request_json=request_json,
+                event_identifier=event_identifier,
+                summary=f"world element {element_type} updated in {world_id}",
+                payload={"element_type": element_type},
+                expected_revision=expected_revision,
+            )
+            connection.execute(
+                "INSERT INTO world_elements "
+                "(world_id, element_type, content, updated_event_id) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(world_id, element_type) DO UPDATE SET "
+                "content = excluded.content, "
+                "updated_event_id = excluded.updated_event_id",
+                (world_id, element_type, trimmed_content, event_identifier),
+            )
+            connection.commit()
+            result["element_type"] = element_type
+            return result
+        except WorldAdminError:
+            connection.rollback()
+            raise
+        except sqlite3.Error:
+            connection.rollback()
+            raise
+
+
+def remove_world(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+) -> dict[str, Any]:
+    """Remove a world and all of its state atomically (destructive).
+
+    Every child table cascades, so the world's history is removed with it —
+    there is no post-removal trace (the same accepted trade-off as removing a
+    scenario). Scenarios that instanced the world are untouched.
+    """
+    _validate_world_id(world_id)
+    _validate_operation_id(operation_id)
+
+    with connect_database(database_path) as connection:
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            world = _require_world(connection, world_id)
+            _check_revision(world, expected_revision)
+            connection.execute("DELETE FROM worlds WHERE id = ?", (world_id,))
+            connection.commit()
+            return {
+                "already_applied": False,
+                "world_id": world_id,
+                "world_revision": expected_revision,
+                "removed": True,
+            }
+        except WorldAdminError:
             connection.rollback()
             raise
         except sqlite3.Error:

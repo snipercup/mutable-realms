@@ -20,7 +20,14 @@ from backend.world.scenarios import (
     set_scenario_element,
 )
 from backend.world.validation import validate_worlds
-from backend.world.worlds import WorldAdminConflict, create_world_from_scenario
+from backend.world.worlds import (
+    WorldAdminConflict,
+    WorldAdminNotFound,
+    create_world_from_scenario,
+    remove_world,
+    set_world_element,
+    update_world,
+)
 
 
 def _database(tmp_path: Path) -> Path:
@@ -395,6 +402,359 @@ def test_world_api_create_from_scenario_roundtrip(tmp_path: Path) -> None:
                 "scenario_id": "missing",
                 "operation_id": "api-instance-2",
             },
+        )
+    )
+    assert status == 404
+
+
+# --- world management: update / set element / remove -----------------------
+
+
+def _instanced(database_path: Path, world_id: str = "campaign-1") -> None:
+    _scenario(database_path)
+    _instance(database_path, world_id=world_id)
+
+
+def test_update_world_sets_title_and_description(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _instanced(database_path)
+
+    result = update_world(
+        database_path,
+        world_id="campaign-1",
+        operation_id="update-1",
+        expected_revision=1,
+        title="Aerthalon Reborn",
+        description=None,
+    )
+
+    assert result == {
+        "already_applied": False,
+        "world_id": "campaign-1",
+        "world_revision": 2,
+    }
+    world = _world_row(database_path, "campaign-1")
+    assert world is not None
+    assert world["name"] == "Aerthalon Reborn"
+    assert world["description"] == "A vast ancient fantasy world."
+    assert world["revision"] == 2
+    with connect_database(database_path) as connection:
+        event = connection.execute(
+            "SELECT event_type, world_revision FROM events "
+            "WHERE world_id = 'campaign-1' AND event_type = 'world_updated'"
+        ).fetchone()
+    assert dict(event)["world_revision"] == 2
+
+
+def test_update_world_requires_a_field_and_rejects_stale_revision(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path)
+    _instanced(database_path)
+
+    with pytest.raises(WorldAdminConflict, match="title or description"):
+        update_world(
+            database_path,
+            world_id="campaign-1",
+            operation_id="update-2",
+            expected_revision=1,
+        )
+    with pytest.raises(WorldAdminConflict, match="expected world revision"):
+        update_world(
+            database_path,
+            world_id="campaign-1",
+            operation_id="update-3",
+            expected_revision=9,
+            title="Wrong revision",
+        )
+    row = _world_row(database_path, "campaign-1")
+    assert row is not None
+    assert row["revision"] == 1
+
+
+def test_update_world_replays_exact_request(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _instanced(database_path)
+
+    first = update_world(
+        database_path,
+        world_id="campaign-1",
+        operation_id="update-4",
+        expected_revision=1,
+        title="Renamed",
+    )
+    second = update_world(
+        database_path,
+        world_id="campaign-1",
+        operation_id="update-4",
+        expected_revision=1,
+        title="Renamed",
+    )
+    assert first["already_applied"] is False
+    assert second["already_applied"] is True
+    row = _world_row(database_path, "campaign-1")
+    assert row is not None
+    assert row["revision"] == 2
+
+
+def test_set_world_element_upserts_and_links_event(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _instanced(database_path)
+
+    result = set_world_element(
+        database_path,
+        world_id="campaign-1",
+        operation_id="element-1",
+        expected_revision=1,
+        element_type="opening_scene",
+        content="The gates have changed forever.",
+    )
+
+    assert result["world_revision"] == 2
+    elements = _world_elements(database_path, "campaign-1")
+    opening = next(
+        element for element in elements if element["element_type"] == "opening_scene"
+    )
+    assert opening["content"] == "The gates have changed forever."
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            "SELECT we.updated_event_id, ev.event_type "
+            "FROM world_elements we "
+            "JOIN events ev ON ev.id = we.updated_event_id "
+            "WHERE we.world_id = 'campaign-1' AND we.element_type = 'opening_scene'"
+        ).fetchone()
+    assert dict(row)["event_type"] == "world_element_updated"
+    assert validate_worlds(database_path) == []
+
+
+def test_set_world_element_does_not_touch_scenario(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _instanced(database_path)
+
+    set_world_element(
+        database_path,
+        world_id="campaign-1",
+        operation_id="element-2",
+        expected_revision=1,
+        element_type="opening_scene",
+        content="World-only opening.",
+    )
+
+    scenario_elements = read_scenario(database_path, "aerthalon")["elements"]
+    scenario_opening = next(
+        element
+        for element in scenario_elements
+        if element["element_type"] == "opening_scene"
+    )
+    assert scenario_opening["content"] == "opening_scene content."
+    elements = _world_elements(database_path, "campaign-1")
+    world_opening = next(
+        element for element in elements if element["element_type"] == "opening_scene"
+    )
+    assert world_opening["content"] == "World-only opening."
+
+
+def test_set_world_element_validates_type_and_content(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _instanced(database_path)
+
+    with pytest.raises(WorldAdminConflict, match="element type"):
+        set_world_element(
+            database_path,
+            world_id="campaign-1",
+            operation_id="element-3",
+            expected_revision=1,
+            element_type="character_sheet",
+            content="nope",
+        )
+    with pytest.raises(WorldAdminConflict, match="at most 20000"):
+        set_world_element(
+            database_path,
+            world_id="campaign-1",
+            operation_id="element-4",
+            expected_revision=1,
+            element_type="author_note",
+            content="x" * 20_001,
+        )
+
+
+def test_remove_world_cascades_all_state_and_keeps_scenario(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path)
+    _instanced(database_path)
+    _add_player_fixture(database_path, "campaign-1")
+    set_world_element(
+        database_path,
+        world_id="campaign-1",
+        operation_id="element-5",
+        expected_revision=1,
+        element_type="author_note",
+        content="Note.",
+    )
+    _instance(database_path, world_id="campaign-2", operation_id="world-instance-2")
+
+    result = remove_world(
+        database_path,
+        world_id="campaign-1",
+        operation_id="remove-1",
+        expected_revision=2,
+    )
+
+    assert result["removed"] is True
+    assert result["world_revision"] == 2
+    with connect_database(database_path) as connection:
+        counts = {
+            table: connection.execute(
+                f"SELECT COUNT(*) AS count FROM {table} WHERE world_id = 'campaign-1'"
+            ).fetchone()["count"]
+            for table in (
+                "locations",
+                "entities",
+                "world_elements",
+                "operations",
+                "events",
+            )
+        }
+        entity_locations = connection.execute(
+            "SELECT COUNT(*) AS count FROM entity_locations el "
+            "JOIN entities e ON e.id = el.entity_id "
+            "WHERE e.world_id = 'campaign-1'"
+        ).fetchone()["count"]
+    assert counts == {
+        "locations": 0,
+        "entities": 0,
+        "world_elements": 0,
+        "operations": 0,
+        "events": 0,
+    }
+    assert entity_locations == 0
+    assert _world_row(database_path, "campaign-2") is not None
+    assert read_scenario(database_path, "aerthalon")["title"] == "Aerthalon"
+    assert validate_worlds(database_path) == []
+
+
+def test_remove_world_stale_revision_and_missing(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _instanced(database_path)
+
+    with pytest.raises(WorldAdminConflict, match="expected world revision"):
+        remove_world(
+            database_path,
+            world_id="campaign-1",
+            operation_id="remove-2",
+            expected_revision=9,
+        )
+    with pytest.raises(WorldAdminNotFound):
+        remove_world(
+            database_path,
+            world_id="missing",
+            operation_id="remove-3",
+            expected_revision=0,
+        )
+    assert _world_row(database_path, "campaign-1") is not None
+
+
+def test_cli_world_management_roundtrip(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    database_path = _database(tmp_path)
+    db_args = ["--db-path", str(database_path)]
+    assert main([*db_args, "create-scenario", "--scenario-id", "aerthalon",
+                 "--operation-id", "op-1", "--title", "Aerthalon"]) == 0
+    capsys.readouterr()
+    assert main([*db_args, "create-world-from-scenario", "--world-id", "campaign-1",
+                 "--operation-id", "op-2", "--scenario-id", "aerthalon"]) == 0
+    capsys.readouterr()
+
+    assert main([*db_args, "update-world", "--world-id", "campaign-1",
+                 "--operation-id", "op-3", "--expected-revision", "1",
+                 "--title", "Aerthalon Reborn"]) == 0
+    assert main([*db_args, "set-world-element", "--world-id", "campaign-1",
+                 "--operation-id", "op-4", "--expected-revision", "2",
+                 "--element-type", "opening_scene", "--content", "New opening."]) == 0
+    captured = capsys.readouterr()
+    assert '"world_revision": 3' in captured.out
+
+    assert main([*db_args, "remove-world", "--world-id", "campaign-1",
+                 "--operation-id", "op-5", "--expected-revision", "3"]) == 0
+    captured = capsys.readouterr()
+    assert '"removed": true' in captured.out
+
+    assert main([*db_args, "remove-world", "--world-id", "campaign-1",
+                 "--operation-id", "op-6", "--expected-revision", "3"]) == 2
+    captured = capsys.readouterr()
+    assert "world not found" in captured.err
+
+
+def test_world_api_management_roundtrip(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _instanced(database_path)
+    app = create_app(database_path)
+
+    status, _ = asyncio.run(
+        _request(
+            app,
+            "PATCH",
+            "/api/worlds/campaign-1",
+            json={
+                "title": "Aerthalon Reborn",
+                "operation_id": "api-update-1",
+                "expected_revision": 1,
+            },
+        )
+    )
+    assert status == 200
+
+    status, _ = asyncio.run(
+        _request(
+            app,
+            "PUT",
+            "/api/worlds/campaign-1/elements/opening_scene",
+            json={
+                "content": "API opening.",
+                "operation_id": "api-element-1",
+                "expected_revision": 2,
+            },
+        )
+    )
+    assert status == 200
+
+    status, body = asyncio.run(_request(app, "GET", "/api/worlds"))
+    assert status == 200
+    world = next(item for item in body if item["id"] == "campaign-1")
+    assert world["name"] == "Aerthalon Reborn"
+    assert world["revision"] == 3
+
+    status, body = asyncio.run(
+        _request(
+            app,
+            "PATCH",
+            "/api/worlds/campaign-1",
+            json={
+                "title": "Stale",
+                "operation_id": "api-update-2",
+                "expected_revision": 1,
+            },
+        )
+    )
+    assert status == 409
+    assert "expected world revision" in body["detail"]
+
+    status, _ = asyncio.run(
+        _request(
+            app,
+            "DELETE",
+            "/api/worlds/campaign-1?operation_id=api-remove-1&expected_revision=3",
+        )
+    )
+    assert status == 200
+
+    status, _ = asyncio.run(
+        _request(
+            app,
+            "DELETE",
+            "/api/worlds/campaign-1?operation_id=api-remove-2&expected_revision=3",
         )
     )
     assert status == 404

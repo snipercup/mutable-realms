@@ -159,3 +159,22 @@ class WorldCreateResponse(StrictReadModel):
     world_id: str
     world_revision: int = Field(ge=1)
     source_scenario_id: str
+
+
+class WorldUpdateRequest(StrictReadModel):
+    title: str | None = None
+    description: str | None = None
+    operation_id: str
+    expected_revision: int = Field(ge=0)
+
+
+class WorldElementRequest(StrictReadModel):
+    content: str = Field(min_length=1)
+    operation_id: str
+    expected_revision: int = Field(ge=0)
+
+
+class WorldMutationResponse(StrictReadModel):
+    already_applied: bool
+    world_id: str
+    world_revision: int = Field(ge=1)

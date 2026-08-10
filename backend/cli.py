@@ -32,7 +32,13 @@ from backend.world.scenarios import (
 )
 from backend.world.turns import TurnDecision, run_turn
 from backend.world.validation import validate_worlds
-from backend.world.worlds import WorldAdminError, create_world_from_scenario
+from backend.world.worlds import (
+    WorldAdminError,
+    create_world_from_scenario,
+    remove_world,
+    set_world_element,
+    update_world,
+)
 
 _COMMANDS = (
     "migrate",
@@ -47,6 +53,9 @@ _COMMANDS = (
     "set-scenario-element",
     "remove-scenario",
     "create-world-from-scenario",
+    "update-world",
+    "set-world-element",
+    "remove-world",
 )
 
 
@@ -327,6 +336,66 @@ def main(argv: Sequence[str] | None = None) -> int:
                 world_id=args.world_id,
                 operation_id=args.operation_id,
                 scenario_id=args.scenario_id,
+            )
+            print(json.dumps(result, sort_keys=True))
+            return 0
+
+        if args.command == "update-world":
+            required = {
+                "--world-id": args.world_id,
+                "--operation-id": args.operation_id,
+                "--expected-revision": args.expected_revision,
+            }
+            missing = [name for name, value in required.items() if value is None]
+            if missing:
+                raise ValueError("update-world requires " + ", ".join(missing))
+            result = update_world(
+                database_path,
+                world_id=args.world_id,
+                operation_id=args.operation_id,
+                expected_revision=args.expected_revision,
+                title=args.title,
+                description=args.description,
+            )
+            print(json.dumps(result, sort_keys=True))
+            return 0
+
+        if args.command == "set-world-element":
+            required = {
+                "--world-id": args.world_id,
+                "--operation-id": args.operation_id,
+                "--expected-revision": args.expected_revision,
+                "--element-type": args.element_type,
+                "--content": args.content,
+            }
+            missing = [name for name, value in required.items() if value is None]
+            if missing:
+                raise ValueError("set-world-element requires " + ", ".join(missing))
+            result = set_world_element(
+                database_path,
+                world_id=args.world_id,
+                operation_id=args.operation_id,
+                expected_revision=args.expected_revision,
+                element_type=args.element_type,
+                content=args.content,
+            )
+            print(json.dumps(result, sort_keys=True))
+            return 0
+
+        if args.command == "remove-world":
+            required = {
+                "--world-id": args.world_id,
+                "--operation-id": args.operation_id,
+                "--expected-revision": args.expected_revision,
+            }
+            missing = [name for name, value in required.items() if value is None]
+            if missing:
+                raise ValueError("remove-world requires " + ", ".join(missing))
+            result = remove_world(
+                database_path,
+                world_id=args.world_id,
+                operation_id=args.operation_id,
+                expected_revision=args.expected_revision,
             )
             print(json.dumps(result, sort_keys=True))
             return 0
