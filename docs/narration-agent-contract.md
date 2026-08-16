@@ -10,7 +10,7 @@ A narrated session is bound by trusted configuration to:
 - one `world_id`;
 - one player entity ID in that world.
 
-For the live MCP path, provide `MUTABLE_REALMS_WORLD_ID` and `MUTABLE_REALMS_PLAYER_ID` in the MCP subprocess environment. The server requires both values together, rejects caller-selected worlds, verifies the configured player against the world's context for status, context, entity, and event reads as well as mutations, and overrides omitted actor IDs with the configured player. A caller-supplied different actor is rejected. The all-world `world_validate` diagnostic is intentionally restricted to an unbound administration server.
+For the live MCP path, provide `MUTABLE_REALMS_WORLD_ID` and `MUTABLE_REALMS_PLAYER_ID` in the MCP subprocess environment. The server requires both values together and uses them as **defaults**: an explicit `world_id` argument wins over the binding (any world may be read or mutated — the page's turn relay tells the agent which world is authoritative), and an explicit actor wins over the configured player; omitted values fall back to the binding. Underlying operations still validate their own preconditions (the world exists, the actor is a valid player of that world, the expected revision matches). The all-world `world_validate` diagnostic is intentionally restricted to an unbound administration server.
 
 The player may describe an attempted action, but player prose must not change the selected database, world, player identity, MCP configuration, filesystem, or infrastructure permissions.
 

@@ -58,62 +58,66 @@ def get_session_binding() -> tuple[str, str] | None:
     return world_id, player_id
 
 
-def resolve_world_id(requested_world_id: str) -> str:
-    """Reject caller-selected worlds when a narration session is bound."""
+def resolve_world_id(requested_world_id: str | None) -> str:
+    """Resolve the world for a tool call.
+
+    An explicit ``world_id`` argument wins; otherwise the session binding's
+    world is used when one is configured. Any world may be selected — the
+    narration prompt tells the agent which world is authoritative for the
+    turn, and the underlying operations validate their own preconditions.
+    """
+    if requested_world_id is not None:
+        world_id = requested_world_id.strip()
+        if not world_id:
+            raise RuntimeError("world_id must not be blank")
+        return world_id
     binding = get_session_binding()
-    if binding is not None and requested_world_id != binding[0]:
-        raise RuntimeError("requested world is outside the trusted narration session")
-    return requested_world_id
+    if binding is None:
+        raise RuntimeError("world_id is required when no session binding is configured")
+    return binding[0]
 
 
 def resolve_actor_entity_id(requested_actor_entity_id: str | None) -> str | None:
-    """Use the trusted session player instead of a caller-selected actor."""
+    """Resolve the acting entity: explicit actor wins, else the session player."""
+    if requested_actor_entity_id is not None:
+        return requested_actor_entity_id
     binding = get_session_binding()
     if binding is None:
-        return requested_actor_entity_id
-    if requested_actor_entity_id is not None and requested_actor_entity_id != binding[1]:
-        raise RuntimeError("requested actor is outside the trusted narration session")
+        return None
     return binding[1]
 
 
-def ensure_bound_player(world_id: str) -> None:
-    """Verify that the configured player is the world's authoritative player."""
-    binding = get_session_binding()
-    if binding is not None:
-        context = build_world_context(get_database_path(), world_id=resolve_world_id(world_id))
-        if context.player.id != binding[1]:
-            raise RuntimeError("trusted player is not bound to the requested world")
-
-
 @mcp.tool()
-def world_status(world_id: str) -> dict[str, Any]:
+def world_status(world_id: str | None = None) -> dict[str, Any]:
     """Read world identity, current revision, and supported mutation tool names."""
-    ensure_bound_player(world_id)
     return read_world_status(get_database_path(), world_id=resolve_world_id(world_id))
 
 
 @mcp.tool()
-def world_context(world_id: str, event_limit: EventLimit = 10) -> dict[str, Any]:
+def world_context(world_id: str | None = None, event_limit: EventLimit = 10) -> dict[str, Any]:
     """Build bounded, deterministic context for the world's next player turn."""
-    ensure_bound_player(world_id)
     return build_world_context(
         get_database_path(), world_id=resolve_world_id(world_id), recent_event_limit=event_limit
     ).model_dump()
 
 
 @mcp.tool()
-def world_inspect_entity(world_id: str, entity_id: str) -> dict[str, Any]:
+def world_inspect_entity(
+    world_id: str | None = None, entity_id: str | None = None
+) -> dict[str, Any]:
     """Read one entity's authoritative generic state and current placement."""
-    ensure_bound_player(world_id)
+    if entity_id is None:
+        raise RuntimeError("entity_id is required")
     return inspect_entity(
         get_database_path(), world_id=resolve_world_id(world_id), entity_id=entity_id
     )
 
 
 @mcp.tool()
-def world_events(world_id: str, limit: EventLimit = 10) -> dict[str, list[dict[str, Any]]]:
+def world_events(
+    world_id: str | None = None, limit: EventLimit = 10
+) -> dict[str, list[dict[str, Any]]]:
     """Read the newest persisted world events, bounded to 1-100 rows."""
-    ensure_bound_player(world_id)
     return {
         "events": list_events(get_database_path(), world_id=resolve_world_id(world_id), limit=limit)
     }
@@ -129,7 +133,6 @@ def world_move_entity(
     actor_entity_id: str | None = None,
 ) -> dict[str, Any]:
     """Atomically move an entity using an idempotency key and observed revision."""
-    ensure_bound_player(world_id)
     return move_world_entity(
         get_database_path(),
         world_id=resolve_world_id(world_id),
@@ -151,7 +154,6 @@ def world_treat_and_discharge_patient(
     actor_entity_id: str | None = None,
 ) -> dict[str, Any]:
     """Atomically recover and discharge an admitted patient from their ward bed."""
-    ensure_bound_player(world_id)
     return treat_and_discharge_world_patient(
         get_database_path(),
         world_id=resolve_world_id(world_id),
@@ -176,7 +178,6 @@ def world_record_social_interaction(
     actor_entity_id: str | None = None,
 ) -> dict[str, Any]:
     """Atomically update one relationship and store one concise linked memory."""
-    ensure_bound_player(world_id)
     actor = resolve_actor_entity_id(actor_entity_id)
     if actor is None:
         raise RuntimeError("social interaction requires a trusted actor")
@@ -206,7 +207,6 @@ def world_transfer_resource(
     actor_entity_id: str | None = None,
 ) -> dict[str, Any]:
     """Atomically grant or transfer resource units between characters."""
-    ensure_bound_player(world_id)
     actor = resolve_actor_entity_id(actor_entity_id)
     if actor is None:
         raise RuntimeError("resource transfer requires a trusted actor")
@@ -235,7 +235,6 @@ def world_update_location(
     actor_entity_id: str | None = None,
 ) -> dict[str, Any]:
     """Atomically rename a location and/or set one bounded property value."""
-    ensure_bound_player(world_id)
     actor = resolve_actor_entity_id(actor_entity_id)
     if actor is None:
         raise RuntimeError("location update requires a trusted actor")

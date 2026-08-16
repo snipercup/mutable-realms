@@ -28,7 +28,7 @@ Future narration grounded in the changed world
 
 - **SQLite** is the single authoritative store; narration, prose, SVG, and web pages are derived views and must never contradict it.
 - **FastAPI** serves read APIs, the turn relay, health routes, and the built frontend from one process (one worker).
-- **Hermes** runs the narration agent as a dedicated profile bound through MCP env vars (`MUTABLE_REALMS_DB_PATH`, `MUTABLE_REALMS_WORLD_ID`, `MUTABLE_REALMS_PLAYER_ID`) to exactly one world and one player.
+- **Hermes** runs the narration agent as a dedicated profile configured through MCP env vars (`MUTABLE_REALMS_DB_PATH`, `MUTABLE_REALMS_WORLD_ID`, `MUTABLE_REALMS_PLAYER_ID`). The env values are **defaults**: the page's turn relay embeds the *selected* world's authoritative context into the prompt and the agent passes that world explicitly to the tools, so it narrates and mutates the world the player chose, not whatever the profile defaults to.
 - **The browser** discovers worlds, renders location/entities/events/map from API data, and now accepts player actions directly (`POST /api/worlds/{world_id}/turns`), relaying them to the narration agent.
 
 ## Non-negotiable design rules

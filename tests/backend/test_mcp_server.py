@@ -9,6 +9,7 @@ from mcp.client.stdio import stdio_client
 
 from backend.persistence.database import connect_database
 from backend.persistence.migrations import migrate_database
+from backend.scenarios.town.seed import seed_town_world
 from backend.scenarios.ward.seed import seed_ward_world
 from backend.world.mcp_server import (
     get_database_path,
@@ -85,19 +86,31 @@ def test_mcp_read_tool_uses_configured_database(
     assert get_database_path() == database_path.resolve()
 
 
-def test_mcp_optional_session_binding_rejects_world_and_actor_overrides(
+def test_mcp_session_binding_provides_defaults_and_allows_overrides(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("MUTABLE_REALMS_WORLD_ID", "ward-world")
     monkeypatch.setenv("MUTABLE_REALMS_PLAYER_ID", "player")
 
     assert get_session_binding() == ("ward-world", "player")
-    assert resolve_world_id("ward-world") == "ward-world"
+    assert resolve_world_id(None) == "ward-world"
     assert resolve_actor_entity_id(None) == "player"
-    with pytest.raises(RuntimeError, match="outside the trusted"):
-        resolve_world_id("other-world")
-    with pytest.raises(RuntimeError, match="outside the trusted"):
-        resolve_actor_entity_id("other-actor")
+    # Explicit overrides are allowed: the narration prompt selects the world.
+    assert resolve_world_id("other-world") == "other-world"
+    assert resolve_world_id("  other-world  ") == "other-world"
+    assert resolve_actor_entity_id("other-actor") == "other-actor"
+    with pytest.raises(RuntimeError, match="must not be blank"):
+        resolve_world_id("   ")
+
+
+def test_mcp_world_id_required_without_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("MUTABLE_REALMS_WORLD_ID", raising=False)
+    monkeypatch.delenv("MUTABLE_REALMS_PLAYER_ID", raising=False)
+
+    with pytest.raises(RuntimeError, match="world_id is required"):
+        resolve_world_id(None)
 
 
 def test_mcp_session_binding_requires_both_values(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -108,7 +121,7 @@ def test_mcp_session_binding_requires_both_values(monkeypatch: pytest.MonkeyPatc
         get_session_binding()
 
 
-def test_bound_session_restricts_all_reads_and_validation(
+def test_bound_session_keeps_world_validation_admin_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("MUTABLE_REALMS_WORLD_ID", "ward-world")
@@ -116,7 +129,6 @@ def test_bound_session_restricts_all_reads_and_validation(
 
     from backend.world import mcp_server
 
-    monkeypatch.setattr(mcp_server, "ensure_bound_player", lambda _world_id: None)
     with pytest.raises(RuntimeError, match="unbound administration"):
         mcp_server.world_validate()
 
@@ -165,6 +177,41 @@ def test_stdio_server_supports_real_tool_discovery_and_calls(tmp_path: Path) -> 
                         {"world_id": "protocol-world", "limit": invalid_limit},
                     )
                     assert invalid.isError is True
+
+    asyncio.run(exercise_server())
+
+
+def test_stdio_server_reads_explicit_world_other_than_binding(tmp_path: Path) -> None:
+    database_path = tmp_path / "world.sqlite3"
+    migrate_database(database_path)
+    seed_ward_world(database_path)
+    seed_town_world(database_path)
+
+    async def exercise_server() -> None:
+        parameters = StdioServerParameters(
+            command="uv",
+            args=["run", "python", "-m", "backend.world.mcp_server"],
+            cwd=Path(__file__).parents[2],
+            env={
+                "MUTABLE_REALMS_DB_PATH": str(database_path),
+                "MUTABLE_REALMS_WORLD_ID": "town-world",
+                "MUTABLE_REALMS_PLAYER_ID": "sailor",
+            },
+        )
+        async with stdio_client(parameters) as (reader, writer):
+            async with ClientSession(reader, writer) as session:
+                await session.initialize()
+                # The session binding is town-world, but an explicit world_id
+                # reads the other world — that is how the relayed page selects.
+                explicit = await session.call_tool(
+                    "world_status", {"world_id": "ward-world"}
+                )
+                assert explicit.isError is False
+                assert explicit.structuredContent["world"]["id"] == "ward-world"
+                # Omitting world_id falls back to the bound world.
+                defaulted = await session.call_tool("world_status", {})
+                assert defaulted.isError is False
+                assert defaulted.structuredContent["world"]["id"] == "town-world"
 
     asyncio.run(exercise_server())
 

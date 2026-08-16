@@ -206,7 +206,12 @@ def test_turn_endpoint_empty_action_rejected(tmp_path: Path) -> None:
 def _mutating_narrator(database_path: Path) -> Any:
     calls = {"count": 0}
 
-    def narrator(world_id: str, player_id: str, player_action: str) -> str:
+    def narrator(
+        world_id: str,
+        player_id: str,
+        player_action: str,
+        context: dict[str, Any] | None = None,
+    ) -> str:
         calls["count"] += 1
         revision = read_world_status(database_path, world_id=world_id)["world"]["revision"]
         move_world_entity(
@@ -246,7 +251,15 @@ def test_turn_relay_reports_committed_revision(tmp_path: Path) -> None:
 
 
 def test_turn_relay_without_mutation_returns_narration_only(tmp_path: Path) -> None:
-    def narrator(world_id: str, player_id: str, player_action: str) -> str:
+    received_contexts: list[dict[str, Any] | None] = []
+
+    def narrator(
+        world_id: str,
+        player_id: str,
+        player_action: str,
+        context: dict[str, Any] | None = None,
+    ) -> str:
+        received_contexts.append(context)
         return f"The sailor stays put. ({player_action})"
 
     app, database_path = _town_app(tmp_path, narrator=narrator)
@@ -265,10 +278,19 @@ def test_turn_relay_without_mutation_returns_narration_only(tmp_path: Path) -> N
     assert body["revision_before"] == 0
     assert body["revision_after"] == 0
     assert _entity_location(database_path, TOWN_WORLD_ID, "sailor") == "plaza"
+    # The relay embeds the selected world's authoritative context for the agent.
+    assert received_contexts[0] is not None
+    assert received_contexts[0]["world"]["id"] == TOWN_WORLD_ID
+    assert received_contexts[0]["player"]["id"] == "sailor"
 
 
 def test_turn_relay_narrator_failure_returns_502(tmp_path: Path) -> None:
-    def narrator(world_id: str, player_id: str, player_action: str) -> str:
+    def narrator(
+        world_id: str,
+        player_id: str,
+        player_action: str,
+        context: dict[str, Any] | None = None,
+    ) -> str:
         raise NarratorError("narration agent failed: boom")
 
     app, _ = _town_app(tmp_path, narrator=narrator)
@@ -286,7 +308,12 @@ def test_turn_relay_narrator_failure_returns_502(tmp_path: Path) -> None:
 
 
 def test_turn_relay_missing_world_returns_404(tmp_path: Path) -> None:
-    def narrator(world_id: str, player_id: str, player_action: str) -> str:
+    def narrator(
+        world_id: str,
+        player_id: str,
+        player_action: str,
+        context: dict[str, Any] | None = None,
+    ) -> str:
         return "should not be reached"
 
     app, _ = _town_app(tmp_path, narrator=narrator)

@@ -59,6 +59,46 @@ def test_build_narration_prompt_requires_narration_only_reply() -> None:
     assert "entire reply must be the player-facing narration" in prompt
     assert "Do not include decision summaries" in prompt
     assert "Never mention persistence" in prompt
+    assert "Current world state" not in prompt
+
+
+def test_build_narration_prompt_embeds_selected_world_context() -> None:
+    context = {
+        "world": {
+            "id": "world-of-earthalon",
+            "name": "world of Aerthalon",
+            "revision": 2,
+            "description": "A kingdom of sunlit plains and ancient groves.",
+        },
+        "player": {"id": "world-of-earthalon-player", "name": "fate"},
+        "current_location": {
+            "id": "world-of-earthalon-start",
+            "name": "Settlement",
+            "description": "The first camp.",
+            "entities": [],
+        },
+        "world_elements": [
+            {
+                "element_type": "opening_scene",
+                "content": "You arrive at the gates of the guild city.",
+            },
+            {"element_type": "author_note", "content": "Fate is a wandering diplomat."},
+        ],
+        "recent_events": [],
+    }
+
+    prompt = build_narration_prompt(
+        "world-of-earthalon", "fate", "Enter the guild hall.", context
+    )
+
+    assert "Current world state" in prompt
+    assert "world of Aerthalon" in prompt
+    assert "A kingdom of sunlit plains and ancient groves." in prompt
+    assert "You arrive at the gates of the guild city." in prompt
+    assert "Fate is a wandering diplomat." in prompt
+    assert "Player: fate (world-of-earthalon-player)" in prompt
+    assert "You are at: Settlement — The first camp." in prompt
+    assert "world_id=world-of-earthalon" in prompt
 
 
 def test_hermes_narrator_raises_on_empty_reply(

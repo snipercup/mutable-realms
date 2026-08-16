@@ -45,6 +45,7 @@ from backend.scenarios.ward.queries import (
 )
 from backend.scenarios.ward.read_models import WardLocationRead
 from backend.world.agent_tools import read_world_status
+from backend.world.context import build_world_context
 from backend.world.queries import (
     EntityNotFound,
     LocationNotFound,
@@ -459,7 +460,11 @@ def create_app(
         except WorldNotFound as error:
             raise HTTPException(status_code=404, detail="world not found") from error
         try:
-            narration = narrator(world_id, request.player_id, request.player_action)
+            context = build_world_context(database_path, world_id=world_id).model_dump()
+        except PlayerNotFound:
+            context = None
+        try:
+            narration = narrator(world_id, request.player_id, request.player_action, context)
         except NarratorError as error:
             raise HTTPException(status_code=502, detail=str(error)) from error
         after_status = read_world_status(database_path, world_id=world_id)

@@ -169,10 +169,10 @@ Errors: `404` unknown scenario · `409` duplicate id or operation-ID reuse.
 `POST /api/worlds/{world_id}/turns` — body `{player_id, player_action, decision_json?}`.
 
 - **With `decision_json`**: the deterministic seam over HTTP (same `run_turn` path as `world-turn`); tests and scripted play drive exact decisions. Returns `{outcome, message, revision_before, revision_after, attempts, mutation}`.
-- **Without it**: relays the action to the bound narration agent (`hermes --profile mutable-realms-narration chat`), which reads the world, performs at most one supported mutation, and returns player-facing narration. Returns `{outcome: "narrated_turn", narration, revision_before, revision_after}`. The relay runs the CLI in quiet mode and strips rendered reasoning and meta-commentary so `narration` is the immersive prose only (the narration profile also sets `display.show_reasoning: false`).
-- Errors: `404` unknown world · `409` player does not match the world's bound player · `422` invalid decision or blank action · `502` narration agent unavailable.
+- **Without it**: builds the selected world's authoritative context (world, player, location, story elements, recent events) and relays the action to the narration agent (`hermes --profile mutable-realms-narration chat`) with that context embedded in the prompt, so the agent narrates the world the page chose. The agent performs at most one supported mutation, then returns player-facing narration. Returns `{outcome: "narrated_turn", narration, revision_before, revision_after}`. The relay runs the CLI in quiet mode and strips rendered reasoning and meta-commentary so `narration` is the immersive prose only (the narration profile also sets `display.show_reasoning: false`).
+- Errors: `404` unknown world · `409` player does not match the world's player · `422` invalid decision or blank action · `502` narration agent unavailable.
 
-Narration is presentation-only and never persisted. The narration profile stays bound to one world and one player; the interface works for that world and the agent honestly refuses others. The relay is injectable for tests (`create_app(..., narrator=...)`).
+Narration is presentation-only and never persisted. The narration profile's MCP env provides a default world+player, but the relayed turn tells the agent which world is authoritative and the tools accept that world explicitly. The relay is injectable for tests (`create_app(..., narrator=...)`).
 
 ## MCP tools (Hermes)
 
@@ -189,13 +189,13 @@ The MCP server (`python -m backend.world.mcp_server`) exposes controlled applica
 | `world_record_social_interaction` | Relationship upsert + memory insert. |
 | `world_transfer_resource` | Grant from the world or transfer between characters. |
 | `world_update_location` | Rename a location and/or set one property value. |
-| `world_validate` | Whole-world administration diagnostic; **refused when a session is bound**. |
+| `world_validate` | Whole-world administration diagnostic; **refused when a session binding is configured**. |
 
-Mutations are advertised only for worlds that support them (e.g. the ward operation only where ward state exists). Every mutation requires `world_id`, `operation_id` (fresh per call), and the observed `expected_revision`.
+Mutations are advertised only for worlds that support them (e.g. the ward operation only where ward state exists). Every tool accepts `world_id` (optional on reads, required on mutations — naming the world explicitly on a mutation is deliberate); when omitted on a read it falls back to the profile binding. Every mutation requires `world_id`, `operation_id` (fresh per call), and the observed `expected_revision`. The page's turn relay embeds the selected world's context into the prompt and instructs the agent to pass that `world_id` explicitly, so the agent operates on the world the player chose.
 
 ## Hermes narration setup
 
-A dedicated Hermes profile is trusted-bound to one world and one player through MCP environment variables:
+A dedicated Hermes profile provides a default world and player through MCP environment variables (the defaults are overridden per turn by the relay):
 
 ```sh
 hermes mcp add mutable-realms-narration \
