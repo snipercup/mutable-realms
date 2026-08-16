@@ -59,9 +59,11 @@ def read_world(database_path: str | Path, world_id: str) -> dict[str, Any]:
             (world_id,),
         ).fetchall()
         player = connection.execute(
-            "SELECT e.id, e.name, el.location_id, loc.name AS location_name "
+            "SELECT e.id, e.name, pci.basic_info, pci.character_definition_id, "
+            "el.location_id, loc.name AS location_name "
             "FROM entities e "
             "JOIN characters c ON c.entity_id = e.id "
+            "LEFT JOIN player_character_instances pci ON pci.entity_id = e.id "
             "LEFT JOIN entity_locations el ON el.entity_id = e.id "
             "LEFT JOIN locations loc ON loc.id = el.location_id "
             "WHERE e.world_id = ? AND c.role = 'player' ORDER BY e.id LIMIT 1",

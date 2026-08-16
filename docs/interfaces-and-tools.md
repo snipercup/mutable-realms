@@ -103,14 +103,23 @@ npm run remove-world -- --world-id aerthalon-campaign --operation-id op-8 \
   --expected-revision 3
 ```
 
-A world instanced from a scenario has no player or locations until provisioned. Create a player (any name — the same name, e.g. `fate`, works in any world) and a starting location:
+A world instanced from a scenario has no player or locations until a reusable character is instanced. Create a definition first, then select it for a world and provide the world-specific starting location:
 
 ```sh
+npm run create-player-character -- --character-id fate --operation-id character-create-1 \
+  --title fate --description "Human diplomat, 24, silver hair"
 npm run provision-player -- --world-id aerthalon-campaign --operation-id op-9 \
   --expected-revision 3 --player-name fate --location-name Settlement
 ```
 
-Removal cascades every child table (locations, entities, elements, operations, events); the world's history is removed with it. World edits never touch the instancing scenario.
+The administrative `provision-player` command remains a compatibility path for directly naming a player. The management UI uses the reusable-definition instance route instead:
+
+```http
+POST /api/worlds/{world_id}/character-instance
+{"character_id":"fate","location_name":"Settlement","operation_id":"…","expected_revision":3}
+```
+
+Definition edits and deletion never rewrite an existing world instance; the instance retains copied name/basic info and its own world state.
 
 ## HTTP API
 

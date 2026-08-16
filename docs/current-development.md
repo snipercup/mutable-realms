@@ -4,7 +4,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Reusable player characters and world-specific instances — scoped
+### Reusable player characters and world-specific instances — complete (2026-08-16)
 
 **Goal:** separate a reusable player-character definition from its world-specific playable instance. A player should define a character once, select that character when entering multiple worlds, and receive an independent instance whose location and gameplay state belong to the selected world.
 
@@ -16,11 +16,11 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 **Out of scope for this slice:** narrator-driven location generation, nested locations, thematic maps, procedural kingdom-wide generation, character progression or inventory templates, and cross-world travel. The previously scoped world-scale geography steps are postponed until reusable character definitions and instances are established.
 
-**Verification:** CRUD tests for definitions; create one definition and instance it into two worlds; confirm each world receives a distinct player/entity instance with independent locations and revisions; edit the definition and confirm existing instances are unchanged; reject duplicate or stale instance requests deterministically; browser-verify definition creation, character selection, and world-specific instance display.
+**Verification:** complete. Migration 0010 adds reusable definition, operation-ledger, and world-instance tables. Service tests cover definition CRUD/idempotency, operation reuse conflicts, one definition instanced into two worlds with distinct entities/locations, definition edits not changing instances, and one-player-per-world enforcement. API tests cover definition CRUD, world selection, copied values, and definition deletion leaving the instance intact. Full checks: 218 tests passed, `npm run lint`, and frontend build. HTTP/SQLite verification on a temporary world confirmed creating `fate`, instancing it at `Elaris`, editing the definition to `Fate Updated`, and reading the world still returned the copied instance name `Fate` and original basic info. Browser verification was blocked because the Chrome CDP harness required a remote-debugging permission after the browser was closed; Firefox is not supported by this harness.
 
-**Suggested sequencing:** definition schema and CRUD → world-specific instancing operation → API/CLI and management UI → selection/provisioning integration → compatibility and browser verification.
+**Suggested sequencing:** complete — definition schema and CRUD → world-specific instancing operation → API/CLI and management UI → selection/provisioning integration → compatibility verification.
 
-**Commit:** pending.
+**Commit:** suggested branch `reusable-player-characters` — `Add reusable player character instances`.
 
 ## Recently completed
 

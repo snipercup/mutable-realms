@@ -20,6 +20,11 @@ from backend.persistence.migrations import (
 )
 from backend.scenarios.town.seed import seed_town_world
 from backend.scenarios.ward.seed import seed_ward_world
+from backend.world.characters import (
+    create_player_character,
+    remove_player_character,
+    update_player_character,
+)
 from backend.world.context import build_world_context
 from backend.world.mutations import MutationError, move_entity
 from backend.world.queries import WorldQueryError
@@ -58,6 +63,9 @@ _COMMANDS = (
     "set-world-element",
     "remove-world",
     "provision-player",
+    "create-player-character",
+    "update-player-character",
+    "remove-player-character",
 )
 
 
@@ -139,6 +147,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--element-type")
     parser.add_argument("--content")
     parser.add_argument("--player-name")
+    parser.add_argument("--character-id")
     parser.add_argument("--location-name")
     args = parser.parse_args(argv)
 
@@ -251,6 +260,51 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 1
             return 0
 
+        if args.command == "create-player-character":
+            required = {
+                "--character-id": args.character_id,
+                "--operation-id": args.operation_id,
+                "--title": args.title,
+            }
+            missing = [name for name, value in required.items() if value is None]
+            if missing:
+                raise ValueError("create-player-character requires " + ", ".join(missing))
+            result = create_player_character(
+                database_path,
+                character_id=args.character_id,
+                operation_id=args.operation_id,
+                name=args.title,
+                basic_info=args.description,
+            )
+            print(json.dumps(result, sort_keys=True))
+            return 0
+
+        if args.command == "update-player-character":
+            required = {"--character-id": args.character_id, "--operation-id": args.operation_id}
+            missing = [name for name, value in required.items() if value is None]
+            if missing:
+                raise ValueError("update-player-character requires " + ", ".join(missing))
+            result = update_player_character(
+                database_path,
+                character_id=args.character_id,
+                operation_id=args.operation_id,
+                name=args.title,
+                basic_info=args.description,
+            )
+            print(json.dumps(result, sort_keys=True))
+            return 0
+
+        if args.command == "remove-player-character":
+            required = {"--character-id": args.character_id, "--operation-id": args.operation_id}
+            missing = [name for name, value in required.items() if value is None]
+            if missing:
+                raise ValueError("remove-player-character requires " + ", ".join(missing))
+            result = remove_player_character(
+                database_path, character_id=args.character_id, operation_id=args.operation_id
+            )
+            print(json.dumps(result, sort_keys=True))
+            return 0
+
         if args.command == "create-scenario":
             required = {
                 "--scenario-id": args.scenario_id,
@@ -332,9 +386,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             }
             missing = [name for name, value in required.items() if value is None]
             if missing:
-                raise ValueError(
-                    "create-world-from-scenario requires " + ", ".join(missing)
-                )
+                raise ValueError("create-world-from-scenario requires " + ", ".join(missing))
             result = create_world_from_scenario(
                 database_path,
                 world_id=args.world_id,

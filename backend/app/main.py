@@ -15,6 +15,10 @@ from backend.app.narrator import HermesNarrator, Narrator, NarratorError
 from backend.app.read_models import (
     EntityRead,
     LocationRead,
+    PlayerCharacterCreateRequest,
+    PlayerCharacterMutationResponse,
+    PlayerCharacterRead,
+    PlayerCharacterUpdateRequest,
     PlayerRead,
     ScenarioCreateRequest,
     ScenarioElementRequest,
@@ -23,6 +27,7 @@ from backend.app.read_models import (
     ScenarioUpdateRequest,
     TurnRequest,
     TurnResponse,
+    WorldCharacterInstanceRequest,
     WorldCreateRequest,
     WorldCreateResponse,
     WorldDetailRead,
@@ -45,6 +50,15 @@ from backend.scenarios.ward.queries import (
 )
 from backend.scenarios.ward.read_models import WardLocationRead
 from backend.world.agent_tools import read_world_status
+from backend.world.characters import (
+    CharacterConflict,
+    CharacterNotFound,
+    create_player_character,
+    list_player_characters,
+    read_player_character,
+    remove_player_character,
+    update_player_character,
+)
 from backend.world.context import build_world_context
 from backend.world.queries import (
     EntityNotFound,
@@ -75,6 +89,7 @@ from backend.world.worlds import (
     WorldAdminConflict,
     WorldAdminNotFound,
     create_world_from_scenario,
+    instance_player_character,
     remove_world,
     set_world_element,
     update_world,
@@ -133,9 +148,7 @@ def create_app(
     @application.get("/api/worlds/{world_id}", tags=["world reads"])
     def world_detail(world_id: str) -> WorldDetailRead:
         try:
-            return WorldDetailRead.model_validate(
-                read_world(get_database_path(), world_id)
-            )
+            return WorldDetailRead.model_validate(read_world(get_database_path(), world_id))
         except WorldNotFound as error:
             raise HTTPException(status_code=404, detail="world not found") from error
 
@@ -160,9 +173,7 @@ def create_app(
         )
 
     @application.patch("/api/worlds/{world_id}", tags=["world administration"])
-    def update_world_route(
-        world_id: str, request: WorldUpdateRequest
-    ) -> WorldMutationResponse:
+    def update_world_route(world_id: str, request: WorldUpdateRequest) -> WorldMutationResponse:
         try:
             result = update_world(
                 get_database_path(),
@@ -317,6 +328,105 @@ def create_app(
         except WorldNotFound as error:
             raise HTTPException(status_code=404, detail="world not found") from error
 
+    @application.get("/api/player-characters", tags=["player character reads"])
+    def player_characters() -> list[PlayerCharacterRead]:
+        return [
+            PlayerCharacterRead.model_validate(item)
+            for item in list_player_characters(get_database_path())
+        ]
+
+    @application.get("/api/player-characters/{character_id}", tags=["player character reads"])
+    def player_character(character_id: str) -> PlayerCharacterRead:
+        try:
+            return PlayerCharacterRead.model_validate(
+                read_player_character(get_database_path(), character_id)
+            )
+        except CharacterNotFound as error:
+            raise HTTPException(status_code=404, detail="player character not found") from error
+
+    @application.post(
+        "/api/player-characters", tags=["player character mutations"], status_code=201
+    )
+    def create_player_character_route(
+        request: PlayerCharacterCreateRequest,
+    ) -> PlayerCharacterMutationResponse:
+        try:
+            result = create_player_character(
+                get_database_path(),
+                character_id=request.character_id,
+                operation_id=request.operation_id,
+                name=request.name,
+                basic_info=request.basic_info,
+            )
+        except CharacterConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return PlayerCharacterMutationResponse(
+            already_applied=result["already_applied"], character_id=result["character_id"]
+        )
+
+    @application.patch("/api/player-characters/{character_id}", tags=["player character mutations"])
+    def update_player_character_route(
+        character_id: str, request: PlayerCharacterUpdateRequest
+    ) -> PlayerCharacterMutationResponse:
+        try:
+            result = update_player_character(
+                get_database_path(),
+                character_id=character_id,
+                operation_id=request.operation_id,
+                name=request.name,
+                basic_info=request.basic_info,
+            )
+        except CharacterNotFound as error:
+            raise HTTPException(status_code=404, detail="player character not found") from error
+        except CharacterConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return PlayerCharacterMutationResponse(
+            already_applied=result["already_applied"], character_id=result["character_id"]
+        )
+
+    @application.delete(
+        "/api/player-characters/{character_id}", tags=["player character mutations"]
+    )
+    def remove_player_character_route(
+        character_id: str, operation_id: str = Query(...)
+    ) -> PlayerCharacterMutationResponse:
+        try:
+            result = remove_player_character(
+                get_database_path(), character_id=character_id, operation_id=operation_id
+            )
+        except CharacterNotFound as error:
+            raise HTTPException(status_code=404, detail="player character not found") from error
+        except CharacterConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return PlayerCharacterMutationResponse(
+            already_applied=result["already_applied"], character_id=result["character_id"]
+        )
+
+    @application.post(
+        "/api/worlds/{world_id}/character-instance", tags=["world administration"], status_code=201
+    )
+    def instance_player_character_route(
+        world_id: str, request: WorldCharacterInstanceRequest
+    ) -> WorldMutationResponse:
+        try:
+            result = instance_player_character(
+                get_database_path(),
+                world_id=world_id,
+                operation_id=request.operation_id,
+                expected_revision=request.expected_revision,
+                character_id=request.character_id,
+                location_name=request.location_name,
+            )
+        except WorldAdminConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        except WorldAdminNotFound as error:
+            raise HTTPException(status_code=404, detail="world not found") from error
+        return WorldMutationResponse(
+            already_applied=result["already_applied"],
+            world_id=result["world_id"],
+            world_revision=result["world_revision"],
+        )
+
     @application.get("/api/scenarios", tags=["scenario reads"])
     def scenarios() -> list[ScenarioRead]:
         return [
@@ -327,9 +437,7 @@ def create_app(
     @application.get("/api/scenarios/{scenario_id}", tags=["scenario reads"])
     def scenario(scenario_id: str) -> ScenarioRead:
         try:
-            return ScenarioRead.model_validate(
-                read_scenario(get_database_path(), scenario_id)
-            )
+            return ScenarioRead.model_validate(read_scenario(get_database_path(), scenario_id))
         except ScenarioNotFound as error:
             raise HTTPException(status_code=404, detail="scenario not found") from error
 
@@ -454,9 +562,9 @@ def create_app(
 
         narrator = getattr(application.state, "narrator", None) or HermesNarrator()
         try:
-            revision_before = read_world_status(database_path, world_id=world_id)[
-                "world"
-            ]["revision"]
+            revision_before = read_world_status(database_path, world_id=world_id)["world"][
+                "revision"
+            ]
         except WorldNotFound as error:
             raise HTTPException(status_code=404, detail="world not found") from error
         try:

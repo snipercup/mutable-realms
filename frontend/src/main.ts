@@ -25,6 +25,13 @@ type ScenarioDetail = Scenario & {
   elements: ScenarioElement[];
 };
 
+type PlayerCharacter = {
+  id: string;
+  name: string;
+  basic_info: string | null;
+  created_at: string;
+};
+
 type WorldDetail = World & {
   elements: ScenarioElement[];
   player: PlayerSummary | null;
@@ -33,6 +40,8 @@ type WorldDetail = World & {
 type PlayerSummary = {
   id: string;
   name: string;
+  basic_info: string | null;
+  character_definition_id: string | null;
   location_id: string | null;
   location_name: string | null;
 };
@@ -160,6 +169,24 @@ root.innerHTML = `
     </section>
     <section class="manage-view" id="manage-view" hidden aria-label="World management">
       <span class="eyebrow">World management</span>
+      <h2 class="section-title">Player characters</h2>
+      <form class="manage-form" id="character-create-form">
+        <input class="manage-input" id="character-create-id" placeholder="character id (kebab-case)" aria-label="Character id" required />
+        <input class="manage-input" id="character-create-name" placeholder="Name" aria-label="Character name" required />
+        <input class="manage-input" id="character-create-info" placeholder="Basic info (optional)" aria-label="Character basic info" />
+        <button class="manage-button" type="submit">Create character</button>
+      </form>
+      <div class="manage-grid" id="character-list"></div>
+      <div class="scenario-editor" id="character-editor" hidden>
+        <div class="scenario-editor-heading">
+          <h3 class="section-title" id="character-editor-name">Player character</h3>
+          <button class="manage-button manage-button--ghost" id="character-editor-close" type="button">Close</button>
+        </div>
+        <label class="manage-field">Name<input class="manage-input" id="character-edit-name" /></label>
+        <label class="manage-field">Basic info<textarea class="manage-textarea" id="character-edit-info"></textarea></label>
+        <button class="manage-button" id="character-edit-save" type="button">Save character</button>
+        <button class="manage-button manage-button--danger" id="character-delete" type="button">Delete character</button>
+      </div>
       <h2 class="section-title">Scenarios</h2>
       <form class="manage-form" id="scenario-create-form">
         <input
@@ -273,13 +300,9 @@ root.innerHTML = `
           <span class="eyebrow">Player</span>
           <div id="world-player-info"></div>
           <form class="manage-form" id="world-player-form">
-            <input
-              class="manage-input"
-              id="world-player-name"
-              placeholder="Player name (e.g. fate)"
-              aria-label="Player name"
-              required
-            />
+            <select class="manage-input" id="world-player-character" aria-label="Player character">
+              <option value="">Select a player character…</option>
+            </select>
             <input
               class="manage-input"
               id="world-player-location"
@@ -287,7 +310,7 @@ root.innerHTML = `
               aria-label="Starting location"
               required
             />
-            <button class="manage-button" id="world-player-submit" type="submit">Provision player</button>
+            <button class="manage-button" id="world-player-submit" type="submit">Instance character</button>
           </form>
         </div>
         <button class="manage-button manage-button--danger" id="world-delete" type="button">Delete world</button>
@@ -310,6 +333,18 @@ const actionSubmit = requireElement<HTMLButtonElement>("#action-submit");
 const viewPlayButton = requireElement<HTMLButtonElement>("#view-play");
 const viewManageButton = requireElement<HTMLButtonElement>("#view-manage");
 const manageView = requireElement<HTMLElement>("#manage-view");
+const characterList = requireElement<HTMLDivElement>("#character-list");
+const characterCreateForm = requireElement<HTMLFormElement>("#character-create-form");
+const characterCreateId = requireElement<HTMLInputElement>("#character-create-id");
+const characterCreateName = requireElement<HTMLInputElement>("#character-create-name");
+const characterCreateInfo = requireElement<HTMLInputElement>("#character-create-info");
+const characterEditor = requireElement<HTMLDivElement>("#character-editor");
+const characterEditorName = requireElement<HTMLElement>("#character-editor-name");
+const characterEditorClose = requireElement<HTMLButtonElement>("#character-editor-close");
+const characterEditName = requireElement<HTMLInputElement>("#character-edit-name");
+const characterEditInfo = requireElement<HTMLTextAreaElement>("#character-edit-info");
+const characterEditSave = requireElement<HTMLButtonElement>("#character-edit-save");
+const characterDelete = requireElement<HTMLButtonElement>("#character-delete");
 const scenarioList = requireElement<HTMLDivElement>("#scenario-list");
 const worldList = requireElement<HTMLDivElement>("#world-list");
 const scenarioCreateForm = requireElement<HTMLFormElement>("#scenario-create-form");
@@ -337,7 +372,7 @@ const worldEditorClose = requireElement<HTMLButtonElement>("#world-editor-close"
 const worldDelete = requireElement<HTMLButtonElement>("#world-delete");
 const worldPlayerInfo = requireElement<HTMLDivElement>("#world-player-info");
 const worldPlayerForm = requireElement<HTMLFormElement>("#world-player-form");
-const worldPlayerName = requireElement<HTMLInputElement>("#world-player-name");
+const worldPlayerCharacter = requireElement<HTMLSelectElement>("#world-player-character");
 const worldPlayerLocation = requireElement<HTMLInputElement>("#world-player-location");
 
 let worlds: World[] = [];
@@ -764,10 +799,13 @@ async function loadManage(): Promise<void> {
   manageLoading = true;
   setError(null);
   try {
-    const [scenarios, allWorlds] = await Promise.all([
+    const [characters, scenarios, allWorlds] = await Promise.all([
+      fetchJson<PlayerCharacter[]>("/api/player-characters"),
       fetchJson<Scenario[]>("/api/scenarios"),
       fetchJson<World[]>("/api/worlds"),
     ]);
+    renderCharacterList(characters);
+    populateWorldCharacterSelect(characters);
     renderScenarioList(scenarios);
     populateWorldScenarioSelect(scenarios);
     renderWorldList(allWorlds);
@@ -777,6 +815,139 @@ async function loadManage(): Promise<void> {
     manageLoading = false;
   }
 }
+
+function renderCharacterList(characters: PlayerCharacter[]): void {
+  characterList.replaceChildren();
+  if (characters.length === 0) {
+    characterList.append(element("p", "empty-state", "No player characters yet. Use the form above to create one."));
+    return;
+  }
+  for (const character of characters) {
+    const card = element("article", "manage-card");
+    card.append(element("h3", "manage-name", character.name));
+    card.append(element("code", "manage-id", character.id));
+    if (character.basic_info !== null) card.append(element("p", "manage-description", character.basic_info));
+    const editButton = element("button", "manage-button", "Edit");
+    editButton.type = "button";
+    editButton.addEventListener("click", () => void openCharacterEditor(character.id));
+    card.append(editButton);
+    characterList.append(card);
+  }
+}
+
+function populateWorldCharacterSelect(characters: PlayerCharacter[]): void {
+  const selected = worldPlayerCharacter.value;
+  worldPlayerCharacter.replaceChildren();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = characters.length === 0 ? "Create a character first" : "Select a player character…";
+  worldPlayerCharacter.append(placeholder);
+  for (const character of characters) {
+    const option = document.createElement("option");
+    option.value = character.id;
+    option.textContent = `${character.name} (${character.id})`;
+    worldPlayerCharacter.append(option);
+  }
+  worldPlayerCharacter.value = characters.some((character) => character.id === selected) ? selected : "";
+}
+
+async function openCharacterEditor(characterId: string): Promise<void> {
+  characterEditor.hidden = false;
+  characterEditorName.textContent = characterId;
+  try {
+    const character = await fetchJson<PlayerCharacter>(`/api/player-characters/${encodeURIComponent(characterId)}`);
+    characterEditorName.textContent = character.id;
+    characterEditName.value = character.name;
+    characterEditInfo.value = character.basic_info ?? "";
+    characterEditor.dataset.characterId = character.id;
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to load character");
+  }
+}
+
+function closeCharacterEditor(): void {
+  characterEditor.hidden = true;
+  delete characterEditor.dataset.characterId;
+}
+
+async function saveCharacter(): Promise<void> {
+  const characterId = characterEditor.dataset.characterId;
+  if (characterId === undefined || manageBusy) return;
+  const name = characterEditName.value.trim();
+  if (name === "") {
+    setError("Character name must not be blank");
+    return;
+  }
+  manageBusy = true;
+  setError(null);
+  try {
+    await requestJson("PATCH", `/api/player-characters/${encodeURIComponent(characterId)}`, {
+      name,
+      basic_info: characterEditInfo.value.trim() || null,
+      operation_id: crypto.randomUUID(),
+    });
+    await loadManage();
+    await openCharacterEditor(characterId);
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to save character");
+  } finally {
+    manageBusy = false;
+  }
+}
+
+async function deleteCharacter(): Promise<void> {
+  const characterId = characterEditor.dataset.characterId;
+  if (characterId === undefined || manageBusy) return;
+  if (!window.confirm(`Delete character definition "${characterId}"? Existing world instances remain unchanged.`)) return;
+  manageBusy = true;
+  setError(null);
+  try {
+    await requestJson("DELETE", `/api/player-characters/${encodeURIComponent(characterId)}?operation_id=${crypto.randomUUID()}`);
+    closeCharacterEditor();
+    await loadManage();
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to delete character");
+  } finally {
+    manageBusy = false;
+  }
+}
+
+async function createCharacter(): Promise<void> {
+  if (manageBusy) return;
+  const characterId = characterCreateId.value.trim();
+  const name = characterCreateName.value.trim();
+  if (characterId === "" || name === "") {
+    setError("Character id and name are required");
+    return;
+  }
+  manageBusy = true;
+  setError(null);
+  try {
+    await postJson("/api/player-characters", {
+      character_id: characterId,
+      name,
+      basic_info: characterCreateInfo.value.trim() || null,
+      operation_id: crypto.randomUUID(),
+    });
+    characterCreateId.value = "";
+    characterCreateName.value = "";
+    characterCreateInfo.value = "";
+    await loadManage();
+    await openCharacterEditor(characterId);
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to create character");
+  } finally {
+    manageBusy = false;
+  }
+}
+
+characterCreateForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void createCharacter();
+});
+characterEditorClose.addEventListener("click", closeCharacterEditor);
+characterEditSave.addEventListener("click", () => void saveCharacter());
+characterDelete.addEventListener("click", () => void deleteCharacter());
 
 function renderScenarioList(scenarios: Scenario[]): void {
   scenarioList.replaceChildren();
@@ -1073,11 +1244,12 @@ function renderWorldPlayer(detail: WorldDetail): void {
     );
   } else {
     worldPlayerForm.hidden = false;
+    worldPlayerCharacter.value = "";
     worldPlayerInfo.append(
       element(
         "p",
         "manage-description",
-        "This world has no player yet — provision one to make it playable.",
+        "This world has no player yet — select a reusable character and starting location.",
       ),
     );
   }
@@ -1206,10 +1378,10 @@ for (const button of root?.querySelectorAll<HTMLButtonElement>("[data-world-elem
 
 async function provisionPlayer(): Promise<void> {
   if (editingWorldId === null || manageBusy) return;
-  const playerName = worldPlayerName.value.trim();
+  const characterId = worldPlayerCharacter.value;
   const locationName = worldPlayerLocation.value.trim();
-  if (playerName === "" || locationName === "") {
-    setError("Player name and starting location are required");
+  if (characterId === "" || locationName === "") {
+    setError("Select a player character and enter a starting location");
     return;
   }
   setError(null);
@@ -1217,16 +1389,16 @@ async function provisionPlayer(): Promise<void> {
   try {
     const response = await requestJson<{ world_revision: number }>(
       "POST",
-      `/api/worlds/${encodeURIComponent(editingWorldId)}/player`,
+      `/api/worlds/${encodeURIComponent(editingWorldId)}/character-instance`,
       {
-        player_name: playerName,
+        character_id: characterId,
         location_name: locationName,
         operation_id: crypto.randomUUID(),
         expected_revision: editingWorldRevision,
       },
     );
     editingWorldRevision = response.world_revision;
-    worldPlayerName.value = "";
+    worldPlayerCharacter.value = "";
     worldPlayerLocation.value = "";
     await Promise.all([loadManage(), loadWorldDetail(editingWorldId)]);
   } catch (error) {

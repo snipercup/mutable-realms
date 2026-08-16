@@ -26,8 +26,17 @@ class WorldElementRead(StrictReadModel):
 class PlayerSummaryRead(StrictReadModel):
     id: str
     name: str
+    basic_info: str | None = None
+    character_definition_id: str | None = None
     location_id: str | None = None
     location_name: str | None = None
+
+
+class PlayerCharacterRead(StrictReadModel):
+    id: str
+    name: str
+    basic_info: str | None
+    created_at: str
 
 
 class WorldDetailRead(WorldRead):
@@ -200,6 +209,31 @@ class WorldMutationResponse(StrictReadModel):
 
 class WorldProvisionRequest(StrictReadModel):
     player_name: str = Field(min_length=1)
+    location_name: str = Field(min_length=1)
+    operation_id: str
+    expected_revision: int = Field(ge=0)
+
+
+class PlayerCharacterCreateRequest(StrictReadModel):
+    character_id: str
+    name: str = Field(min_length=1)
+    basic_info: str | None = None
+    operation_id: str
+
+
+class PlayerCharacterUpdateRequest(StrictReadModel):
+    name: str | None = None
+    basic_info: str | None = None
+    operation_id: str
+
+
+class PlayerCharacterMutationResponse(StrictReadModel):
+    already_applied: bool
+    character_id: str
+
+
+class WorldCharacterInstanceRequest(StrictReadModel):
+    character_id: str
     location_name: str = Field(min_length=1)
     operation_id: str
     expected_revision: int = Field(ge=0)

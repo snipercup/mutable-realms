@@ -47,9 +47,7 @@ class WorldAdminNotFound(WorldAdminError):
 
 def _validate_world_id(world_id: str) -> None:
     if not _WORLD_ID_PATTERN.fullmatch(world_id):
-        raise WorldAdminConflict(
-            "world id must be lowercase kebab-case (letters, digits, hyphens)"
-        )
+        raise WorldAdminConflict("world id must be lowercase kebab-case (letters, digits, hyphens)")
 
 
 def _validate_operation_id(operation_id: str) -> None:
@@ -101,10 +99,7 @@ def _replay_or_conflict(
     ).fetchone()
     if existing is None:
         return None
-    if (
-        existing["operation_type"] != operation_type
-        or existing["request_json"] != request_json
-    ):
+    if existing["operation_type"] != operation_type or existing["request_json"] != request_json:
         raise WorldAdminConflict("operation ID was already used for a different request")
     result = json.loads(existing["result_json"])
     result["already_applied"] = True
@@ -123,8 +118,7 @@ def _require_world(connection: sqlite3.Connection, world_id: str) -> dict[str, A
 def _check_revision(world: dict[str, Any], expected_revision: int) -> None:
     if world["revision"] != expected_revision:
         raise WorldAdminConflict(
-            f"expected world revision {expected_revision}, "
-            f"found {world['revision']}"
+            f"expected world revision {expected_revision}, found {world['revision']}"
         )
 
 
@@ -245,9 +239,7 @@ def create_world_from_scenario(
                 "VALUES (?, ?, ?, ?, 0)",
                 (world_id, scenario["title"], scenario["description"], scenario_id),
             )
-            connection.execute(
-                "UPDATE worlds SET revision = 1 WHERE id = ?", (world_id,)
-            )
+            connection.execute("UPDATE worlds SET revision = 1 WHERE id = ?", (world_id,))
             result = {
                 "already_applied": False,
                 "world_id": world_id,
@@ -531,13 +523,11 @@ def world_provision_player(
             player_entity_id = f"{world_id}-player"
             location_id = f"{world_id}-start"
             connection.execute(
-                "INSERT INTO locations (id, world_id, name, description) "
-                "VALUES (?, ?, ?, '')",
+                "INSERT INTO locations (id, world_id, name, description) VALUES (?, ?, ?, '')",
                 (location_id, world_id, trimmed_location),
             )
             connection.execute(
-                "INSERT INTO entities (id, world_id, kind, name) "
-                "VALUES (?, ?, 'character', ?)",
+                "INSERT INTO entities (id, world_id, kind, name) VALUES (?, ?, 'character', ?)",
                 (player_entity_id, world_id, trimmed_player),
             )
             connection.execute(
@@ -563,6 +553,126 @@ def world_provision_player(
             connection.commit()
             result["location_id"] = location_id
             result["player_id"] = player_entity_id
+            return result
+        except WorldAdminError:
+            connection.rollback()
+            raise
+        except sqlite3.Error:
+            connection.rollback()
+            raise
+
+
+def instance_player_character(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    character_id: str,
+    location_name: str,
+) -> dict[str, Any]:
+    """Copy a reusable character definition into a world as its sole player."""
+    _validate_world_id(world_id)
+    _validate_operation_id(operation_id)
+    if not character_id.strip():
+        raise WorldAdminConflict("character id must not be blank")
+    trimmed_location = location_name.strip()
+    if not trimmed_location:
+        raise WorldAdminConflict("location name must not be blank")
+    request_json = json.dumps(
+        {"character_id": character_id, "location_name": trimmed_location},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    with connect_database(database_path) as connection:
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            replay = _replay_or_conflict(
+                connection,
+                world_id=world_id,
+                operation_id=operation_id,
+                operation_type="player_character_instanced",
+                request_json=request_json,
+            )
+            if replay is not None:
+                connection.rollback()
+                return replay
+            world = _require_world(connection, world_id)
+            _check_revision(world, expected_revision)
+            definition = connection.execute(
+                "SELECT id, name, basic_info FROM player_character_definitions WHERE id = ?",
+                (character_id,),
+            ).fetchone()
+            if definition is None:
+                raise WorldAdminConflict(f"player character not found: {character_id}")
+            existing_player = connection.execute(
+                "SELECT e.id FROM entities e JOIN characters c ON c.entity_id = e.id "
+                "WHERE e.world_id = ? AND c.role = 'player' LIMIT 1",
+                (world_id,),
+            ).fetchone()
+            if existing_player is not None:
+                raise WorldAdminConflict(f"world already has a player: {world_id}")
+            location_id = f"{world_id}-start"
+            entity_id = f"{world_id}-player"
+            if (
+                connection.execute(
+                    "SELECT 1 FROM locations WHERE id = ?", (location_id,)
+                ).fetchone()
+                is not None
+            ):
+                raise WorldAdminConflict(f"starting location already exists: {location_id}")
+            if (
+                connection.execute("SELECT 1 FROM entities WHERE id = ?", (entity_id,)).fetchone()
+                is not None
+            ):
+                raise WorldAdminConflict(f"player entity already exists: {entity_id}")
+            connection.execute(
+                "INSERT INTO locations(id, world_id, name, description) VALUES (?, ?, ?, ?)",
+                (
+                    location_id,
+                    world_id,
+                    trimmed_location,
+                    f"Starting location for {definition['name']}",
+                ),
+            )
+            connection.execute(
+                "INSERT INTO entities(id, world_id, kind, name) VALUES (?, ?, 'character', ?)",
+                (entity_id, world_id, definition["name"]),
+            )
+            connection.execute(
+                "INSERT INTO characters(entity_id, role, condition, disposition) "
+                "VALUES (?, 'player', ?, 'active')",
+                (entity_id, definition["basic_info"]),
+            )
+            connection.execute(
+                "INSERT INTO entity_locations(entity_id, location_id) VALUES (?, ?)",
+                (entity_id, location_id),
+            )
+            connection.execute(
+                "INSERT INTO player_character_instances("
+                "world_id, character_definition_id, entity_id, name, basic_info) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (world_id, character_id, entity_id, definition["name"], definition["basic_info"]),
+            )
+            result = _commit_world_mutation(
+                connection,
+                world_id=world_id,
+                operation_id=operation_id,
+                operation_type="player_character_instanced",
+                request_json=request_json,
+                event_identifier=event_id(world_id, operation_id),
+                summary=f"player character {character_id} instanced in {world_id}",
+                payload={
+                    "character_id": character_id,
+                    "entity_id": entity_id,
+                    "location_id": location_id,
+                },
+                expected_revision=expected_revision,
+            )
+            connection.commit()
+            result.update(
+                {"character_id": character_id, "entity_id": entity_id, "location_id": location_id}
+            )
             return result
         except WorldAdminError:
             connection.rollback()

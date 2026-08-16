@@ -16,7 +16,7 @@ def test_migrate_creates_versioned_schema_and_is_idempotent(tmp_path: Path) -> N
     first = migrate_database(database_path)
     second = migrate_database(database_path)
 
-    assert first == [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    assert first == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     assert second == []
 
     with connect_database(database_path) as connection:
@@ -40,6 +40,7 @@ def test_migrate_creates_versioned_schema_and_is_idempotent(tmp_path: Path) -> N
         (7, "scenarios"),
         (8, "world_metadata"),
         (9, "world_elements"),
+        (10, "player_characters"),
     ]
     assert {
         "worlds",
@@ -65,7 +66,7 @@ def test_generalization_migration_preserves_existing_ward_data(tmp_path: Path) -
     migrate_database(database_path, migrations_path=migration_one_path)
     seed_ward_world(database_path)
 
-    assert migrate_database(database_path) == [2, 3, 4, 5, 6, 7, 8, 9]
+    assert migrate_database(database_path) == [2, 3, 4, 5, 6, 7, 8, 9, 10]
 
     with connect_database(database_path) as connection:
         assert connection.execute("SELECT COUNT(*) FROM beds").fetchone()[0] == 6
