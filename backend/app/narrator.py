@@ -20,10 +20,12 @@ receives only player-facing narration.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 # (world_id, player_id, player_action, context) -> player-facing narration text.
@@ -31,9 +33,19 @@ from typing import Any
 # when the world has no player yet).
 Narrator = Callable[[str, str, str, dict[str, Any] | None], str]
 
-DEFAULT_PROFILE = os.environ.get(
-    "MUTABLE_REALMS_NARRATOR_PROFILE", "mutable-realms-narration"
-)
+
+@dataclass(frozen=True)
+class NarratorStartResult:
+    """Validated information required to create a world-specific start."""
+
+    location_name: str
+    location_description: str | None
+    narration: str
+
+
+StartNarrator = Callable[[str, dict[str, Any], dict[str, Any]], NarratorStartResult]
+
+DEFAULT_PROFILE = os.environ.get("MUTABLE_REALMS_NARRATOR_PROFILE", "mutable-realms-narration")
 NARRATOR_TIMEOUT_SECONDS = float(os.environ.get("MUTABLE_REALMS_NARRATOR_TIMEOUT", "120"))
 
 # The CLI renders the model's reasoning inside a box drawn with box-drawing
@@ -52,6 +64,10 @@ _TRAILING_META_RE = re.compile(
 
 class NarratorError(RuntimeError):
     """Raised when the narration agent cannot produce a reply."""
+
+    def __init__(self, message: str, *, category: str = "narrator_error") -> None:
+        super().__init__(message)
+        self.category = category
 
 
 def _format_context_block(context: dict[str, Any]) -> str:
@@ -83,17 +99,14 @@ def _format_context_block(context: dict[str, Any]) -> str:
         entities = location.get("entities", [])
         if entities:
             here = ", ".join(
-                f"{entity.get('name', '?')} ({entity.get('id', '?')})"
-                for entity in entities
+                f"{entity.get('name', '?')} ({entity.get('id', '?')})" for entity in entities
             )
             lines.append(f"Here: {here}")
     elements = context.get("world_elements", [])
     if elements:
         lines.append("Story elements:")
         for element in elements:
-            lines.append(
-                f"  {element.get('element_type', '?')}: {element.get('content', '')}"
-            )
+            lines.append(f"  {element.get('element_type', '?')}: {element.get('content', '')}")
     events = context.get("recent_events", [])
     if events:
         lines.append("Recent events:")
@@ -142,6 +155,85 @@ def build_narration_prompt(
         "still narrate the moment in-world."
     )
     return prompt
+
+
+def build_world_start_prompt(
+    world_id: str, world: dict[str, Any], character: dict[str, Any]
+) -> str:
+    """Compose the strict structured prompt used before a player exists."""
+    return (
+        "You are starting a new Mutable Realms world. The supplied world and "
+        "character data are authoritative. Choose one appropriate initial "
+        "location from the opening scene or world context; do not invent a "
+        "kingdom-wide map. Return ONLY valid JSON with exactly these keys: "
+        "location_name (non-empty string), location_description (string or null), "
+        "narration (player-facing prose). The location belongs to this world, "
+        "not to the reusable character definition.\n\n"
+        f"World id: {world_id}\n"
+        f"World state: {json.dumps(world, sort_keys=True)}\n"
+        f"Reusable character: {json.dumps(character, sort_keys=True)}\n\n"
+        "The narration should welcome the player into the chosen location, in "
+        "second person and present tense. Do not mention JSON, tools, revisions, "
+        "persistence, or administrative operations."
+    )
+
+
+def _parse_start_result(output: str) -> NarratorStartResult:
+    """Parse and validate the narrator's JSON start contract."""
+    text = clean_narration(output)
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise NarratorError(
+            "narration agent returned invalid start JSON",
+            category="invalid_start_response",
+        ) from error
+    if not isinstance(payload, dict):
+        raise NarratorError(
+            "narration agent start result must be a JSON object",
+            category="invalid_start_response",
+        )
+    allowed = {"location_name", "location_description", "narration"}
+    unexpected = set(payload) - allowed
+    if unexpected:
+        raise NarratorError(
+            "narration agent start result has unexpected fields",
+            category="invalid_start_response",
+        )
+    location_name = payload.get("location_name")
+    narration = payload.get("narration")
+    description = payload.get("location_description")
+    if not isinstance(location_name, str) or not location_name.strip():
+        raise NarratorError(
+            "narration agent start result has no location_name",
+            category="invalid_start_response",
+        )
+    if len(location_name.strip()) > 200:
+        raise NarratorError(
+            "narration agent start location_name is too long",
+            category="invalid_start_response",
+        )
+    if not isinstance(narration, str) or not narration.strip():
+        raise NarratorError(
+            "narration agent start result has no narration",
+            category="invalid_start_response",
+        )
+    if len(narration.strip()) > 20_000:
+        raise NarratorError(
+            "narration agent start narration is too long",
+            category="invalid_start_response",
+        )
+    if description is not None and not isinstance(description, str):
+        raise NarratorError(
+            "narration agent start location_description must be a string or null",
+            category="invalid_start_response",
+        )
+    if isinstance(description, str) and len(description.strip()) > 5_000:
+        raise NarratorError(
+            "narration agent start location_description is too long",
+            category="invalid_start_response",
+        )
+    return NarratorStartResult(location_name.strip(), description, narration.strip())
 
 
 def clean_narration(output: str) -> str:
@@ -195,7 +287,8 @@ class HermesNarrator:
             )
         except subprocess.TimeoutExpired as error:
             raise NarratorError(
-                f"narration agent timed out after {self.timeout:.0f}s"
+                f"narration agent timed out after {self.timeout:.0f}s",
+                category="narrator_timeout",
             ) from error
         if completed.returncode != 0:
             detail = (completed.stderr or completed.stdout or "").strip()
@@ -204,3 +297,27 @@ class HermesNarrator:
         if not narration:
             raise NarratorError("narration agent returned an empty reply")
         return narration
+
+    def start(
+        self, world_id: str, world: dict[str, Any], character: dict[str, Any]
+    ) -> NarratorStartResult:
+        """Ask the agent for a structured opening before a player exists."""
+        prompt = build_world_start_prompt(world_id, world, character)
+        command = ["hermes", "--profile", self.profile, "chat", "-Q", "-q", prompt]
+        try:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise NarratorError(
+                f"narration agent timed out after {self.timeout:.0f}s",
+                category="narrator_timeout",
+            ) from error
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "").strip()
+            raise NarratorError(f"narration agent failed: {detail[:500]}")
+        return _parse_start_result(completed.stdout)

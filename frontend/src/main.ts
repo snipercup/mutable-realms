@@ -109,6 +109,18 @@ type TurnResponse = {
   mutation: Record<string, unknown> | null;
 };
 
+type WorldStartResponse = {
+  outcome: string;
+  narration: string;
+  world_id: string;
+  character_id: string;
+  player_id: string;
+  location_id: string;
+  location_name: string;
+  revision_before: number;
+  revision_after: number;
+};
+
 type WorldState = {
   world: World;
   player: Player;
@@ -376,10 +388,13 @@ const worldPlayerCharacter = requireElement<HTMLSelectElement>("#world-player-ch
 const worldPlayerLocation = requireElement<HTMLInputElement>("#world-player-location");
 
 let worlds: World[] = [];
+let playerCharacters: PlayerCharacter[] = [];
 let selectedWorldId: string | null = null;
 let currentPlayerId: string | null = null;
 let loading = false;
 let actionPending = false;
+let startPending = false;
+let startError: string | null = null;
 let manageLoading = false;
 let editingScenarioId: string | null = null;
 let editingWorldId: string | null = null;
@@ -710,11 +725,11 @@ function updateFreshness(): void {
 }
 
 async function refresh(forceWorlds = false): Promise<void> {
-  if (loading) return;
+  if (loading || startPending) return;
   loading = true;
   refreshButton.disabled = true;
   worldSelect.disabled = true;
-  setError(null);
+  setError(startError);
   try {
     if (forceWorlds || worlds.length === 0) await loadWorlds();
     const state = await loadState();
@@ -727,22 +742,100 @@ async function refresh(forceWorlds = false): Promise<void> {
     currentPlayerId = null;
     const message = error instanceof Error ? error.message : "Unable to read world state";
     if (message.includes("player not found")) {
-      renderWorldViewEmpty(
-        "This world has no player yet.",
-        "Provision a player and a starting location from the Manage view to make it playable.",
-      );
-      setError(null);
+      try {
+        playerCharacters = await fetchJson<PlayerCharacter[]>("/api/player-characters");
+      } catch {
+        playerCharacters = [];
+      }
+      renderWorldStart();
+      setError(startError);
     } else if (message.includes("location not found")) {
       renderWorldViewEmpty(
         "This world is not ready to play yet.",
         "Provision a player and a starting location from the Manage view.",
       );
-      setError(null);
+      setError(startError);
     } else {
       setError(message);
     }
   } finally {
     loading = false;
+    refreshButton.disabled = false;
+    worldSelect.disabled = worlds.length === 0;
+  }
+}
+
+function renderWorldStart(): void {
+  worldView.replaceChildren();
+  const panel = element("section", "panel world-empty");
+  panel.append(element("span", "eyebrow", "Begin your story"));
+  panel.append(element("h2", "section-title", "This world has no player yet."));
+  panel.append(
+    element(
+      "p",
+      "world-empty-hint",
+      "Choose one of your reusable player characters. The narrator will establish the opening location from this world's story.",
+    ),
+  );
+  const form = document.createElement("form");
+  form.className = "manage-form";
+  const select = document.createElement("select");
+  select.className = "manage-input";
+  select.setAttribute("aria-label", "Character for this world");
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = playerCharacters.length === 0 ? "Create a character in Manage first" : "Select a character…";
+  select.append(placeholder);
+  for (const character of playerCharacters) {
+    const option = document.createElement("option");
+    option.value = character.id;
+    option.textContent = `${character.name} — ${character.basic_info ?? "No basic info"}`;
+    select.append(option);
+  }
+  const button = document.createElement("button");
+  button.className = "manage-button";
+  button.type = "submit";
+  button.textContent = "Begin your story";
+  button.disabled = playerCharacters.length === 0;
+  form.append(select, button);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (select.value !== "") void startWorld(select.value, button);
+  });
+  panel.append(form);
+  worldView.append(panel);
+}
+
+async function startWorld(characterId: string, button: HTMLButtonElement): Promise<void> {
+  if (selectedWorldId === null || startPending) return;
+  const world = worlds.find((candidate) => candidate.id === selectedWorldId);
+  if (world === undefined) return;
+  startPending = true;
+  startError = null;
+  button.disabled = true;
+  worldSelect.disabled = true;
+  refreshButton.disabled = true;
+  setError("The narrator is preparing your arrival…");
+  try {
+    const response = await postJson<WorldStartResponse>(
+      `/api/worlds/${encodeURIComponent(world.id)}/start`,
+      {
+        character_id: characterId,
+        operation_id: crypto.randomUUID(),
+        expected_revision: world.revision,
+      },
+    );
+    appendNarration("agent", response.narration);
+    narrationRevision.textContent = `r${response.revision_after}`;
+    startPending = false;
+    await refresh();
+  } catch (error) {
+    startError = error instanceof Error ? error.message : "The narrator could not start this world";
+    startPending = false;
+    setError(startError);
+    button.disabled = false;
+  } finally {
+    startPending = false;
     refreshButton.disabled = false;
     worldSelect.disabled = worlds.length === 0;
   }
@@ -1419,6 +1512,7 @@ viewManageButton.addEventListener("click", () => setViewMode("manage"));
 worldSelect.addEventListener("change", () => {
   selectedWorldId = worldSelect.value;
   currentPlayerId = null;
+  startError = null;
   narrationLog.replaceChildren();
   narrationRevision.textContent = "";
   const url = new URL(window.location.href);

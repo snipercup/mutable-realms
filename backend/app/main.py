@@ -11,7 +11,13 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
-from backend.app.narrator import HermesNarrator, Narrator, NarratorError
+from backend.app.narrator import (
+    HermesNarrator,
+    Narrator,
+    NarratorError,
+    NarratorStartResult,
+    StartNarrator,
+)
 from backend.app.read_models import (
     EntityRead,
     LocationRead,
@@ -37,8 +43,11 @@ from backend.app.read_models import (
     WorldMutationResponse,
     WorldProvisionRequest,
     WorldRead,
+    WorldStartRequest,
+    WorldStartResponse,
     WorldUpdateRequest,
 )
+from backend.persistence.database import connect_database
 from backend.persistence.migrations import (
     MigrationError,
     migrate_database,
@@ -104,6 +113,7 @@ def create_app(
     *,
     frontend_path: str | Path | None = DEFAULT_FRONTEND_PATH,
     narrator: Narrator | None = None,
+    start_narrator: StartNarrator | None = None,
 ) -> FastAPI:
     configured_path = Path(database_path) if database_path is not None else None
 
@@ -121,6 +131,7 @@ def create_app(
 
     application = FastAPI(title="Mutable Realms", lifespan=lifespan)
     application.state.narrator = narrator
+    application.state.start_narrator = start_narrator
 
     def get_database_path() -> Path:
         resolved_path = getattr(application.state, "database_path", None)
@@ -521,6 +532,89 @@ def create_app(
             already_applied=result["already_applied"],
             scenario_id=result["scenario_id"],
         )
+
+    @application.post("/api/worlds/{world_id}/start", tags=["player starts"], status_code=201)
+    def start_world(world_id: str, request: WorldStartRequest) -> WorldStartResponse:
+        """Start a playerless world through the narrator's structured contract."""
+        database_path = get_database_path()
+        try:
+            with connect_database(database_path) as connection:
+                operation = connection.execute(
+                    "SELECT operation_type, result_json FROM operations "
+                    "WHERE world_id = ? AND operation_id = ?",
+                    (world_id, request.operation_id),
+                ).fetchone()
+            if operation is not None:
+                if operation["operation_type"] != "player_character_instanced":
+                    raise WorldAdminConflict("operation id already used for another operation")
+                stored = json.loads(operation["result_json"])
+                if (
+                    stored.get("character_id") != request.character_id
+                    or stored.get("revision_before") != request.expected_revision
+                    or "narration" not in stored
+                ):
+                    raise WorldAdminConflict(
+                        "operation id was already used with a different request"
+                    )
+                return WorldStartResponse.model_validate(stored)
+            world = read_world(database_path, world_id)
+            if world.get("player") is not None:
+                raise WorldAdminConflict(f"world already has a player: {world_id}")
+            character = read_player_character(database_path, request.character_id)
+        except WorldNotFound as error:
+            raise HTTPException(status_code=404, detail="world not found") from error
+        except CharacterNotFound as error:
+            raise HTTPException(status_code=404, detail="player character not found") from error
+        except WorldAdminConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+        starter = start_narrator or application.state.start_narrator
+        if starter is None:
+            starter = HermesNarrator().start
+        try:
+            result = starter(world_id, world, character)
+        except NarratorError as error:
+            public_detail = {
+                "invalid_start_response": "narration agent returned an invalid start response",
+                "narrator_timeout": "narration agent timed out while preparing the world",
+            }.get(error.category, "narration agent was unavailable")
+            raise HTTPException(status_code=502, detail=public_detail) from error
+        if not isinstance(result, NarratorStartResult):
+            raise HTTPException(
+                status_code=502, detail="narration agent returned an invalid start response"
+            )
+        try:
+            instance = instance_player_character(
+                database_path,
+                world_id=world_id,
+                operation_id=request.operation_id,
+                expected_revision=request.expected_revision,
+                character_id=request.character_id,
+                location_name=result.location_name,
+                location_description=result.location_description,
+            )
+            response = {
+                "outcome": "world_started",
+                "narration": result.narration,
+                "world_id": world_id,
+                "character_id": request.character_id,
+                "player_id": instance["entity_id"],
+                "location_id": instance["location_id"],
+                "location_name": result.location_name,
+                "revision_before": request.expected_revision,
+                "revision_after": instance["world_revision"],
+            }
+            with connect_database(database_path) as connection:
+                connection.execute(
+                    "UPDATE operations SET result_json = ? WHERE world_id = ? AND operation_id = ?",
+                    (json.dumps(response, sort_keys=True), world_id, request.operation_id),
+                )
+                connection.commit()
+            return WorldStartResponse.model_validate(response)
+        except WorldAdminNotFound as error:
+            raise HTTPException(status_code=404, detail="world not found") from error
+        except WorldAdminConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
 
     @application.post("/api/worlds/{world_id}/turns", tags=["player turns"])
     def player_turn(world_id: str, request: TurnRequest) -> TurnResponse:

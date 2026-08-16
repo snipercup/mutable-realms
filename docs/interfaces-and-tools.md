@@ -121,7 +121,10 @@ POST /api/worlds/{world_id}/character-instance
 
 Definition edits and deletion never rewrite an existing world instance; the instance retains copied name/basic info and its own world state.
 
-## HTTP API
+### Narrator-driven world start
+
+A playerless world can be started from Play mode with a reusable character definition. `POST /api/worlds/{world_id}/start` accepts `{character_id, operation_id, expected_revision}`. The relay gives the narrator the selected world read, story elements/opening scene, and reusable character snapshot. The narrator must return JSON with `location_name`, optional `location_description`, and player-facing `narration`. Only after that result validates does the server call the atomic character-instance operation, creating the world-specific player, location, placement, and event. The start response includes the copied instance IDs and revisions. The operation result stores the narration so an exact replay returns the same response without invoking the narrator again. Invalid narrator output leaves the world playerless. Existing Manage-page instancing remains available and accepts an optional location description. During start, the frontend suppresses the five-second state poll, disables competing refresh/world-selection controls, shows progress, and retains safe failure messages rather than allowing a playerless poll to overwrite them.
+
 
 Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup applies pending migrations and fails if history is invalid.
 

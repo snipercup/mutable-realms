@@ -7,6 +7,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from backend.app.main import create_app
+from backend.app.narrator import NarratorError, NarratorStartResult
 from backend.persistence.migrations import migrate_database
 from backend.world.characters import (
     CharacterConflict,
@@ -211,3 +212,74 @@ def test_player_character_api_crud_and_world_selection(tmp_path: Path) -> None:
     assert status == 200
     status, body = asyncio.run(_request(app, "GET", "/api/worlds/world-a"))
     assert body["player"]["name"] == "Fate"
+
+
+def test_narrator_world_start_instances_selected_character_and_replays(tmp_path: Path) -> None:
+    path = _database(tmp_path)
+    _world(path, "world-a")
+    create_player_character(
+        path, character_id="fate", operation_id="create-1", name="Fate", basic_info="Diplomat"
+    )
+    calls = {"count": 0}
+
+    def starter(world_id: str, world: dict, character: dict) -> NarratorStartResult:
+        calls["count"] += 1
+        assert world_id == "world-a"
+        assert world["player"] is None
+        assert character["id"] == "fate"
+        return NarratorStartResult(
+            "Elaris", "A moonlit guild square.", "You arrive beneath silver lanterns."
+        )
+
+    app = create_app(path, start_narrator=starter)
+    payload = {"character_id": "fate", "operation_id": "start-1", "expected_revision": 1}
+    status, body = asyncio.run(_request(app, "POST", "/api/worlds/world-a/start", payload))
+    assert status == 201
+    assert body["narration"] == "You arrive beneath silver lanterns."
+    assert body["location_name"] == "Elaris"
+    assert body["revision_before"] == 1
+    assert body["revision_after"] == 2
+    assert calls["count"] == 1
+
+    status, replay = asyncio.run(_request(app, "POST", "/api/worlds/world-a/start", payload))
+    assert status == 201
+    assert replay == body
+    assert calls["count"] == 1
+    status, conflict = asyncio.run(
+        _request(
+            app,
+            "POST",
+            "/api/worlds/world-a/start",
+            {**payload, "expected_revision": 0},
+        )
+    )
+    assert status == 409
+    assert "different request" in conflict["detail"]
+    world = read_world(path, "world-a")
+    assert world["player"]["name"] == "Fate"
+    assert world["player"]["location_name"] == "Elaris"
+
+
+def test_narrator_world_start_failure_leaves_world_playerless(tmp_path: Path) -> None:
+    path = _database(tmp_path)
+    _world(path, "world-a")
+    create_player_character(path, character_id="fate", operation_id="create-1", name="Fate")
+
+    def starter(world_id: str, world: dict, character: dict) -> NarratorStartResult:
+        raise NarratorError(
+            "narration agent returned invalid start JSON",
+            category="invalid_start_response",
+        )
+
+    app = create_app(path, start_narrator=starter)
+    status, body = asyncio.run(
+        _request(
+            app,
+            "POST",
+            "/api/worlds/world-a/start",
+            {"character_id": "fate", "operation_id": "start-1", "expected_revision": 1},
+        )
+    )
+    assert status == 502
+    assert body["detail"] == "narration agent returned an invalid start response"
+    assert read_world(path, "world-a")["player"] is None

@@ -6,6 +6,7 @@ from backend.app.narrator import (
     HermesNarrator,
     NarratorError,
     build_narration_prompt,
+    build_world_start_prompt,
     clean_narration,
 )
 
@@ -30,8 +31,7 @@ def test_clean_narration_strips_leading_decision_line() -> None:
 
 def test_clean_narration_strips_trailing_persistence_meta() -> None:
     raw = (
-        f"{CLEAN_NARRATION}\n\n"
-        "No change was persisted. Refresh the page to see the world as it is."
+        f"{CLEAN_NARRATION}\n\nNo change was persisted. Refresh the page to see the world as it is."
     )
     assert clean_narration(raw) == CLEAN_NARRATION
 
@@ -87,9 +87,7 @@ def test_build_narration_prompt_embeds_selected_world_context() -> None:
         "recent_events": [],
     }
 
-    prompt = build_narration_prompt(
-        "world-of-earthalon", "fate", "Enter the guild hall.", context
-    )
+    prompt = build_narration_prompt("world-of-earthalon", "fate", "Enter the guild hall.", context)
 
     assert "Current world state" in prompt
     assert "world of Aerthalon" in prompt
@@ -99,6 +97,76 @@ def test_build_narration_prompt_embeds_selected_world_context() -> None:
     assert "Player: fate (world-of-earthalon-player)" in prompt
     assert "You are at: Settlement — The first camp." in prompt
     assert "world_id=world-of-earthalon" in prompt
+
+
+def test_build_world_start_prompt_requires_structured_location_and_narration() -> None:
+    prompt = build_world_start_prompt(
+        "world-a",
+        {"id": "world-a", "elements": [{"element_type": "opening_scene", "content": "At Elaris."}]},
+        {"id": "fate", "name": "Fate", "basic_info": "Diplomat"},
+    )
+    assert "Return ONLY valid JSON" in prompt
+    assert "location_name" in prompt
+    assert "location_description" in prompt
+    assert "At Elaris." in prompt
+    assert "Diplomat" in prompt
+
+
+def test_hermes_narrator_start_parses_structured_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            '{"location_name":"Elaris","location_description":"Guild square.",'
+            '"narration":"You enter Elaris."}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    result = HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+    assert result.location_name == "Elaris"
+    assert result.location_description == "Guild square."
+    assert result.narration == "You enter Elaris."
+
+
+def test_hermes_narrator_start_rejects_unexpected_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            '{"location_name":"Elaris","location_description":null,'
+            '"narration":"Welcome.","tool":"bad"}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    with pytest.raises(NarratorError, match="unexpected fields") as error:
+        HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+    assert error.value.category == "invalid_start_response"
+
+
+def test_hermes_narrator_start_rejects_invalid_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = "not json"
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    with pytest.raises(NarratorError, match="invalid start JSON"):
+        HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
 
 
 def test_hermes_narrator_raises_on_empty_reply(

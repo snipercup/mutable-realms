@@ -235,5 +235,24 @@ class PlayerCharacterMutationResponse(StrictReadModel):
 class WorldCharacterInstanceRequest(StrictReadModel):
     character_id: str
     location_name: str = Field(min_length=1)
+    location_description: str | None = None
     operation_id: str
     expected_revision: int = Field(ge=0)
+
+
+class WorldStartRequest(StrictReadModel):
+    character_id: str
+    operation_id: str
+    expected_revision: int = Field(ge=0)
+
+
+class WorldStartResponse(StrictReadModel):
+    outcome: str
+    narration: str
+    world_id: str
+    character_id: str
+    player_id: str
+    location_id: str
+    location_name: str
+    revision_before: int = Field(ge=0)
+    revision_after: int = Field(ge=0)

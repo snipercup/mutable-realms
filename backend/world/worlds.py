@@ -570,6 +570,7 @@ def instance_player_character(
     expected_revision: int,
     character_id: str,
     location_name: str,
+    location_description: str | None = None,
 ) -> dict[str, Any]:
     """Copy a reusable character definition into a world as its sole player."""
     _validate_world_id(world_id)
@@ -577,10 +578,15 @@ def instance_player_character(
     if not character_id.strip():
         raise WorldAdminConflict("character id must not be blank")
     trimmed_location = location_name.strip()
+    trimmed_description = location_description.strip() if location_description else None
     if not trimmed_location:
         raise WorldAdminConflict("location name must not be blank")
     request_json = json.dumps(
-        {"character_id": character_id, "location_name": trimmed_location},
+        {
+            "character_id": character_id,
+            "location_name": trimmed_location,
+            "location_description": trimmed_description,
+        },
         sort_keys=True,
         separators=(",", ":"),
     )
@@ -632,7 +638,7 @@ def instance_player_character(
                     location_id,
                     world_id,
                     trimmed_location,
-                    f"Starting location for {definition['name']}",
+                    trimmed_description or f"Starting location for {definition['name']}",
                 ),
             )
             connection.execute(
