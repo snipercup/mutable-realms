@@ -73,7 +73,8 @@ def test_read_api_map_renders_one_scope_and_reports_boundary_exits(tmp_path: Pat
             ],
         )
         connection.execute(
-            "INSERT INTO location_metadata(world_id, location_id, kind, is_map_scope, is_default_scope) "
+            "INSERT INTO location_metadata("
+            "world_id, location_id, kind, is_map_scope, is_default_scope) "
             "VALUES (?, 'plaza', 'street', 1, 1)",
             (TOWN_WORLD_ID,),
         )
@@ -117,7 +118,8 @@ def test_read_api_map_uses_nearest_default_scope_for_player(tmp_path: Path) -> N
             (TOWN_WORLD_ID,),
         )
         connection.execute(
-            "INSERT INTO location_metadata(world_id, location_id, kind, is_map_scope, is_default_scope) "
+            "INSERT INTO location_metadata("
+            "world_id, location_id, kind, is_map_scope, is_default_scope) "
             "VALUES (?, 'market', 'street', 1, 1)",
             (TOWN_WORLD_ID,),
         )

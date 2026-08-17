@@ -143,12 +143,25 @@ Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup ap
 | `GET /api/worlds/{world_id}` | One world with its owned story elements and player summary. |
 | `GET /api/worlds/{world_id}/player` | Current player and placement. |
 | `POST /api/worlds/{world_id}/player` | Provision a player + starting location (body `{player_name, location_name, operation_id, expected_revision}`). |
-| `GET /api/worlds/{world_id}/map` | Derived map: every location with entity-kind counts and linked locations, plus the player's location. |
+| `GET /api/worlds/{world_id}/map` | Derived map. Optional `scope_location_id` selects a scope and `limit` bounds direct children to 1–100. Scoped responses include the scope node, breadcrumbs, direct children, exact and projected player locations, in-scope links, and `boundary_links` for links leaving the visible graph. With no hierarchy or scope, legacy worlds retain the world-wide flat response. |
 | `GET /api/worlds/{world_id}/locations/current` | Player's current location and generic contents. |
 | `GET /api/worlds/{world_id}/locations/{location_id}` | One location and its contents. |
 | `GET /api/worlds/{world_id}/entities/{entity_id}` | One entity and optional character state. |
 | `GET /api/worlds/{world_id}/events?limit=20` | Newest-first events (limit 1–100). |
 | `GET /api/worlds/{world_id}/capabilities/ward/locations/{location_id}` | Optional ward bed occupancy. |
+
+### Scoped maps and location hierarchy
+
+`locations` remain authoritative physical places. Migration `0011_location_hierarchy` adds two additive stores:
+
+- `location_containment(world_id, child_location_id, parent_location_id)` gives each location at most one same-world parent. It is a containment relation, not a movement edge. Parentless locations are roots under the virtual world scope; legacy flat worlds therefore require no synthetic hierarchy.
+- `location_metadata(world_id, location_id, kind, is_map_scope, is_default_scope)` stores descriptive kind and explicit map-scope preferences. `is_default_scope` requires `is_map_scope`; kinds are not a fixed hierarchy vocabulary.
+
+`GET /api/worlds/{world_id}/map` without a hierarchy scope preserves the legacy flat map. A scoped request returns the scope node plus bounded direct children, breadcrumbs, stable child totals/overflow, entity-kind counts, the exact `player_location_id`, and `player_visible_location_id` for the visible ancestor when the player is deeper than the displayed scope. Links whose endpoints are both visible appear on the nodes; links crossing the visible boundary appear in `boundary_links` and do not create inferred adjacency. Map zoom and scope selection are read-only presentation actions.
+
+`PUT /api/worlds/{world_id}/locations/{location_id}/hierarchy` is an administrative world mutation. It validates same-world parents, rejects self-parenting and containment cycles, records an event, bumps the world revision, and supports exact operation replay. Reparenting changes containment metadata only; it does not add, remove, or rewrite `location_links`. Ordinary movement continues to require a direct physical link between the exact current and destination locations.
+
+The narrator context includes only the current location's containment breadcrumb and preferred map scope. It continues to expose exact movement neighbors rather than injecting an entire scoped map.
 
 ### World administration
 
@@ -158,6 +171,7 @@ Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup ap
 | `PATCH /api/worlds/{world_id}` | Update title/description — body `{title?, description?, operation_id, expected_revision}`. |
 | `PUT /api/worlds/{world_id}/elements/{element_type}` | Upsert one world element — body `{content, operation_id, expected_revision}`. |
 | `DELETE /api/worlds/{world_id}?operation_id=…&expected_revision=…` | Remove a world and all of its state (destructive). |
+| `PUT /api/worlds/{world_id}/locations/{location_id}/hierarchy` | Set one location's parent and descriptive map metadata — body `{operation_id, expected_revision, parent_location_id?, kind?, is_map_scope, is_default_scope}`. The operation is revision-aware and exactly idempotent. |
 
 Errors: `404` unknown scenario or world · `409` duplicate id, operation-ID reuse, or stale revision.
 

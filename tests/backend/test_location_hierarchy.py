@@ -149,7 +149,8 @@ def test_reads_ordered_ancestors_and_direct_children(tmp_path: Path) -> None:
             [("district", "city"), ("street", "district"), ("house", "street")],
         )
         connection.executemany(
-            "INSERT INTO location_metadata(world_id, location_id, kind, is_map_scope, is_default_scope) "
+            "INSERT INTO location_metadata("
+            "world_id, location_id, kind, is_map_scope, is_default_scope) "
             "VALUES ('world-a', ?, ?, ?, ?)",
             [("city", "city", 1, 0), ("district", "district", 1, 0), ("street", "street", 1, 1)],
         )

@@ -120,7 +120,8 @@ def set_location_hierarchy(
             )
             if normalized_parent is not None:
                 connection.execute(
-                    "INSERT INTO location_containment(world_id, child_location_id, parent_location_id) "
+                    "INSERT INTO location_containment("
+                    "world_id, child_location_id, parent_location_id) "
                     "VALUES (?, ?, ?)",
                     (world_id, location_id, normalized_parent),
                 )

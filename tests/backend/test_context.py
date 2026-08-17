@@ -102,7 +102,8 @@ def test_context_includes_containment_breadcrumb_and_preferred_scope(tmp_path: P
             (GENERAL_WORLD_ID,),
         )
         connection.execute(
-            "INSERT INTO location_metadata(world_id, location_id, kind, is_map_scope, is_default_scope) "
+            "INSERT INTO location_metadata("
+            "world_id, location_id, kind, is_map_scope, is_default_scope) "
             "VALUES (?, 'seafloor-road', 'street', 1, 1)",
             (GENERAL_WORLD_ID,),
         )
