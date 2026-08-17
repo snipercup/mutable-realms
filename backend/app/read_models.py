@@ -103,6 +103,7 @@ class WorldMapLocationRead(StrictReadModel):
     kind: str | None = None
     is_map_scope: bool = False
     is_default_scope: bool = False
+    is_promoted: bool = False
     child_count: int = Field(default=0, ge=0)
     entity_kinds: dict[str, int]
     linked_location_ids: list[str]
@@ -232,6 +233,22 @@ class LocationHierarchyRequest(StrictReadModel):
     kind: str | None = Field(default=None, max_length=100)
     is_map_scope: bool = False
     is_default_scope: bool = False
+
+
+class LocationScopePromotionRequest(StrictReadModel):
+    operation_id: str
+    expected_revision: int = Field(ge=0)
+    scope_location_id: str
+    is_promoted: bool = True
+
+
+class LocationScopePromotionMutationResponse(StrictReadModel):
+    already_applied: bool
+    location_id: str
+    scope_location_id: str
+    is_promoted: bool
+    world_id: str
+    world_revision: int = Field(ge=1)
 
 
 class LocationHierarchyMutationResponse(StrictReadModel):

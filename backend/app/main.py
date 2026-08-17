@@ -23,6 +23,8 @@ from backend.app.read_models import (
     LocationHierarchyMutationResponse,
     LocationHierarchyRequest,
     LocationRead,
+    LocationScopePromotionMutationResponse,
+    LocationScopePromotionRequest,
     PlayerCharacterCreateRequest,
     PlayerCharacterMutationResponse,
     PlayerCharacterRead,
@@ -71,7 +73,7 @@ from backend.world.characters import (
     update_player_character,
 )
 from backend.world.context import build_world_context
-from backend.world.hierarchy import set_location_hierarchy
+from backend.world.hierarchy import set_location_hierarchy, set_location_scope_promotion
 from backend.world.queries import (
     EntityNotFound,
     LocationNotFound,
@@ -330,6 +332,31 @@ def create_app(
         except WorldAdminConflict as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
         return LocationHierarchyMutationResponse.model_validate(result)
+
+    @application.put(
+        "/api/worlds/{world_id}/locations/{location_id}/scope-promotion",
+        tags=["world administration"],
+    )
+    def configure_location_scope_promotion(
+        world_id: str,
+        location_id: str,
+        request: LocationScopePromotionRequest,
+    ) -> LocationScopePromotionMutationResponse:
+        try:
+            result = set_location_scope_promotion(
+                get_database_path(),
+                world_id=world_id,
+                operation_id=request.operation_id,
+                expected_revision=request.expected_revision,
+                scope_location_id=request.scope_location_id,
+                location_id=location_id,
+                is_promoted=request.is_promoted,
+            )
+        except WorldAdminNotFound as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except WorldAdminConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return LocationScopePromotionMutationResponse.model_validate(result)
 
     @application.get("/api/worlds/{world_id}/locations/current", tags=["world reads"])
     def current_location(world_id: str) -> LocationRead:

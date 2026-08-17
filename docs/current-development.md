@@ -4,17 +4,15 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Cross-scale landmark promotion — proposed
+### Detailed travel and explicit routes — proposed
 
-**Goal:** allow selected nested locations—such as a mine, major road, or sinkhole—to appear on a broader province or kingdom overview without duplicating them or changing their physical containment.
+**Goal:** define explicit route/transit semantics for movement beyond local location links without treating containment, map visibility, or promoted landmarks as adjacency.
 
-**Proposed scope:** add explicit presentation-only scope markers, validate that promoted locations belong to the same world, include them in bounded scoped-map reads, and prove that promotion does not create movement adjacency or alter the location’s single containment parent.
+**Proposed scope:** first specify route endpoints, eligibility, and authoritative landing locations; defer travel time/cost and narrator-driven generation until the contract is exercised.
 
-**Out of scope:** fast travel, route generation, travel time/cost, narrator-driven location creation, automatic geography generation, and multi-parent containment.
+**Out of scope:** automatic road generation, teleportation from map zoom, inferred sibling travel, procedural geography, and orbital/star-system mechanics.
 
-**Verification:** complete. Migration `0011_location_hierarchy` adds same-world containment and descriptive scope metadata without changing legacy locations. Tests cover atomic hierarchy configuration, exact replay, cross-world parent rejection, cycle rejection and whole-world cycle diagnostics, ordered breadcrumbs, bounded descendant reads, scoped map responses, boundary exits, preferred-scope selection, flat-world maps, and HTTP hierarchy administration. The frontend type-check and build passed; the committed backend suite passed during implementation. Temporary/live readback confirmed Aerthalon remained authoritative and playable after start; flat Aerthalon stayed in compatibility mode because it has one root location and no hierarchy metadata.
-
-**Commit:** documentation scope only — implementation should follow the vertical-slice process below.
+**Verification:** pending; this idea is only registered for the next slice.
 
 ## Recently completed
 
@@ -26,6 +24,9 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 | Reusable player characters and world-specific instances (character CRUD, selection, copied world instances) | 2026-08-16 | on main via `reusable-player-characters` |
 | Narrator-driven world start (structured opening, atomic character/location instancing, polling/error hardening) | 2026-08-16 | `9b00c16` |
 | Nested locations and scoped world maps (migration 0011, hierarchy validation, scoped reads, context breadcrumbs, map navigation) | 2026-08-17 | `8c581c9` |
+| Cross-scale landmark promotion (migration 0012, validated presentation promotions, promoted scoped-map nodes, HTTP administration) | 2026-08-17 | pending user commit; suggested `Add cross-scale landmark promotion` |
+
+**Cross-scale promotion verification:** `238` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted hierarchy configuration at revision `0 → 1`, promotion at `1 → 2`, returned the promoted `docks` node with `is_promoted: true`, and recorded `location_scope_promotion_set` in SQLite. The precondition probe correctly rejected promotion to a non-map scope with HTTP `409`; the temporary server was stopped and port 8795 confirmed closed. Containment and physical links remained unchanged in the fixture.
 
 ## How an idea becomes work
 

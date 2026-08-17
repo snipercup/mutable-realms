@@ -14,6 +14,7 @@ from backend.world.hierarchy import (
     read_location_children,
     read_location_descendants,
     set_location_hierarchy,
+    set_location_scope_promotion,
 )
 from backend.world.validation import validate_worlds
 from backend.world.worlds import WorldAdminConflict
@@ -140,6 +141,126 @@ def test_rejects_cross_world_parent_and_containment_cycle_without_mutation(tmp_p
         )
 
 
+def test_promotes_landmark_without_changing_containment_or_links(tmp_path: Path) -> None:
+    path = _world(tmp_path)
+    with connect_database(path) as connection:
+        connection.execute(
+            "INSERT INTO location_links(world_id, location_a, location_b) "
+            "VALUES ('world-a', 'house', 'street')"
+        )
+        connection.execute(
+            "INSERT INTO location_metadata("
+            "world_id, location_id, kind, is_map_scope, is_default_scope) "
+            "VALUES ('world-a', 'city', 'province', 1, 0)"
+        )
+        connection.execute(
+            "INSERT INTO location_containment(world_id, child_location_id, parent_location_id) "
+            "VALUES ('world-a', 'street', 'city')"
+        )
+        connection.commit()
+
+    result = set_location_scope_promotion(
+        path,
+        world_id="world-a",
+        operation_id="promotion-1",
+        expected_revision=0,
+        scope_location_id="city",
+        location_id="house",
+        is_promoted=True,
+    )
+
+    assert result == {
+        "already_applied": False,
+        "world_id": "world-a",
+        "world_revision": 1,
+        "scope_location_id": "city",
+        "location_id": "house",
+        "is_promoted": True,
+    }
+    replay = set_location_scope_promotion(
+        path,
+        world_id="world-a",
+        operation_id="promotion-1",
+        expected_revision=0,
+        scope_location_id="city",
+        location_id="house",
+        is_promoted=True,
+    )
+    assert replay == {**result, "already_applied": True}
+    removed = set_location_scope_promotion(
+        path,
+        world_id="world-a",
+        operation_id="promotion-2",
+        expected_revision=1,
+        scope_location_id="city",
+        location_id="house",
+        is_promoted=False,
+    )
+    assert removed["is_promoted"] is False
+    with connect_database(path) as connection:
+        assert (
+            connection.execute(
+                "SELECT parent_location_id FROM location_containment "
+                "WHERE world_id = 'world-a' AND child_location_id = 'street'"
+            ).fetchone()[0]
+            == "city"
+        )
+        assert (
+            connection.execute(
+                "SELECT 1 FROM location_scope_promotions "
+                "WHERE world_id = 'world-a' AND scope_location_id = 'city' "
+                "AND location_id = 'house'"
+            ).fetchone()
+            is None
+        )
+        assert (
+            connection.execute(
+                "SELECT 1 FROM location_links WHERE world_id = 'world-a' "
+                "AND location_a = 'house' AND location_b = 'street'"
+            ).fetchone()
+            is not None
+        )
+
+
+def test_rejects_promotion_to_non_map_scope_and_foreign_landmark(tmp_path: Path) -> None:
+    path = _world(tmp_path)
+    with connect_database(path) as connection:
+        connection.execute("INSERT INTO worlds(id, name) VALUES ('world-b', 'World B')")
+        connection.execute(
+            "INSERT INTO locations(id, world_id, name, description) "
+            "VALUES ('foreign', 'world-b', 'Foreign', '')"
+        )
+        connection.commit()
+
+    with pytest.raises(WorldAdminConflict, match="map scope"):
+        set_location_scope_promotion(
+            path,
+            world_id="world-a",
+            operation_id="not-scope",
+            expected_revision=0,
+            scope_location_id="city",
+            location_id="house",
+            is_promoted=True,
+        )
+    with connect_database(path) as connection:
+        connection.execute(
+            "INSERT INTO location_metadata("
+            "world_id, location_id, kind, is_map_scope, is_default_scope) "
+            "VALUES ('world-a', 'city', 'province', 1, 0)"
+        )
+        connection.commit()
+    with pytest.raises(WorldAdminConflict, match="location not found"):
+        set_location_scope_promotion(
+            path,
+            world_id="world-a",
+            operation_id="foreign-landmark",
+            expected_revision=0,
+            scope_location_id="city",
+            location_id="foreign",
+            is_promoted=True,
+        )
+
+
 def test_reads_ordered_ancestors_and_direct_children(tmp_path: Path) -> None:
     path = _world(tmp_path)
     with connect_database(path) as connection:
@@ -223,6 +344,53 @@ def test_http_configures_location_hierarchy(tmp_path: Path) -> None:
         "world_id": "world-a",
         "world_revision": 1,
     }
+
+
+def test_http_configures_location_scope_promotion(tmp_path: Path) -> None:
+    path = _world(tmp_path)
+    with connect_database(path) as connection:
+        connection.execute(
+            "INSERT INTO location_metadata("
+            "world_id, location_id, kind, is_map_scope, is_default_scope) "
+            "VALUES ('world-a', 'city', 'province', 1, 0)"
+        )
+        connection.commit()
+    app = create_app(path)
+
+    status, body = asyncio.run(
+        _request(
+            app,
+            "PUT",
+            "/api/worlds/world-a/locations/house/scope-promotion",
+            {
+                "operation_id": "http-promotion-1",
+                "expected_revision": 0,
+                "scope_location_id": "city",
+                "is_promoted": True,
+            },
+        )
+    )
+
+    assert status == 200
+    assert body["is_promoted"] is True
+    assert body["scope_location_id"] == "city"
+
+
+def test_whole_world_validation_detects_invalid_scope_promotion(tmp_path: Path) -> None:
+    path = _world(tmp_path)
+    with connect_database(path) as connection:
+        connection.execute(
+            "INSERT INTO location_scope_promotions(world_id, scope_location_id, location_id) "
+            "VALUES ('world-a', 'city', 'house')"
+        )
+        connection.commit()
+
+    issues = validate_worlds(path)
+
+    assert any(
+        issue.code == "location_promotion_scope_not_map" and issue.entity_id == "house"
+        for issue in issues
+    )
 
 
 def test_whole_world_validation_detects_containment_cycle(tmp_path: Path) -> None:

@@ -107,6 +107,41 @@ def test_read_api_map_renders_one_scope_and_reports_boundary_exits(tmp_path: Pat
     ]
 
 
+def test_read_api_map_includes_explicit_promoted_landmark(tmp_path: Path) -> None:
+    database_path = tmp_path / "world.sqlite3"
+    migrate_database(database_path)
+    seed_town_world(database_path)
+    with connect_database(database_path) as connection:
+        connection.execute(
+            "INSERT INTO location_containment(world_id, child_location_id, parent_location_id) "
+            "VALUES (?, 'market', 'plaza')",
+            (TOWN_WORLD_ID,),
+        )
+        connection.execute(
+            "INSERT INTO location_metadata("
+            "world_id, location_id, kind, is_map_scope, is_default_scope) "
+            "VALUES (?, 'plaza', 'province', 1, 1)",
+            (TOWN_WORLD_ID,),
+        )
+        connection.execute(
+            "INSERT INTO location_scope_promotions(world_id, scope_location_id, location_id) "
+            "VALUES (?, 'plaza', 'docks')",
+            (TOWN_WORLD_ID,),
+        )
+        connection.commit()
+    app = create_app(database_path)
+
+    status, world_map = asyncio.run(
+        _get(app, f"/api/worlds/{TOWN_WORLD_ID}/map?scope_location_id=plaza")
+    )
+
+    assert status == 200
+    assert world_map["child_total"] == 2
+    docks = next(location for location in world_map["locations"] if location["id"] == "docks")
+    assert docks["is_promoted"] is True
+    assert docks["linked_location_ids"] == ["market"]
+
+
 def test_read_api_map_uses_nearest_default_scope_for_player(tmp_path: Path) -> None:
     database_path = tmp_path / "world.sqlite3"
     migrate_database(database_path)

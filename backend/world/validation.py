@@ -56,6 +56,43 @@ def validate_worlds(database_path: str | Path) -> list[ValidationIssue]:
 
         for row in connection.execute(
             """
+            SELECT p.scope_location_id, p.location_id
+            FROM location_scope_promotions p
+            LEFT JOIN location_metadata m
+              ON m.world_id = p.world_id AND m.location_id = p.scope_location_id
+            WHERE COALESCE(m.is_map_scope, 0) = 0
+            ORDER BY p.world_id, p.scope_location_id, p.location_id
+            """
+        ):
+            issues.append(
+                ValidationIssue(
+                    "location_promotion_scope_not_map",
+                    "Location promotion targets a non-map scope",
+                    row["location_id"],
+                )
+            )
+
+        for row in connection.execute(
+            """
+            SELECT p.scope_location_id, p.location_id
+            FROM location_scope_promotions p
+            JOIN location_containment c
+              ON c.world_id = p.world_id
+             AND c.child_location_id = p.location_id
+             AND c.parent_location_id = p.scope_location_id
+            ORDER BY p.world_id, p.scope_location_id, p.location_id
+            """
+        ):
+            issues.append(
+                ValidationIssue(
+                    "location_promotion_redundant",
+                    "Location promotion duplicates a direct child of the scope",
+                    row["location_id"],
+                )
+            )
+
+        for row in connection.execute(
+            """
             SELECT el.entity_id
             FROM entity_locations el
             JOIN entities e ON e.id = el.entity_id

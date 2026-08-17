@@ -11,6 +11,7 @@ from backend.world.mutations import event_id
 from backend.world.worlds import WorldAdminConflict, WorldAdminNotFound
 
 _LOCATION_HIERARCHY_EVENT = "location_hierarchy_set"
+_LOCATION_SCOPE_PROMOTION_EVENT = "location_scope_promotion_set"
 _MAX_KIND_LENGTH = 100
 
 
@@ -202,6 +203,147 @@ def set_location_hierarchy(
             raise WorldAdminConflict(str(error)) from error
 
 
+def set_location_scope_promotion(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    scope_location_id: str,
+    location_id: str,
+    is_promoted: bool,
+) -> dict[str, Any]:
+    """Add or remove one explicit landmark promotion for a map scope."""
+    if not operation_id.strip():
+        raise WorldAdminConflict("operation ID must not be blank")
+    if not scope_location_id.strip() or not location_id.strip():
+        raise WorldAdminConflict("scope and landmark location IDs must not be blank")
+    if scope_location_id == location_id:
+        raise WorldAdminConflict("a map scope cannot promote itself")
+    request = {
+        "expected_revision": expected_revision,
+        "is_promoted": is_promoted,
+        "location_id": location_id,
+        "scope_location_id": scope_location_id,
+    }
+    request_json = _canonical_json(request)
+
+    with connect_database(database_path) as connection:
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                "SELECT operation_type, request_json, result_json FROM operations "
+                "WHERE world_id = ? AND operation_id = ?",
+                (world_id, operation_id),
+            ).fetchone()
+            if existing is not None:
+                if (
+                    existing["operation_type"] != _LOCATION_SCOPE_PROMOTION_EVENT
+                    or existing["request_json"] != request_json
+                ):
+                    raise WorldAdminConflict(
+                        "operation ID was already used for a different request"
+                    )
+                connection.rollback()
+                result = json.loads(existing["result_json"])
+                result["already_applied"] = True
+                return result
+
+            world = connection.execute(
+                "SELECT revision FROM worlds WHERE id = ?", (world_id,)
+            ).fetchone()
+            if world is None:
+                raise WorldAdminNotFound(f"world not found: {world_id}")
+            if world["revision"] != expected_revision:
+                raise WorldAdminConflict(
+                    f"expected world revision {expected_revision}, found {world['revision']}"
+                )
+            scope = connection.execute(
+                "SELECT COALESCE(m.is_map_scope, 0) AS is_map_scope "
+                "FROM locations l LEFT JOIN location_metadata m "
+                "ON m.world_id = l.world_id AND m.location_id = l.id "
+                "WHERE l.world_id = ? AND l.id = ?",
+                (world_id, scope_location_id),
+            ).fetchone()
+            if scope is None:
+                raise WorldAdminNotFound(f"scope location not found: {scope_location_id}")
+            if not scope["is_map_scope"]:
+                raise WorldAdminConflict("promotion scope must be a map scope")
+            landmark = connection.execute(
+                "SELECT 1 FROM locations WHERE world_id = ? AND id = ?",
+                (world_id, location_id),
+            ).fetchone()
+            if landmark is None:
+                raise WorldAdminConflict(f"location not found: {location_id}")
+            direct_child = connection.execute(
+                "SELECT 1 FROM location_containment "
+                "WHERE world_id = ? AND child_location_id = ? AND parent_location_id = ?",
+                (world_id, location_id, scope_location_id),
+            ).fetchone()
+            if direct_child is not None:
+                raise WorldAdminConflict("direct children do not need promotion")
+
+            if is_promoted:
+                connection.execute(
+                    "INSERT INTO location_scope_promotions("
+                    "world_id, scope_location_id, location_id) VALUES (?, ?, ?)",
+                    (world_id, scope_location_id, location_id),
+                )
+            else:
+                connection.execute(
+                    "DELETE FROM location_scope_promotions "
+                    "WHERE world_id = ? AND scope_location_id = ? AND location_id = ?",
+                    (world_id, scope_location_id, location_id),
+                )
+            next_revision = expected_revision + 1
+            result = {
+                "already_applied": False,
+                "is_promoted": is_promoted,
+                "location_id": location_id,
+                "scope_location_id": scope_location_id,
+                "world_id": world_id,
+                "world_revision": next_revision,
+            }
+            connection.execute(
+                "UPDATE worlds SET revision = ? WHERE id = ? AND revision = ?",
+                (next_revision, world_id, expected_revision),
+            )
+            connection.execute(
+                "INSERT INTO operations(world_id, operation_id, operation_type, "
+                "request_json, result_json, completed_revision) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    world_id,
+                    operation_id,
+                    _LOCATION_SCOPE_PROMOTION_EVENT,
+                    request_json,
+                    _canonical_json(result),
+                    next_revision,
+                ),
+            )
+            connection.execute(
+                "INSERT INTO events(id, world_id, operation_id, event_type, actor_entity_id, "
+                "summary, payload_json, world_revision) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)",
+                (
+                    event_id(world_id, operation_id),
+                    world_id,
+                    operation_id,
+                    _LOCATION_SCOPE_PROMOTION_EVENT,
+                    f"{'Promoted' if is_promoted else 'Removed promotion for'} {location_id} "
+                    f"on {scope_location_id}",
+                    _canonical_json(request),
+                    next_revision,
+                ),
+            )
+            connection.commit()
+            return result
+        except (WorldAdminConflict, WorldAdminNotFound):
+            connection.rollback()
+            raise
+        except sqlite3.IntegrityError as error:
+            connection.rollback()
+            raise WorldAdminConflict(str(error)) from error
+
+
 def read_location_ancestors(
     database_path: str | Path,
     *,
@@ -315,6 +457,7 @@ def read_scoped_world_map(
             SELECT l.id, l.name, l.description, m.kind,
                    COALESCE(m.is_map_scope, 0) AS is_map_scope,
                    COALESCE(m.is_default_scope, 0) AS is_default_scope,
+                   0 AS is_promoted,
                    (SELECT COUNT(*) FROM location_containment children
                     WHERE children.world_id = l.world_id
                       AND children.parent_location_id = l.id) AS child_count
@@ -335,12 +478,34 @@ def read_scoped_world_map(
             + "ORDER BY l.name, l.id LIMIT ?",
             (world_id, resolved_scope_id, limit + 1),
         ).fetchall()
+        promoted_select = base_select.replace("0 AS is_promoted", "1 AS is_promoted")
+        promoted_rows = connection.execute(
+            promoted_select
+            + " JOIN location_scope_promotions lsp ON lsp.world_id = l.world_id "
+            + "AND lsp.location_id = l.id "
+            + "WHERE lsp.world_id = ? AND lsp.scope_location_id = ? "
+            + "AND NOT EXISTS (SELECT 1 FROM location_containment direct "
+            + "WHERE direct.world_id = l.world_id AND direct.child_location_id = l.id "
+            + "AND direct.parent_location_id = lsp.scope_location_id) "
+            + "ORDER BY l.name, l.id LIMIT ?",
+            (world_id, resolved_scope_id, limit + 1),
+        ).fetchall()
         total = connection.execute(
-            "SELECT COUNT(*) FROM location_containment "
-            "WHERE world_id = ? AND parent_location_id = ?",
-            (world_id, resolved_scope_id),
+            "SELECT "
+            "(SELECT COUNT(*) FROM location_containment "
+            " WHERE world_id = ? AND parent_location_id = ?) + "
+            "(SELECT COUNT(*) FROM location_scope_promotions promotion "
+            " WHERE promotion.world_id = ? AND promotion.scope_location_id = ? "
+            " AND NOT EXISTS (SELECT 1 FROM location_containment direct "
+            "  WHERE direct.world_id = promotion.world_id "
+            "  AND direct.child_location_id = promotion.location_id "
+            "  AND direct.parent_location_id = promotion.scope_location_id))",
+            (world_id, resolved_scope_id, world_id, resolved_scope_id),
         ).fetchone()[0]
-        visible_rows = [scope, *child_rows[:limit]]
+        visible_children = sorted(
+            [*child_rows, *promoted_rows], key=lambda row: (row["name"], row["id"])
+        )[:limit]
+        visible_rows = [scope, *visible_children]
         visible_ids = {row["id"] for row in visible_rows}
 
         linked: dict[str, list[str]] = {}

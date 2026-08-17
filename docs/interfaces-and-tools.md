@@ -156,8 +156,9 @@ Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup ap
 
 - `location_containment(world_id, child_location_id, parent_location_id)` gives each location at most one same-world parent. It is a containment relation, not a movement edge. Parentless locations are roots under the virtual world scope; legacy flat worlds therefore require no synthetic hierarchy.
 - `location_metadata(world_id, location_id, kind, is_map_scope, is_default_scope)` stores descriptive kind and explicit map-scope preferences. `is_default_scope` requires `is_map_scope`; kinds are not a fixed hierarchy vocabulary.
+- `location_scope_promotions(world_id, scope_location_id, location_id)` stores explicit presentation-only landmark promotions. Both locations must belong to the same world; a promoted location keeps its existing single containment parent.
 
-`GET /api/worlds/{world_id}/map` without a hierarchy scope preserves the legacy flat map. A scoped request returns the scope node plus bounded direct children, breadcrumbs, stable child totals/overflow, entity-kind counts, the exact `player_location_id`, and `player_visible_location_id` for the visible ancestor when the player is deeper than the displayed scope. Links whose endpoints are both visible appear on the nodes; links crossing the visible boundary appear in `boundary_links` and do not create inferred adjacency. Map zoom and scope selection are read-only presentation actions.
+`GET /api/worlds/{world_id}/map` without a hierarchy scope preserves the legacy flat map. A scoped request returns the scope node plus bounded direct children and promoted landmarks, breadcrumbs, stable child totals/overflow, entity-kind counts, the exact `player_location_id`, and `player_visible_location_id` for the visible ancestor when the player is deeper than the displayed scope. Promoted nodes carry `is_promoted: true`; direct children carry `false`. Links whose endpoints are both visible appear on the nodes; links crossing the visible boundary appear in `boundary_links` and do not create inferred adjacency. Map zoom and scope selection are read-only presentation actions.
 
 `PUT /api/worlds/{world_id}/locations/{location_id}/hierarchy` is an administrative world mutation. It validates same-world parents, rejects self-parenting and containment cycles, records an event, bumps the world revision, and supports exact operation replay. Reparenting changes containment metadata only; it does not add, remove, or rewrite `location_links`. Ordinary movement continues to require a direct physical link between the exact current and destination locations.
 
@@ -172,6 +173,7 @@ The narrator context includes only the current location's containment breadcrumb
 | `PUT /api/worlds/{world_id}/elements/{element_type}` | Upsert one world element — body `{content, operation_id, expected_revision}`. |
 | `DELETE /api/worlds/{world_id}?operation_id=…&expected_revision=…` | Remove a world and all of its state (destructive). |
 | `PUT /api/worlds/{world_id}/locations/{location_id}/hierarchy` | Set one location's parent and descriptive map metadata — body `{operation_id, expected_revision, parent_location_id?, kind?, is_map_scope, is_default_scope}`. The operation is revision-aware and exactly idempotent. |
+| `PUT /api/worlds/{world_id}/locations/{location_id}/scope-promotion` | Add or remove one explicit presentation promotion — body `{scope_location_id, is_promoted?, operation_id, expected_revision}`. The scope and landmark must belong to the same world; the scope must be map-capable. Exact replay is supported. |
 
 Errors: `404` unknown scenario or world · `409` duplicate id, operation-ID reuse, or stale revision.
 
