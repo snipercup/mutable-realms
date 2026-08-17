@@ -4,26 +4,60 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Narrator-driven world start — complete (2026-08-16)
+### Nested locations and scoped world maps — scoped
 
-**Goal:** let a player begin an unprovisioned world by selecting a reusable player-character definition and starting through the narrator. The narrator should use the selected world's authoritative opening scene and context to establish the first scene, while the system creates the world-specific character instance at a world-appropriate starting location.
+**Goal:** replace the assumption that every location belongs on one world-wide map with a flexible containment hierarchy and scope-specific derived maps. The common baseline is world → kingdom → province → city → district → street → enterable site/interior, while the persistence model must also support differently themed hierarchies such as a school campus without encoding fantasy geography as a schema invariant.
 
-**Scope:**
-1. **Begin-story flow** — add a play/start path for worlds with no player instance. The player selects an existing reusable character definition; the flow must not ask for or store a starting location on the definition.
-2. **Narrator start contract** — provide the selected world, opening scene, and character definition snapshot to the narrator. The narrator chooses or proposes the initial location from the world's context and returns structured start information alongside player-facing opening narration.
-3. **Validated instancing** — create the copied world-specific character, starting location, placement, and initial event atomically through a named, revision-aware, idempotent operation. The starting location belongs exclusively to the world instance.
-4. **Playable transition** — after successful start, refresh server truth and enter the normal turn loop without exposing tool calls, reasoning, or administrative details in the player-facing response.
-5. **Failure and compatibility behavior** — preserve the existing Manage-page character-selection/starting-location flow, reject invalid or incomplete narrator start results without partial state, and keep already-provisioned worlds unchanged.
+**Baseline experience:**
+- The default play-map scope is the street containing the player. A street may expose up to roughly 100 enterable child locations such as houses, warehouses, or inns.
+- Enterable sites normally have few or no children; floors or similarly useful subdivisions are allowed but not required.
+- A district contains streets and street-like areas such as a harbor or palace grounds. A city normally contains no more than about ten districts.
+- A province contains cities and broad natural areas such as forests or mountain ranges. Selected smaller landmarks—such as a mine, major road, or sinkhole—may also be promoted onto the province map when useful.
+- Kingdom and world scopes provide the larger baseline. These names and capacities are authoring guidance, not fixed database depth or mandatory kinds.
 
-**Out of scope for this slice:** nested locations, thematic maps, procedural kingdom-wide generation, character progression or inventory templates, and cross-world travel. The narrator may select or author the starting location for this world start, but broad procedural geography generation remains deferred.
+**Recommended model:**
+1. **Containment is separate from travel** — use an additive `location_containment` relation rather than rebuilding the heavily referenced `locations` table. One child has at most one parent; both must belong to the same world; self-parenting and cycles are invalid. Parentage answers “what contains this?” and never implies traversal. Treat the existing `worlds` row as the virtual top scope rather than creating a duplicate “world location”; locations absent from the containment relation are its roots.
+2. **Existing links remain physical movement edges** — preserve `location_links` as explicit, undirected adjacency for ordinary movement. Entering a house requires a street↔house link; sibling houses are not connected merely because they share a street. Existing flat worlds remain valid as root locations with their current links. Reparenting does not silently add, remove, or rewrite links.
+3. **Maps are scoped derived reads** — define a visible graph as the scope node plus its direct children, not merely the children. The response should include breadcrumb ancestors, links whose endpoints are both visible, external exits as a separate boundary list, the player’s exact location, the visible node containing the player when the exact location is deeper, stable child ordering, totals, and overflow metadata. Presentation remains derived from SQLite.
+4. **Street is the baseline preference, not a universal rule** — use explicit map-scope metadata rather than inferring behavior from `kind`. The baseline marks streets; a school scenario can mark its grounds or building instead. Play chooses the nearest preferred self-or-ancestor and uses a deterministic root/flat-world fallback. The player may zoom out to ancestors or into child scopes without changing authoritative position.
+5. **Cross-scale landmarks are explicit** — do not infer province visibility from names or kinds. Use an explicit scope-marker/promotion relation so a deeply nested mine or road can appear on a province map without acquiring a second parent or duplicating the location.
+6. **Detailed travel and fast travel are different operations** — map zoom never moves the player. Detailed travel continues to follow explicit location links from the player’s exact location. Future fast travel should use explicit transit/route data and validated endpoints; it must not treat shared parents or visibility on the same province map as adjacency.
+7. **Keep the hierarchy theme-neutral** — kinds such as `province`, `street`, `building`, or `floor` are descriptive values used by authoring and presentation. Core containment and map queries should not require a fixed list or fixed depth. Star-system semantics and multiple-parent containment are not baseline requirements for this slice.
+8. **Design for controlled dynamic expansion** — a later capability should let the narrator propose new neighboring or child locations when play reaches an expandable boundary. The narrator must not write storage directly: it supplies structured location, containment, and connection proposals to a named, revision-aware, idempotent operation that validates world ownership, limits, cycles, duplicate identity, and physically coherent links before committing. Generated locations then become ordinary authoritative state and must not be regenerated or silently rewritten on later visits.
 
-**Verification:** complete. Added the structured narrator start contract and `POST /api/worlds/{world_id}/start`. Tests cover selected-world/character context, valid and invalid JSON start results, playerless-world failure without mutation, atomic character/location creation, exact replay without a second narrator call, and operation reuse conflicts. Full checks: 224 tests passed, `npm run lint`, and frontend build. Temporary HTTP verification with an injected narrator created `world-start-player` at `Elaris`, copied the character definition, advanced revision 1→2, and replayed the identical response; a deliberately slow narrator left the mid-start player read at 404 and then committed the instance once. World readback confirmed the instance and location. The temporary server was stopped and port 8795 verified closed. Manual acceptance verification after a container restart (2026-08-16): the original playerless-world flow was repeated in the browser—select world, select reusable character, click **Begin your story**—and the narrator established the world-specific opening successfully; the start panel did not oscillate and normal play became available.
+**First implementation slice:**
+1. Add compatible location hierarchy metadata, indexes, same-world parent enforcement, and cycle validation through a new migration.
+2. Add deterministic hierarchy reads: ancestors/breadcrumbs, direct children, bounded descendants, preferred-scope selection, and a scoped-map read model. Keep the current map endpoint compatible initially: absent an explicit scope, legacy flat worlds return all roots—which are all their locations—and their existing links.
+3. Extend authoritative context only with the current location’s containment breadcrumb and preferred scope identity. Continue exposing exact movement neighbors; do not inject the scoped map or up to 100 street children into the narrator prompt.
+4. Change the map endpoint and frontend to navigate scopes while preserving the player’s exact-location highlight and existing flat-world behavior.
+5. Preserve movement semantics in the first slice. Add no inferred parent/child movement and no fast-travel mutation until route semantics are separately scoped.
+6. Add administrative location hierarchy editing only through validated operations; reject cross-world parents, self-parenting, cycles, and unsafe removal/reparenting.
 
-**Suggested sequencing:** complete — playerless-world start state → narrator start contract → validated world-specific character instancing → Play UI transition → temporary-database and HTTP verification.
+**Limits and non-goals for the first slice:**
+- The numerical limits (about 100 street children and about ten city districts) are guidance and response/rendering bounds, not universal schema constraints.
+- No procedural kingdom generation, automatic road generation, narrator-driven location creation, travel-time simulation, locked routes, multi-parent places, portals, orbital mechanics, or generalized star-system model. The hierarchy should make later lazy expansion possible, but generation and its mutation contract are a separate slice.
+- No automatic aggregation of all descendant entities or links onto every ancestor map.
+- No claim that a higher-level map selection moves the player; fast travel remains a later explicit capability.
+- The existing circular SVG is not expected to remain legible at 100 nodes. The scoped UI will need bounded rendering plus search/list or clustering rather than drawing every node identically.
 
-**Follow-up hardening:** complete. Start requests are serialized against the five-second frontend poll; start progress disables competing world refresh controls; start failures remain visible across later polls until world selection or retry; the injected start narrator is stored on application state; start failures expose only safe categories (`invalid_start_response`, `narrator_timeout`, or unavailable); structured start JSON rejects unexpected fields and bounds location/name/description/narration lengths. Focused and full regression coverage added.
+**Key decisions still to make:**
+- Exact descriptive location metadata: keep `kind` free-form initially, avoid a generic numeric `scale` until it has a concrete invariant, and define the minimal explicit preferred/map-capable scope flags.
+- Whether scope-marker promotion belongs in the first migration or follows after basic containment works.
+- Scoped-map response bound, stable ordering, search/list overflow behavior, and how graph pagination avoids displaying incomplete edges for streets near 100 children.
+- How authoring creates/reparents locations. Reparenting should preserve links but report surprising cross-scope edges; parent deletion should default to `RESTRICT`, while recursive subtree removal requires a separate operation with explicit entity/link handling.
+- The later fast-travel contract: route entities versus enriched links, eligibility/discovery rules, time/cost, and whether one fast-travel action records intermediate traversal.
+- Whether entering/leaving containers needs explicit gateway metadata beyond ordinary links after real scenarios expose a limitation.
+- The later dynamic-expansion contract: which locations are expandable; whether generation is triggered by exploration, explicit player intent, or an administrative action; per-scope budgets; duplicate detection; approval policy; and whether one operation may atomically create a small connected batch rather than one location at a time.
 
-**Commit:** suggested branch `narrator-world-start` — `Start playerless worlds through the narrator`.
+**Opportunities:** containment makes narrator retrieval smaller and more relevant; scope maps can support breadcrumbs, local discovery, district/province overview, and future route planning; explicit landmark promotion permits useful mixed-scale maps without corrupting physical containment; compatibility allows existing flat worlds to migrate without synthetic geography. Later controlled, lazy narrator expansion can grow only the neighborhood or child scope reached by play, avoiding the cost and inconsistency risk of generating an entire kingdom in advance.
+
+**Primary pitfalls:** conflating containment with adjacency; letting zoom or overview links bypass movement rules; failing to enforce same-world containment through composite keys or equivalent validation; relying on UI-only cycle checks; highlighting only the exact location when the player is deeper than the visible scope; loading hundreds of descendants into prompts or SVG; hard-coding one genre’s scale vocabulary; duplicating locations to show them at multiple scales; fragmenting graph edges through naive pagination; deleting/reparenting subtrees without clear link/entity consequences; and allowing narrator expansion to create duplicate, contradictory, disconnected, unlimited, or non-idempotent geography.
+
+**Verification plan:** migrate existing flat fixtures unchanged; build a representative hierarchy with world/kingdom/province/city/district/street/building/floor plus a promoted province landmark; verify breadcrumbs, default street scope, bounded child reads, scoped links, exact player location, and flat-world compatibility; verify cross-world parents and cycles fail; verify sibling containment does not permit movement without a link; verify zooming scopes never changes player state; run the full suite, lint, frontend build, temporary HTTP/UI checks, and SQLite readback.
+
+**Suggested sequencing:** hierarchy invariants and compatibility → hierarchy queries → scoped context/map contract → scope navigation UI → administrative hierarchy operations → separately scope landmark promotion and fast travel after the baseline is exercised → later add controlled narrator-driven lazy expansion using the stable hierarchy and link contracts.
+
+**Commit:** documentation scope only — suggested `Register nested locations and scoped maps`.
 
 ## Recently completed
 
@@ -33,6 +67,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 | World management interface (play ⇄ manage view, scenario/world CRUD UI, instancing, `#manage` deep link) | 2026-08-10 | on main via `world-management-interface` |
 | Player provisioning (create a player + starting location so instanced worlds are playable; play view empty state) | 2026-08-10 | on main via `player-provisioning` |
 | Reusable player characters and world-specific instances (character CRUD, selection, copied world instances) | 2026-08-16 | on main via `reusable-player-characters` |
+| Narrator-driven world start (structured opening, atomic character/location instancing, polling/error hardening) | 2026-08-16 | `9b00c16` |
 
 ## How an idea becomes work
 
