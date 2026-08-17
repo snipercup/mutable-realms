@@ -226,6 +226,42 @@ class WorldElementRequest(StrictReadModel):
     expected_revision: int = Field(ge=0)
 
 
+class WorldRouteRequest(StrictReadModel):
+    route_id: str
+    origin_location_id: str
+    destination_location_id: str
+    name: str = Field(min_length=1)
+    description: str | None = None
+    route_kind: str = Field(default="route", min_length=1)
+    is_active: bool = True
+    operation_id: str
+    expected_revision: int = Field(ge=0)
+
+
+class WorldRouteMutationResponse(StrictReadModel):
+    already_applied: bool
+    route_id: str
+    world_id: str
+    world_revision: int = Field(ge=1)
+
+
+class RouteTravelRequest(StrictReadModel):
+    route_id: str
+    entity_id: str
+    actor_entity_id: str | None = None
+    operation_id: str
+    expected_revision: int = Field(ge=0)
+
+
+class RouteTravelResponse(StrictReadModel):
+    already_applied: bool
+    entity_id: str
+    location_id: str
+    route_id: str
+    world_id: str
+    world_revision: int = Field(ge=1)
+
+
 class LocationHierarchyRequest(StrictReadModel):
     operation_id: str
     expected_revision: int = Field(ge=0)

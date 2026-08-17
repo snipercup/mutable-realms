@@ -93,6 +93,27 @@ def validate_worlds(database_path: str | Path) -> list[ValidationIssue]:
 
         for row in connection.execute(
             """
+            SELECT r.route_id
+            FROM world_routes r
+            LEFT JOIN locations o
+              ON o.world_id = r.world_id AND o.id = r.origin_location_id
+            LEFT JOIN locations d
+              ON d.world_id = r.world_id AND d.id = r.destination_location_id
+            WHERE o.id IS NULL OR d.id IS NULL
+               OR r.origin_location_id = r.destination_location_id
+            ORDER BY r.world_id, r.route_id
+            """
+        ):
+            issues.append(
+                ValidationIssue(
+                    "route_endpoint_invalid",
+                    "Route has missing or identical endpoints",
+                    row["route_id"],
+                )
+            )
+
+        for row in connection.execute(
+            """
             SELECT el.entity_id
             FROM entity_locations el
             JOIN entities e ON e.id = el.entity_id

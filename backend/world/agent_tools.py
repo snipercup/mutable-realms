@@ -10,6 +10,7 @@ from backend.world.locations import update_location
 from backend.world.mutations import move_entity
 from backend.world.queries import WorldNotFound, get_entity, list_recent_events
 from backend.world.resources import transfer_resource
+from backend.world.routes import travel_entity_route
 from backend.world.social import record_social_interaction
 from backend.world.validation import validate_worlds
 
@@ -59,6 +60,13 @@ def read_world_status(database_path: str | Path, *, world_id: str) -> dict[str, 
             ).fetchone()
             is not None
         )
+        has_routes = (
+            connection.execute(
+                "SELECT 1 FROM world_routes WHERE world_id = ? AND is_active = 1 LIMIT 1",
+                (world_id,),
+            ).fetchone()
+            is not None
+        )
 
     mutations = ["world_move_entity"]
     if has_ward_state:
@@ -69,6 +77,8 @@ def read_world_status(database_path: str | Path, *, world_id: str) -> dict[str, 
         mutations.append("world_transfer_resource")
     if has_locations:
         mutations.append("world_update_location")
+    if has_routes:
+        mutations.append("world_travel_route")
     return {"world": dict(world), "available_mutations": mutations}
 
 
@@ -110,6 +120,27 @@ def move_world_entity(
         "location_id": result.location_id,
         "world_revision": result.world_revision,
     }
+
+
+def travel_world_route(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    route_id: str,
+    operation_id: str,
+    expected_revision: int,
+    entity_id: str,
+    actor_entity_id: str | None = None,
+) -> dict[str, Any]:
+    return travel_entity_route(
+        database_path,
+        world_id=world_id,
+        route_id=route_id,
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        entity_id=entity_id,
+        actor_entity_id=actor_entity_id,
+    )
 
 
 def treat_and_discharge_world_patient(

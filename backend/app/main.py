@@ -30,6 +30,8 @@ from backend.app.read_models import (
     PlayerCharacterRead,
     PlayerCharacterUpdateRequest,
     PlayerRead,
+    RouteTravelRequest,
+    RouteTravelResponse,
     ScenarioCreateRequest,
     ScenarioElementRequest,
     ScenarioMutationResponse,
@@ -47,6 +49,8 @@ from backend.app.read_models import (
     WorldMutationResponse,
     WorldProvisionRequest,
     WorldRead,
+    WorldRouteMutationResponse,
+    WorldRouteRequest,
     WorldStartRequest,
     WorldStartResponse,
     WorldUpdateRequest,
@@ -88,6 +92,7 @@ from backend.world.queries import (
     list_worlds,
     read_world,
 )
+from backend.world.routes import RouteConflict, RouteNotFound, create_route, travel_entity_route
 from backend.world.scenarios import (
     ScenarioConflict,
     ScenarioNotFound,
@@ -357,6 +362,50 @@ def create_app(
         except WorldAdminConflict as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
         return LocationScopePromotionMutationResponse.model_validate(result)
+
+    @application.put("/api/worlds/{world_id}/routes/{route_id}", tags=["world administration"])
+    def set_route_route(
+        world_id: str, route_id: str, request: WorldRouteRequest
+    ) -> WorldRouteMutationResponse:
+        if request.route_id != route_id:
+            raise HTTPException(status_code=422, detail="route_id must match the URL")
+        try:
+            result = create_route(
+                get_database_path(),
+                world_id=world_id,
+                route_id=route_id,
+                operation_id=request.operation_id,
+                expected_revision=request.expected_revision,
+                origin_location_id=request.origin_location_id,
+                destination_location_id=request.destination_location_id,
+                name=request.name,
+                description=request.description,
+                route_kind=request.route_kind,
+                is_active=request.is_active,
+            )
+        except RouteNotFound as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except RouteConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return WorldRouteMutationResponse.model_validate(result)
+
+    @application.post("/api/worlds/{world_id}/route-travel", tags=["player turns"])
+    def route_travel(world_id: str, request: RouteTravelRequest) -> RouteTravelResponse:
+        try:
+            result = travel_entity_route(
+                get_database_path(),
+                world_id=world_id,
+                route_id=request.route_id,
+                operation_id=request.operation_id,
+                expected_revision=request.expected_revision,
+                entity_id=request.entity_id,
+                actor_entity_id=request.actor_entity_id,
+            )
+        except RouteNotFound as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except RouteConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return RouteTravelResponse.model_validate(result)
 
     @application.get("/api/worlds/{world_id}/locations/current", tags=["world reads"])
     def current_location(world_id: str) -> LocationRead:

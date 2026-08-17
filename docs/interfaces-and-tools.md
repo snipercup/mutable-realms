@@ -164,6 +164,10 @@ Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup ap
 
 The narrator context includes only the current location's containment breadcrumb and preferred map scope. It continues to expose exact movement neighbors rather than injecting an entire scoped map.
 
+The route service is an administrative definition seam, not narrator-authored storage access. `world_routes` stores directed origin/destination endpoints, descriptive `route_kind`, a label/description, and `is_active`. Endpoints are same-world locations. `PUT /api/worlds/{world_id}/routes/{route_id}` creates or replaces a definition with `{route_id, origin_location_id, destination_location_id, name, description?, route_kind?, is_active?, operation_id, expected_revision}`. It records an operation/event and advances the world revision.
+
+`POST /api/worlds/{world_id}/route-travel` and MCP `world_travel_route` apply one active route to a character. The operation requires the exact current location to equal the route origin, validates the character/actor and revision, moves only the entity placement, records `entity_route_traveled`, and supports exact replay. It does not consult or modify `location_links`; route travel is explicit transit, not inferred local adjacency. Travel is rejected when the route is inactive or absent; successful travel requires an active, present route. No time, cost, discovery, or automatic route generation is implied.
+
 ### World administration
 
 | Route | Purpose |
@@ -174,6 +178,8 @@ The narrator context includes only the current location's containment breadcrumb
 | `DELETE /api/worlds/{world_id}?operation_id=…&expected_revision=…` | Remove a world and all of its state (destructive). |
 | `PUT /api/worlds/{world_id}/locations/{location_id}/hierarchy` | Set one location's parent and descriptive map metadata — body `{operation_id, expected_revision, parent_location_id?, kind?, is_map_scope, is_default_scope}`. The operation is revision-aware and exactly idempotent. |
 | `PUT /api/worlds/{world_id}/locations/{location_id}/scope-promotion` | Add or remove one explicit presentation promotion — body `{scope_location_id, is_promoted?, operation_id, expected_revision}`. The scope and landmark must belong to the same world; the scope must be map-capable. Exact replay is supported. |
+| `PUT /api/worlds/{world_id}/routes/{route_id}` | Create or replace one directed route definition — body `{route_id, origin_location_id, destination_location_id, name, description?, route_kind?, is_active?, operation_id, expected_revision}`. |
+| `POST /api/worlds/{world_id}/route-travel` | Apply one active route to a character at its exact origin — body `{route_id, entity_id, actor_entity_id?, operation_id, expected_revision}`. |
 
 Errors: `404` unknown scenario or world · `409` duplicate id, operation-ID reuse, or stale revision.
 

@@ -30,7 +30,7 @@ def test_startup_migrates_database_and_readiness_checks_schema(tmp_path: Path) -
         versions = connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert [row[0] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        assert [row[0] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
 
 
 def test_startup_fails_visibly_for_changed_applied_migration(tmp_path: Path) -> None:

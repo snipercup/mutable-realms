@@ -14,6 +14,7 @@ from backend.world.agent_tools import (
     read_world_status,
     record_world_social_interaction,
     transfer_world_resource,
+    travel_world_route,
     treat_and_discharge_world_patient,
     update_world_location,
     validate_world_state,
@@ -140,6 +141,27 @@ def world_move_entity(
         expected_revision=expected_revision,
         entity_id=entity_id,
         destination_location_id=destination_location_id,
+        actor_entity_id=resolve_actor_entity_id(actor_entity_id),
+    )
+
+
+@mcp.tool()
+def world_travel_route(
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    route_id: str,
+    entity_id: str,
+    actor_entity_id: str | None = None,
+) -> dict[str, Any]:
+    """Travel a character along one explicit active route."""
+    return travel_world_route(
+        get_database_path(),
+        world_id=resolve_world_id(world_id),
+        route_id=route_id,
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        entity_id=entity_id,
         actor_entity_id=resolve_actor_entity_id(actor_entity_id),
     )
 

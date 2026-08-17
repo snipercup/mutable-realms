@@ -29,6 +29,7 @@ def test_mcp_exposes_only_controlled_world_tools_without_database_arguments() ->
         "world_inspect_entity",
         "world_events",
         "world_move_entity",
+        "world_travel_route",
         "world_treat_and_discharge_patient",
         "world_record_social_interaction",
         "world_transfer_resource",
@@ -203,9 +204,7 @@ def test_stdio_server_reads_explicit_world_other_than_binding(tmp_path: Path) ->
                 await session.initialize()
                 # The session binding is town-world, but an explicit world_id
                 # reads the other world — that is how the relayed page selects.
-                explicit = await session.call_tool(
-                    "world_status", {"world_id": "ward-world"}
-                )
+                explicit = await session.call_tool("world_status", {"world_id": "ward-world"})
                 assert explicit.isError is False
                 assert explicit.structuredContent["world"]["id"] == "ward-world"
                 # Omitting world_id falls back to the bound world.

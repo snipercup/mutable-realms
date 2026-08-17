@@ -4,13 +4,13 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Detailed travel and explicit routes — proposed
+### Controlled narrator-driven lazy expansion — proposed
 
-**Goal:** define explicit route/transit semantics for movement beyond local location links without treating containment, map visibility, or promoted landmarks as adjacency.
+**Goal:** allow the narrator to propose bounded new locations and links through structured, validated, revision-aware operations when play reaches an expandable boundary.
 
-**Proposed scope:** first specify route endpoints, eligibility, and authoritative landing locations; defer travel time/cost and narrator-driven generation until the contract is exercised.
+**Proposed scope:** define proposal shape, duplicate/budget checks, and atomic creation of ordinary authoritative locations; keep generated geography out of direct storage access.
 
-**Out of scope:** automatic road generation, teleportation from map zoom, inferred sibling travel, procedural geography, and orbital/star-system mechanics.
+**Out of scope:** unrestricted procedural world generation, silent regeneration, multi-parent containment, and unbounded prompt/map expansion.
 
 **Verification:** pending; this idea is only registered for the next slice.
 
@@ -25,8 +25,9 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 | Narrator-driven world start (structured opening, atomic character/location instancing, polling/error hardening) | 2026-08-16 | `9b00c16` |
 | Nested locations and scoped world maps (migration 0011, hierarchy validation, scoped reads, context breadcrumbs, map navigation) | 2026-08-17 | `8c581c9` |
 | Cross-scale landmark promotion (migration 0012, validated presentation promotions, promoted scoped-map nodes, HTTP administration) | 2026-08-17 | `a3bcfea` |
+| Detailed travel and explicit routes (migration 0013, directed route definitions, exact-origin route travel, HTTP and MCP seams) | 2026-08-17 | pending user commit; suggested `Add explicit world routes` |
 
-**Cross-scale promotion verification:** `238` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted hierarchy configuration at revision `0 → 1`, promotion at `1 → 2`, returned the promoted `docks` node with `is_promoted: true`, and recorded `location_scope_promotion_set` in SQLite. The precondition probe correctly rejected promotion to a non-map scope with HTTP `409`; the temporary server was stopped and port 8795 confirmed closed. Containment and physical links remained unchanged in the fixture.
+**Route verification:** `243` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted route creation at revision `0 → 1`, traveled the player from `harbor` to `city` at `1 → 2` without a `location_links` row, and replayed the same travel operation with `already_applied: true` without another revision. SQLite readback confirmed `world_route_set`, `entity_route_traveled`, the route endpoints, and final player placement; port 8795 was stopped and confirmed closed.
 
 ## How an idea becomes work
 
