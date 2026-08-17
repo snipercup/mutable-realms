@@ -74,12 +74,46 @@ def test_builds_scenario_neutral_context_for_current_location(tmp_path: Path) ->
             "properties": [],
             "linked_locations": [],
         },
+        "location_breadcrumbs": [],
+        "map_scope": None,
         "recent_events": [],
         "relationships": [],
         "memories": [],
         "resources": [],
         "world_elements": [],
     }
+
+
+def test_context_includes_containment_breadcrumb_and_preferred_scope(tmp_path: Path) -> None:
+    database_path = tmp_path / "world.sqlite3"
+    migrate_database(database_path)
+    seed_general_world(database_path)
+    from backend.persistence.database import connect_database
+
+    with connect_database(database_path) as connection:
+        connection.execute(
+            "INSERT INTO locations(id, world_id, name, description) "
+            "VALUES ('seafloor-road', ?, 'Seafloor Road', '')",
+            (GENERAL_WORLD_ID,),
+        )
+        connection.execute(
+            "INSERT INTO location_containment(world_id, child_location_id, parent_location_id) "
+            "VALUES (?, 'ocean-farm', 'seafloor-road')",
+            (GENERAL_WORLD_ID,),
+        )
+        connection.execute(
+            "INSERT INTO location_metadata(world_id, location_id, kind, is_map_scope, is_default_scope) "
+            "VALUES (?, 'seafloor-road', 'street', 1, 1)",
+            (GENERAL_WORLD_ID,),
+        )
+        connection.commit()
+
+    context = build_world_context(database_path, world_id=GENERAL_WORLD_ID)
+
+    assert [item.id for item in context.location_breadcrumbs] == ["seafloor-road"]
+    assert context.map_scope is not None
+    assert context.map_scope.id == "seafloor-road"
+    assert context.current_location.linked_locations == []
 
 
 @pytest.mark.parametrize("limit", [0, 101])
@@ -124,7 +158,8 @@ def test_context_uses_one_read_only_sqlite_snapshot(
     assert connection_count == 1
     assert "BEGIN" in statements
     assert all(
-        statement.lstrip().upper().startswith(("BEGIN", "SELECT")) for statement in statements
+        statement.lstrip().upper().startswith(("BEGIN", "SELECT", "WITH"))
+        for statement in statements
     )
 
 

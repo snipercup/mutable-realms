@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.persistence.database import connect_readonly_database
+from backend.world.hierarchy import read_scoped_world_map
 
 WorldRecord = dict[str, Any]
 
@@ -45,8 +46,7 @@ def read_world(database_path: str | Path, world_id: str) -> dict[str, Any]:
     """Return one world with its owned story elements."""
     with connect_readonly_database(database_path) as connection:
         world = connection.execute(
-            "SELECT id, name, revision, description, source_scenario_id "
-            "FROM worlds WHERE id = ?",
+            "SELECT id, name, revision, description, source_scenario_id FROM worlds WHERE id = ?",
             (world_id,),
         ).fetchone()
         if world is None:
@@ -239,12 +239,17 @@ def list_recent_events(
     ]
 
 
-def get_world_map(database_path: str | Path, *, world_id: str) -> dict[str, Any]:
+def get_world_map(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    scope_location_id: str | None = None,
+    limit: int = 100,
+) -> dict[str, Any]:
     """Return the derived map read model for one world on one snapshot."""
     with connect_readonly_database(database_path) as connection:
         world = connection.execute(
-            "SELECT id, name, revision, description, source_scenario_id "
-            "FROM worlds WHERE id = ?",
+            "SELECT id, name, revision, description, source_scenario_id FROM worlds WHERE id = ?",
             (world_id,),
         ).fetchone()
         if world is None:
@@ -281,6 +286,19 @@ def get_world_map(database_path: str | Path, *, world_id: str) -> dict[str, Any]
             """,
             (world_id,),
         ).fetchone()
+        try:
+            scoped_map = read_scoped_world_map(
+                database_path,
+                world_id=world_id,
+                player_location_id=player["location_id"] if player is not None else None,
+                scope_location_id=scope_location_id,
+                limit=limit,
+                _connection=connection,
+            )
+        except KeyError as error:
+            raise LocationNotFound(str(error)) from error
+        if scoped_map is not None:
+            return {"world": dict(world), **scoped_map}
 
     linked_by_location: dict[str, list[str]] = {}
     for row in link_rows:

@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.persistence.database import connect_readonly_database
+from backend.world.hierarchy import read_location_ancestors
 from backend.world.links import read_linked_locations
 from backend.world.locations import read_location_properties
 from backend.world.queries import (
@@ -63,6 +64,14 @@ class ContextLocation(ContextModel):
     linked_locations: list[dict[str, Any]]
 
 
+class ContextLocationReference(ContextModel):
+    id: str
+    name: str
+    kind: str | None = None
+    is_map_scope: bool = False
+    is_default_scope: bool = False
+
+
 class ContextEvent(ContextModel):
     id: str
     world_id: str
@@ -79,6 +88,8 @@ class WorldContext(ContextModel):
     world: ContextWorld
     player: ContextPlayer
     current_location: ContextLocation
+    location_breadcrumbs: list[ContextLocationReference] = Field(default_factory=list)
+    map_scope: ContextLocationReference | None = None
     recent_events: list[ContextEvent]
     relationships: list[dict[str, Any]]
     memories: list[dict[str, Any]]
@@ -99,8 +110,7 @@ def build_world_context(
     with closing(connect_readonly_database(database_path)) as connection:
         connection.execute("BEGIN")
         world = connection.execute(
-            "SELECT id, name, revision, description, source_scenario_id "
-            "FROM worlds WHERE id = ?",
+            "SELECT id, name, revision, description, source_scenario_id FROM worlds WHERE id = ?",
             (world_id,),
         ).fetchone()
         if world is None:
@@ -129,6 +139,38 @@ def build_world_context(
             location_id=location_id,
             _connection=connection,
         )["linked_locations"]
+        ancestors = read_location_ancestors(
+            database_path,
+            world_id=world_id,
+            location_id=location_id,
+            _connection=connection,
+        )
+        current_metadata = connection.execute(
+            """
+            SELECT l.id, l.name, m.kind,
+                   COALESCE(m.is_map_scope, 0) AS is_map_scope,
+                   COALESCE(m.is_default_scope, 0) AS is_default_scope
+            FROM locations l
+            LEFT JOIN location_metadata m
+              ON m.world_id = l.world_id AND m.location_id = l.id
+            WHERE l.world_id = ? AND l.id = ?
+            """,
+            (world_id, location_id),
+        ).fetchone()
+        reference_keys = ("id", "name", "kind", "is_map_scope", "is_default_scope")
+        scope_candidates = [
+            {key: dict(current_metadata)[key] for key in reference_keys},
+            *[{key: ancestor[key] for key in reference_keys} for ancestor in reversed(ancestors)],
+        ]
+        map_scope = next(
+            (candidate for candidate in scope_candidates if candidate["is_default_scope"]),
+            None,
+        )
+        if map_scope is None:
+            map_scope = next(
+                (candidate for candidate in scope_candidates if candidate["is_map_scope"]),
+                None,
+            )
         events = list_recent_events(
             database_path,
             world_id,
@@ -145,10 +187,7 @@ def build_world_context(
         resources = read_resources(
             database_path,
             world_id=world_id,
-            owner_entity_ids=[
-                entity["id"] for entity in location["entities"]
-            ]
-            + [player["id"]],
+            owner_entity_ids=[entity["id"] for entity in location["entities"]] + [player["id"]],
             _connection=connection,
         )
 
@@ -157,6 +196,14 @@ def build_world_context(
             "world": dict(world),
             "player": player,
             "current_location": location,
+            "location_breadcrumbs": [
+                {
+                    key: ancestor[key]
+                    for key in ("id", "name", "kind", "is_map_scope", "is_default_scope")
+                }
+                for ancestor in ancestors
+            ],
+            "map_scope": map_scope,
             "recent_events": events,
             "world_elements": [dict(element) for element in world_elements],
             **social,

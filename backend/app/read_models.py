@@ -100,13 +100,37 @@ class WorldMapLocationRead(StrictReadModel):
     id: str
     name: str
     description: str | None
+    kind: str | None = None
+    is_map_scope: bool = False
+    is_default_scope: bool = False
+    child_count: int = Field(default=0, ge=0)
     entity_kinds: dict[str, int]
     linked_location_ids: list[str]
+
+
+class WorldMapBoundaryLinkRead(StrictReadModel):
+    from_location_id: str
+    to_location_id: str
+    to_location_name: str
+
+
+class WorldMapBreadcrumbRead(StrictReadModel):
+    id: str
+    name: str
+    kind: str | None = None
+    is_map_scope: bool = False
+    is_default_scope: bool = False
 
 
 class WorldMapRead(StrictReadModel):
     world: WorldRead
     player_location_id: str | None
+    player_visible_location_id: str | None = None
+    scope_location: WorldMapBreadcrumbRead | None = None
+    breadcrumbs: list[WorldMapBreadcrumbRead] = Field(default_factory=list)
+    child_total: int = Field(default=0, ge=0)
+    has_more: bool = False
+    boundary_links: list[WorldMapBoundaryLinkRead] = Field(default_factory=list)
     locations: list[WorldMapLocationRead]
 
 
@@ -199,6 +223,22 @@ class WorldElementRequest(StrictReadModel):
     content: str = Field(min_length=1)
     operation_id: str
     expected_revision: int = Field(ge=0)
+
+
+class LocationHierarchyRequest(StrictReadModel):
+    operation_id: str
+    expected_revision: int = Field(ge=0)
+    parent_location_id: str | None = None
+    kind: str | None = Field(default=None, max_length=100)
+    is_map_scope: bool = False
+    is_default_scope: bool = False
+
+
+class LocationHierarchyMutationResponse(StrictReadModel):
+    already_applied: bool
+    location_id: str
+    world_id: str
+    world_revision: int = Field(ge=1)
 
 
 class WorldMutationResponse(StrictReadModel):

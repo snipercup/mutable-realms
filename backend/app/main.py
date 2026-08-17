@@ -20,6 +20,8 @@ from backend.app.narrator import (
 )
 from backend.app.read_models import (
     EntityRead,
+    LocationHierarchyMutationResponse,
+    LocationHierarchyRequest,
     LocationRead,
     PlayerCharacterCreateRequest,
     PlayerCharacterMutationResponse,
@@ -69,6 +71,7 @@ from backend.world.characters import (
     update_player_character,
 )
 from backend.world.context import build_world_context
+from backend.world.hierarchy import set_location_hierarchy
 from backend.world.queries import (
     EntityNotFound,
     LocationNotFound,
@@ -282,13 +285,51 @@ def create_app(
         )
 
     @application.get("/api/worlds/{world_id}/map", tags=["world reads"])
-    def world_map(world_id: str) -> WorldMapRead:
+    def world_map(
+        world_id: str,
+        scope_location_id: str | None = None,
+        limit: int = Query(default=100, ge=1, le=100),
+    ) -> WorldMapRead:
         try:
             return WorldMapRead.model_validate(
-                get_world_map(get_database_path(), world_id=world_id)
+                get_world_map(
+                    get_database_path(),
+                    world_id=world_id,
+                    scope_location_id=scope_location_id,
+                    limit=limit,
+                )
             )
         except WorldNotFound as error:
             raise HTTPException(status_code=404, detail="world not found") from error
+        except LocationNotFound as error:
+            raise HTTPException(status_code=404, detail="location not found") from error
+
+    @application.put(
+        "/api/worlds/{world_id}/locations/{location_id}/hierarchy",
+        tags=["world administration"],
+    )
+    def configure_location_hierarchy(
+        world_id: str,
+        location_id: str,
+        request: LocationHierarchyRequest,
+    ) -> LocationHierarchyMutationResponse:
+        try:
+            result = set_location_hierarchy(
+                get_database_path(),
+                world_id=world_id,
+                operation_id=request.operation_id,
+                expected_revision=request.expected_revision,
+                location_id=location_id,
+                parent_location_id=request.parent_location_id,
+                kind=request.kind,
+                is_map_scope=request.is_map_scope,
+                is_default_scope=request.is_default_scope,
+            )
+        except WorldAdminNotFound as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except WorldAdminConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return LocationHierarchyMutationResponse.model_validate(result)
 
     @application.get("/api/worlds/{world_id}/locations/current", tags=["world reads"])
     def current_location(world_id: str) -> LocationRead:

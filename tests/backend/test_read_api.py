@@ -7,6 +7,7 @@ from typing import Any
 from httpx import ASGITransport, AsyncClient
 
 from backend.app.main import create_app
+from backend.persistence.database import connect_database
 from backend.persistence.migrations import migrate_database
 from backend.scenarios.town.seed import TOWN_WORLD_ID, seed_town_world
 from backend.scenarios.ward.mutations import treat_and_discharge_patient
@@ -55,6 +56,80 @@ def test_read_api_exposes_world_map_with_links_and_entity_kinds(tmp_path: Path) 
     assert by_id["market"]["linked_location_ids"] == ["docks", "plaza"]
     assert by_id["plaza"]["entity_kinds"] == {"character": 1}
     assert by_id["market"]["entity_kinds"] == {"character": 1, "item": 1}
+
+
+def test_read_api_map_renders_one_scope_and_reports_boundary_exits(tmp_path: Path) -> None:
+    database_path = tmp_path / "world.sqlite3"
+    migrate_database(database_path)
+    seed_town_world(database_path)
+    with connect_database(database_path) as connection:
+        connection.executemany(
+            "INSERT INTO location_containment(world_id, child_location_id, parent_location_id) "
+            "VALUES (?, ?, ?)",
+            [
+                (TOWN_WORLD_ID, "market", "plaza"),
+                (TOWN_WORLD_ID, "tavern", "plaza"),
+                (TOWN_WORLD_ID, "docks", "market"),
+            ],
+        )
+        connection.execute(
+            "INSERT INTO location_metadata(world_id, location_id, kind, is_map_scope, is_default_scope) "
+            "VALUES (?, 'plaza', 'street', 1, 1)",
+            (TOWN_WORLD_ID,),
+        )
+        connection.commit()
+    app = create_app(database_path)
+
+    status, world_map = asyncio.run(
+        _get(app, f"/api/worlds/{TOWN_WORLD_ID}/map?scope_location_id=plaza")
+    )
+
+    assert status == 200
+    assert world_map["scope_location"]["id"] == "plaza"
+    assert world_map["breadcrumbs"] == []
+    assert world_map["player_location_id"] == "plaza"
+    assert world_map["player_visible_location_id"] == "plaza"
+    assert world_map["child_total"] == 2
+    assert world_map["has_more"] is False
+    assert [location["id"] for location in world_map["locations"]] == ["market", "plaza", "tavern"]
+    assert world_map["boundary_links"] == [
+        {
+            "from_location_id": "market",
+            "to_location_id": "docks",
+            "to_location_name": "Harbor Docks",
+        },
+        {
+            "from_location_id": "tavern",
+            "to_location_id": "docks",
+            "to_location_name": "Harbor Docks",
+        },
+    ]
+
+
+def test_read_api_map_uses_nearest_default_scope_for_player(tmp_path: Path) -> None:
+    database_path = tmp_path / "world.sqlite3"
+    migrate_database(database_path)
+    seed_town_world(database_path)
+    with connect_database(database_path) as connection:
+        connection.execute(
+            "INSERT INTO location_containment(world_id, child_location_id, parent_location_id) "
+            "VALUES (?, 'plaza', 'market')",
+            (TOWN_WORLD_ID,),
+        )
+        connection.execute(
+            "INSERT INTO location_metadata(world_id, location_id, kind, is_map_scope, is_default_scope) "
+            "VALUES (?, 'market', 'street', 1, 1)",
+            (TOWN_WORLD_ID,),
+        )
+        connection.commit()
+    app = create_app(database_path)
+
+    status, world_map = asyncio.run(_get(app, f"/api/worlds/{TOWN_WORLD_ID}/map"))
+
+    assert status == 200
+    assert world_map["scope_location"]["id"] == "market"
+    assert world_map["player_location_id"] == "plaza"
+    assert world_map["player_visible_location_id"] == "plaza"
 
 
 def test_read_api_map_renders_world_without_links(tmp_path: Path) -> None:

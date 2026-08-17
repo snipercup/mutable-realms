@@ -27,6 +27,35 @@ def validate_worlds(database_path: str | Path) -> list[ValidationIssue]:
 
         for row in connection.execute(
             """
+            WITH RECURSIVE walk(world_id, start_id, current_id, path, cycle) AS (
+                SELECT world_id, child_location_id, parent_location_id,
+                       '|' || child_location_id || '|' || parent_location_id || '|',
+                       child_location_id = parent_location_id
+                FROM location_containment
+                UNION ALL
+                SELECT walk.world_id, walk.start_id, lc.parent_location_id,
+                       walk.path || lc.parent_location_id || '|',
+                       instr(walk.path, '|' || lc.parent_location_id || '|') > 0
+                FROM walk
+                JOIN location_containment lc
+                  ON lc.world_id = walk.world_id
+                 AND lc.child_location_id = walk.current_id
+                WHERE walk.cycle = 0
+            )
+            SELECT DISTINCT world_id, start_id FROM walk
+            WHERE cycle = 1 ORDER BY world_id, start_id
+            """
+        ):
+            issues.append(
+                ValidationIssue(
+                    "location_containment_cycle",
+                    "Location containment contains a cycle",
+                    row["start_id"],
+                )
+            )
+
+        for row in connection.execute(
+            """
             SELECT el.entity_id
             FROM entity_locations el
             JOIN entities e ON e.id = el.entity_id

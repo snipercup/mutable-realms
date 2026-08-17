@@ -89,13 +89,37 @@ type WorldMapLocation = {
   id: string;
   name: string;
   description: string | null;
+  kind: string | null;
+  is_map_scope: boolean;
+  is_default_scope: boolean;
+  child_count: number;
   entity_kinds: Record<string, number>;
   linked_location_ids: string[];
+};
+
+type WorldMapBreadcrumb = {
+  id: string;
+  name: string;
+  kind: string | null;
+  is_map_scope: boolean;
+  is_default_scope: boolean;
+};
+
+type WorldMapBoundaryLink = {
+  from_location_id: string;
+  to_location_id: string;
+  to_location_name: string;
 };
 
 type WorldMap = {
   world: World;
   player_location_id: string | null;
+  player_visible_location_id: string | null;
+  scope_location: WorldMapBreadcrumb | null;
+  breadcrumbs: WorldMapBreadcrumb[];
+  child_total: number;
+  has_more: boolean;
+  boundary_links: WorldMapBoundaryLink[];
   locations: WorldMapLocation[];
 };
 
@@ -390,6 +414,7 @@ const worldPlayerLocation = requireElement<HTMLInputElement>("#world-player-loca
 let worlds: World[] = [];
 let playerCharacters: PlayerCharacter[] = [];
 let selectedWorldId: string | null = null;
+let selectedMapScopeId: string | null = null;
 let currentPlayerId: string | null = null;
 let loading = false;
 let actionPending = false;
@@ -494,11 +519,15 @@ async function loadWorlds(): Promise<void> {
 async function loadState(): Promise<WorldState> {
   if (selectedWorldId === null) throw new Error("No world is selected");
   const encodedWorld = encodeURIComponent(selectedWorldId);
+  const mapScopeQuery =
+    selectedMapScopeId === null
+      ? ""
+      : `?scope_location_id=${encodeURIComponent(selectedMapScopeId)}`;
   const [player, location, events, map] = await Promise.all([
     fetchJson<Player>(`/api/worlds/${encodedWorld}/player`),
     fetchJson<Location>(`/api/worlds/${encodedWorld}/locations/current`),
     fetchJson<WorldEvent[]>(`/api/worlds/${encodedWorld}/events?limit=20`),
-    fetchJson<WorldMap>(`/api/worlds/${encodedWorld}/map`),
+    fetchJson<WorldMap>(`/api/worlds/${encodedWorld}/map${mapScopeQuery}`),
   ]);
   const world = worlds.find((candidate) => candidate.id === selectedWorldId);
   if (world === undefined) throw new Error("Selected world is unavailable");
@@ -524,6 +553,7 @@ function renderEntity(entityState: EntitySummary, playerId: string): HTMLElement
 
 const MAP_WIDTH = 480;
 const MAP_HEIGHT = 320;
+const MAP_RENDER_LIMIT = 30;
 const MAP_CENTER_X = MAP_WIDTH / 2;
 const MAP_CENTER_Y = MAP_HEIGHT / 2;
 const MAP_RADIUS = 110;
@@ -557,26 +587,62 @@ function svgElement(
 
 function renderMap(state: WorldState): HTMLElement {
   const panel = element("section", "panel map-panel");
+  const scopeName = state.map.scope_location?.name ?? state.world.name;
   panel.append(
     element("span", "eyebrow", "Derived from world state"),
-    element("h2", "section-title", `Map of ${state.world.name}`),
+    element("h2", "section-title", `Map of ${scopeName}`),
   );
+
+  if (state.map.scope_location !== null) {
+    const navigation = element("nav", "map-scope-nav");
+    navigation.setAttribute("aria-label", "Map scope");
+    const localButton = element("button", "button subtle", "Player area");
+    localButton.type = "button";
+    localButton.addEventListener("click", () => {
+      selectedMapScopeId = null;
+      void refresh();
+    });
+    navigation.append(localButton);
+    for (const breadcrumb of state.map.breadcrumbs) {
+      const button = element("button", "button subtle", breadcrumb.name);
+      button.type = "button";
+      button.dataset.scopeId = breadcrumb.id;
+      button.addEventListener("click", () => {
+        selectedMapScopeId = breadcrumb.id;
+        void refresh();
+      });
+      navigation.append(button);
+    }
+    navigation.append(element("span", "map-scope-current", scopeName));
+    panel.append(navigation);
+  }
+
+  const renderedLocations = state.map.locations.slice(0, MAP_RENDER_LIMIT);
+  if (state.map.locations.length > MAP_RENDER_LIMIT || state.map.has_more) {
+    panel.append(
+      element(
+        "p",
+        "muted map-overflow",
+        `Showing ${renderedLocations.length} map nodes; ${state.map.child_total} child locations are available in this scope.`,
+      ),
+    );
+  }
 
   const svg = svgElement("svg", {
     viewBox: `0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`,
     class: "map-svg",
     role: "img",
-    "aria-label": `Map of ${state.world.name}`,
+    "aria-label": `Map of ${scopeName}`,
   });
 
-  const ordered = [...state.map.locations].sort((a, b) => a.name.localeCompare(b.name));
+  const ordered = [...renderedLocations].sort((a, b) => a.name.localeCompare(b.name));
   const positions = new Map<string, [number, number]>();
   mapPositions(ordered.length).forEach((position, index) => {
     positions.set(ordered[index].id, position);
   });
 
   const drawnEdges = new Set<string>();
-  for (const location of state.map.locations) {
+  for (const location of renderedLocations) {
     for (const linkedId of location.linked_location_ids) {
       const key = [location.id, linkedId].sort().join("|");
       if (drawnEdges.has(key)) continue;
@@ -598,7 +664,7 @@ function renderMap(state: WorldState): HTMLElement {
 
   for (const location of ordered) {
     const [x, y] = positions.get(location.id) ?? [MAP_CENTER_X, MAP_CENTER_Y];
-    const playerHere = state.map.player_location_id === location.id;
+    const playerHere = state.map.player_visible_location_id === location.id;
     const group = svgElement("g", {
       class: playerHere ? "map-node map-node--player" : "map-node",
       transform: `translate(${x}, ${y})`,
@@ -644,6 +710,55 @@ function renderMap(state: WorldState): HTMLElement {
   }
 
   panel.append(svg);
+
+  if (state.map.scope_location !== null) {
+    const browser = element("section", "map-location-browser");
+    browser.append(element("h3", "map-browser-title", "Locations in this scope"));
+    const search = element("input", "map-location-search");
+    search.type = "search";
+    search.placeholder = "Filter locations";
+    search.setAttribute("aria-label", "Filter locations in this map scope");
+    const list = element("div", "map-location-list");
+    const children = state.map.locations.filter(
+      (location) => location.id !== state.map.scope_location?.id,
+    );
+    for (const location of children) {
+      const row = element("div", "map-location-row");
+      row.dataset.searchText = `${location.name} ${location.kind ?? ""}`.toLowerCase();
+      const label = element(
+        "span",
+        "map-location-label",
+        `${location.name}${location.kind === null ? "" : ` · ${location.kind}`}`,
+      );
+      row.append(label);
+      if (location.child_count > 0 || location.is_map_scope) {
+        const open = element("button", "button subtle", `Open (${location.child_count})`);
+        open.type = "button";
+        open.dataset.scopeId = location.id;
+        open.addEventListener("click", () => {
+          selectedMapScopeId = location.id;
+          void refresh();
+        });
+        row.append(open);
+      }
+      list.append(row);
+    }
+    search.addEventListener("input", () => {
+      const query = search.value.trim().toLowerCase();
+      for (const row of list.querySelectorAll<HTMLElement>(".map-location-row")) {
+        row.hidden = !(row.dataset.searchText ?? "").includes(query);
+      }
+    });
+    browser.append(search, list);
+    if (state.map.boundary_links.length > 0) {
+      const exits = element("p", "muted map-boundary-summary");
+      exits.textContent = `Exits from this view: ${state.map.boundary_links
+        .map((link) => link.to_location_name)
+        .join(", ")}.`;
+      browser.append(exits);
+    }
+    panel.append(browser);
+  }
   return panel;
 }
 
@@ -741,19 +856,13 @@ async function refresh(forceWorlds = false): Promise<void> {
   } catch (error) {
     currentPlayerId = null;
     const message = error instanceof Error ? error.message : "Unable to read world state";
-    if (message.includes("player not found")) {
+    if (message.includes("player not found") || message.includes("location not found")) {
       try {
         playerCharacters = await fetchJson<PlayerCharacter[]>("/api/player-characters");
       } catch {
         playerCharacters = [];
       }
       renderWorldStart();
-      setError(startError);
-    } else if (message.includes("location not found")) {
-      renderWorldViewEmpty(
-        "This world is not ready to play yet.",
-        "Provision a player and a starting location from the Manage view.",
-      );
       setError(startError);
     } else {
       setError(message);
@@ -1511,6 +1620,7 @@ viewManageButton.addEventListener("click", () => setViewMode("manage"));
 
 worldSelect.addEventListener("change", () => {
   selectedWorldId = worldSelect.value;
+  selectedMapScopeId = null;
   currentPlayerId = null;
   startError = null;
   narrationLog.replaceChildren();
