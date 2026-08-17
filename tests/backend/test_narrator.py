@@ -264,6 +264,29 @@ def test_hermes_narrator_start_normalizes_model_layout_variants(
     assert result.locations[1].link_to_start is True
 
 
+def test_hermes_narrator_start_accepts_nested_location_description_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            '{"start_location_name":"Main Street","locations":['
+            '{"name":"Main Street","location_description":"Street.",'
+            '"parent_name":null,"link_to_start":true}],'
+            '"narration":"You arrive."}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+
+    result = HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+
+    assert result.locations[0].description == "Street."
+
+
 def test_hermes_narrator_raises_on_empty_reply(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

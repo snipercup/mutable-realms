@@ -185,9 +185,11 @@ def build_world_start_prompt(
         "locations that gives the player meaningful nearby choices; do not invent "
         "a kingdom-wide map. Return ONLY valid JSON with exactly these keys: "
         "start_location_name (non-empty string), locations (array of 1 to 6 "
-        "objects with name, description (`location_description`), parent_name (null unless "
-        "that parent is also listed), and link_to_start (boolean true or false), and "
-        "narration (player-facing prose). parent_name expresses containment only; "
+        "objects with exactly these fields: name, description (the location description), "
+        "parent_name (null unless that parent is also listed), and link_to_start "
+        "(boolean true or false); do not use location_description inside a location "
+        "object. The top-level legacy field is location_description only when locations "
+        "is omitted. The top-level locations array and narration are required. "
         "link_to_start explicitly requests a local physical movement link. The "
         "location belongs to this world, not to the reusable character definition. "
         "For Aerthalon, when the opening scene places the player on the way to "
@@ -287,6 +289,19 @@ def _parse_start_result(output: str) -> NarratorStartResult:
         locations_list: list[NarratorStartLocation] = []
         seen_names: set[str] = set()
         for raw_location in raw_locations:
+            if isinstance(raw_location, dict) and "location_description" in raw_location:
+                if "description" in raw_location:
+                    raise NarratorError(
+                        "narration agent start location has duplicate description fields",
+                        category="invalid_start_response",
+                    )
+                description_alias = raw_location["location_description"]
+                raw_location = {
+                    key: value
+                    for key, value in raw_location.items()
+                    if key != "location_description"
+                }
+                raw_location["description"] = description_alias
             if not isinstance(raw_location, dict) or set(raw_location) != {
                 "name",
                 "description",

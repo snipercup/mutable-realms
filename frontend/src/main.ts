@@ -617,7 +617,11 @@ function renderMap(state: WorldState): HTMLElement {
     panel.append(navigation);
   }
 
-  const renderedLocations = state.map.locations.slice(0, MAP_RENDER_LIMIT);
+  const mapLocations =
+    state.map.scope_location === null
+      ? state.map.locations
+      : state.map.locations.filter((location) => location.id !== state.map.scope_location?.id);
+  const renderedLocations = mapLocations.slice(0, MAP_RENDER_LIMIT);
   if (state.map.locations.length > MAP_RENDER_LIMIT || state.map.has_more) {
     panel.append(
       element(
@@ -641,24 +645,26 @@ function renderMap(state: WorldState): HTMLElement {
     positions.set(ordered[index].id, position);
   });
 
-  const drawnEdges = new Set<string>();
-  for (const location of renderedLocations) {
-    for (const linkedId of location.linked_location_ids) {
-      const key = [location.id, linkedId].sort().join("|");
-      if (drawnEdges.has(key)) continue;
-      drawnEdges.add(key);
-      const start = positions.get(location.id);
-      const end = positions.get(linkedId);
-      if (start === undefined || end === undefined) continue;
-      svg.append(
-        svgElement("line", {
-          x1: start[0],
-          y1: start[1],
-          x2: end[0],
-          y2: end[1],
-          class: "map-edge",
-        }),
-      );
+  if (state.map.scope_location === null) {
+    const drawnEdges = new Set<string>();
+    for (const location of renderedLocations) {
+      for (const linkedId of location.linked_location_ids) {
+        const key = [location.id, linkedId].sort().join("|");
+        if (drawnEdges.has(key)) continue;
+        drawnEdges.add(key);
+        const start = positions.get(location.id);
+        const end = positions.get(linkedId);
+        if (start === undefined || end === undefined) continue;
+        svg.append(
+          svgElement("line", {
+            x1: start[0],
+            y1: start[1],
+            x2: end[0],
+            y2: end[1],
+            class: "map-edge",
+          }),
+        );
+      }
     }
   }
 
@@ -713,43 +719,6 @@ function renderMap(state: WorldState): HTMLElement {
 
   if (state.map.scope_location !== null) {
     const browser = element("section", "map-location-browser");
-    browser.append(element("h3", "map-browser-title", "Locations in this scope"));
-    const search = element("input", "map-location-search");
-    search.type = "search";
-    search.placeholder = "Filter locations";
-    search.setAttribute("aria-label", "Filter locations in this map scope");
-    const list = element("div", "map-location-list");
-    const children = state.map.locations.filter(
-      (location) => location.id !== state.map.scope_location?.id,
-    );
-    for (const location of children) {
-      const row = element("div", "map-location-row");
-      row.dataset.searchText = `${location.name} ${location.kind ?? ""}`.toLowerCase();
-      const label = element(
-        "span",
-        "map-location-label",
-        `${location.name}${location.kind === null ? "" : ` · ${location.kind}`}`,
-      );
-      row.append(label);
-      if (location.child_count > 0 || location.is_map_scope) {
-        const open = element("button", "button subtle", `Open (${location.child_count})`);
-        open.type = "button";
-        open.dataset.scopeId = location.id;
-        open.addEventListener("click", () => {
-          selectedMapScopeId = location.id;
-          void refresh();
-        });
-        row.append(open);
-      }
-      list.append(row);
-    }
-    search.addEventListener("input", () => {
-      const query = search.value.trim().toLowerCase();
-      for (const row of list.querySelectorAll<HTMLElement>(".map-location-row")) {
-        row.hidden = !(row.dataset.searchText ?? "").includes(query);
-      }
-    });
-    browser.append(search, list);
     if (state.map.boundary_links.length > 0) {
       const exits = element("p", "muted map-boundary-summary");
       exits.textContent = `Exits from this view: ${state.map.boundary_links
@@ -757,7 +726,9 @@ function renderMap(state: WorldState): HTMLElement {
         .join(", ")}.`;
       browser.append(exits);
     }
-    panel.append(browser);
+    if (browser.childElementCount > 0) {
+      panel.append(browser);
+    }
   }
   return panel;
 }

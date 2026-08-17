@@ -17,7 +17,7 @@ from backend.world.characters import (
     remove_player_character,
     update_player_character,
 )
-from backend.world.queries import read_world
+from backend.world.queries import get_world_map, read_world
 from backend.world.scenarios import create_scenario
 from backend.world.worlds import create_world_from_scenario, instance_player_character
 
@@ -156,6 +156,13 @@ def test_instance_commits_contextual_start_layout_atomically(tmp_path: Path) -> 
             ).fetchone()[0]
             == 2
         )
+        assert tuple(
+            connection.execute(
+                "SELECT is_map_scope, is_default_scope FROM location_metadata "
+                "WHERE world_id = 'world-a' AND location_id = ?",
+                (result["location_ids"]["main street"],),
+            ).fetchone()
+        ) == (1, 1)
         assert (
             connection.execute(
                 "SELECT parent_location_id FROM location_containment WHERE child_location_id = ?",
@@ -177,6 +184,45 @@ def test_instance_commits_contextual_start_layout_atomically(tmp_path: Path) -> 
         location_layout=layout,
     )
     assert replay["already_applied"] is True
+
+
+def test_contextual_start_uses_player_location_as_default_map_scope(tmp_path: Path) -> None:
+    path = _database(tmp_path)
+    _world(path, "world-a")
+    create_player_character(path, character_id="fate", operation_id="create-1", name="Fate")
+    instance_player_character(
+        path,
+        world_id="world-a",
+        operation_id="instance-layout",
+        expected_revision=1,
+        character_id="fate",
+        location_name="Main Street",
+        location_layout=[
+            {
+                "name": "Main Street",
+                "description": "A broad street.",
+                "parent_name": None,
+                "link_to_start": False,
+            },
+            {
+                "name": "Adventurer's Guild",
+                "description": "Guild doors.",
+                "parent_name": "Main Street",
+                "link_to_start": True,
+            },
+        ],
+    )
+
+    world_map = get_world_map(path, world_id="world-a")
+
+    assert world_map["scope_location"]["id"] == "world-a-start"
+    assert world_map["scope_location"]["name"] == "Main Street"
+    assert [location["name"] for location in world_map["locations"]] == [
+        "Adventurer's Guild",
+        "Main Street",
+    ]
+    assert world_map["player_location_id"] == "world-a-start"
+    assert world_map["player_visible_location_id"] == "world-a-start"
 
 
 def test_world_allows_no_more_than_one_player_instance(tmp_path: Path) -> None:

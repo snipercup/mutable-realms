@@ -458,6 +458,13 @@ def remove_world(
             connection.execute("BEGIN IMMEDIATE")
             world = _require_world(connection, world_id)
             _check_revision(world, expected_revision)
+            # Child locations may be referenced as containment parents with
+            # ON DELETE RESTRICT. Remove those presentation/containment rows
+            # explicitly before cascading the world deletion.
+            connection.execute(
+                "DELETE FROM location_containment WHERE world_id = ?",
+                (world_id,),
+            )
             connection.execute("DELETE FROM worlds WHERE id = ?", (world_id,))
             connection.commit()
             return {
@@ -731,6 +738,12 @@ def instance_player_character(
                         item["description"] or f"Starting area for {definition['name']}",
                     ),
                 )
+            connection.execute(
+                "INSERT INTO location_metadata("
+                "world_id, location_id, kind, is_map_scope, is_default_scope) "
+                "VALUES (?, ?, 'local-area', 1, 1)",
+                (world_id, location_id),
+            )
             for item in normalized_layout:
                 parent = item["parent_name"]
                 if parent is not None:

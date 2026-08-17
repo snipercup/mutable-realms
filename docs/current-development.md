@@ -4,11 +4,33 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Awaiting next infrastructure slice — proposed
+### Scope-aware local maps and directional neighboring locations — in progress
 
-No new implementation idea has been selected. The next active slice will be registered here once requested.
+**Goal:** make the map describe the player's local geographic area rather than repeatedly labeling the current location as the map itself. When the player is at **Main Street**, the map should show Main Street's child locations in the center and nearby sibling/neighbor locations around the edge, with directional orientation such as north, south, east, and west. The map should help the player understand where nearby streets, merchant roads, and outskirts lie without becoming a travel control.
 
-**Verification:** pending; this is a holding state, not an implementation claim.
+**Scope:**
+
+- Reconcile the contextual-start slice as committed in `7ec6bc0`.
+- The scoped map response may retain the scope node as metadata, but the player-facing SVG renders only the locations inside that scope; the anchor is not drawn as a child of itself.
+- Scoped maps do not repeat direct child locations in a separate browser/list; the map is the child-location index. Boundary exits remain as text because they describe where narration may take the player beyond the current view.
+- Internal `location_links` are not rendered as edges in scoped maps. They remain authoritative data for narration and movement validation; legacy flat maps may continue rendering their links for compatibility.
+- Make the map title and scope explicit. A map centered on Main Street must not imply that Main Street is contained by itself or render `Map of Main Street` as though the current location were its own enclosing map.
+- Preserve the distinction between containment and presentation scope. A location cannot be its own parent; the current location is the map center or anchor, not an enclosing location.
+- Extend narrator-created location data with bounded directional/orientation metadata for sibling or neighboring locations, so the derived map can show arrows or directional markers without guessing geography from names.
+- Render directional relationships as presentation edges/arrows rather than treating every visible relationship as a local movement link.
+- Keep player movement narrator-driven; the map must not add click-to-travel behavior or become authoritative for accessibility.
+- Keep world state authoritative in SQLite and derive the map entirely from persisted locations, containment, and validated directional metadata.
+- Bound the number of visible neighbors and preserve useful overflow behavior as local areas grow toward side streets, merchant roads, and outskirts.
+- Ensure existing flat worlds, worlds without directional metadata, and existing `location_links` remain compatible during the transition.
+
+**Out of scope:**
+
+- Automatic roads, travel-time simulation, route generation, fast travel, or UI-driven movement.
+- Inferring cardinal directions from location names, insertion order, or SVG placement.
+- Removing or redefining `location_links` and the current movement precondition in this slice; any change to authoritative travel semantics requires a separately scoped decision and migration/compatibility plan.
+- Treating map arrows as proof that travel is possible. Narration and validated world operations remain responsible for movement.
+
+**Verification:** implementation pending final browser verification. The backend map contract remains unchanged; the scoped frontend now omits the scope anchor from rendered nodes, removes the redundant child-location browser, preserves boundary-exit text, and suppresses internal scoped-map edges.
 
 ## Recently completed
 
@@ -23,7 +45,7 @@ No new implementation idea has been selected. The next active slice will be regi
 | Cross-scale landmark promotion (migration 0012, validated presentation promotions, promoted scoped-map nodes, HTTP administration) | 2026-08-17 | `a3bcfea` |
 | Detailed travel and explicit routes (migration 0013, directed route definitions, exact-origin route travel, HTTP and MCP seams) | 2026-08-17 | `1531e67` |
 | Controlled narrator-driven lazy expansion (migration 0014, bounded structured location proposals, duplicate/budget checks, atomic HTTP/MCP expansion) | 2026-08-17 | `108ed5e` |
-| Narrator-driven contextual starting locations (bounded structured start layouts, contextual player placement, containment/link creation, atomic replay-safe start) | 2026-08-17 | pending user commit; suggested `Add contextual narrator world starts` |
+| Narrator-driven contextual starting locations (bounded structured start layouts, contextual player placement, containment/link creation, atomic replay-safe start) | 2026-08-17 | `7ec6bc0` |
 
 **Route verification:** `243` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted route creation at revision `0 → 1`, traveled the player from `harbor` to `city` at `1 → 2` without a `location_links` row, and replayed the same travel operation with `already_applied: true` without another revision. SQLite readback confirmed `world_route_set`, `entity_route_traveled`, the route endpoints, and final player placement; port 8795 was stopped and confirmed closed.
 

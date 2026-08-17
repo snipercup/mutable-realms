@@ -873,6 +873,33 @@ def test_remove_world_cascades_all_state_and_keeps_scenario(
     assert validate_worlds(database_path) == []
 
 
+def test_remove_world_cascades_nested_location_containment(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _instanced(database_path)
+    with connect_database(database_path) as connection:
+        connection.executemany(
+            "INSERT INTO locations(id, world_id, name, description) "
+            "VALUES (?, 'campaign-1', ?, '')",
+            [("main-street", "Main Street"), ("guild", "Adventurer's Guild")],
+        )
+        connection.execute(
+            "INSERT INTO location_containment(world_id, child_location_id, parent_location_id) "
+            "VALUES ('campaign-1', 'guild', 'main-street')"
+        )
+        connection.commit()
+
+    result = remove_world(
+        database_path,
+        world_id="campaign-1",
+        operation_id="remove-nested",
+        expected_revision=1,
+    )
+
+    assert result["removed"] is True
+    with connect_database(database_path) as connection:
+        assert connection.execute("SELECT 1 FROM worlds WHERE id = 'campaign-1'").fetchone() is None
+
+
 def test_remove_world_stale_revision_and_missing(tmp_path: Path) -> None:
     database_path = _database(tmp_path)
     _instanced(database_path)
