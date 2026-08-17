@@ -24,7 +24,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 | Reusable player characters and world-specific instances (character CRUD, selection, copied world instances) | 2026-08-16 | on main via `reusable-player-characters` |
 | Narrator-driven world start (structured opening, atomic character/location instancing, polling/error hardening) | 2026-08-16 | `9b00c16` |
 | Nested locations and scoped world maps (migration 0011, hierarchy validation, scoped reads, context breadcrumbs, map navigation) | 2026-08-17 | `8c581c9` |
-| Cross-scale landmark promotion (migration 0012, validated presentation promotions, promoted scoped-map nodes, HTTP administration) | 2026-08-17 | pending user commit; suggested `Add cross-scale landmark promotion` |
+| Cross-scale landmark promotion (migration 0012, validated presentation promotions, promoted scoped-map nodes, HTTP administration) | 2026-08-17 | `a3bcfea` |
 
 **Cross-scale promotion verification:** `238` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted hierarchy configuration at revision `0 → 1`, promotion at `1 → 2`, returned the promoted `docks` node with `is_promoted: true`, and recorded `location_scope_promotion_set` in SQLite. The precondition probe correctly rejected promotion to a non-map scope with HTTP `409`; the temporary server was stopped and port 8795 confirmed closed. Containment and physical links remained unchanged in the fixture.
 
