@@ -30,6 +30,7 @@ def test_mcp_exposes_only_controlled_world_tools_without_database_arguments() ->
         "world_events",
         "world_move_entity",
         "world_travel_route",
+        "world_expand_location",
         "world_treat_and_discharge_patient",
         "world_record_social_interaction",
         "world_transfer_resource",

@@ -20,6 +20,8 @@ from backend.app.narrator import (
 )
 from backend.app.read_models import (
     EntityRead,
+    ExpansionRequest,
+    ExpansionResponse,
     LocationHierarchyMutationResponse,
     LocationHierarchyRequest,
     LocationRead,
@@ -77,6 +79,7 @@ from backend.world.characters import (
     update_player_character,
 )
 from backend.world.context import build_world_context
+from backend.world.expansion import ExpansionConflict, ExpansionNotFound, propose_location_expansion
 from backend.world.hierarchy import set_location_hierarchy, set_location_scope_promotion
 from backend.world.queries import (
     EntityNotFound,
@@ -362,6 +365,29 @@ def create_app(
         except WorldAdminConflict as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
         return LocationScopePromotionMutationResponse.model_validate(result)
+
+    @application.post("/api/worlds/{world_id}/locations/expand", tags=["player turns"])
+    def expand_location(world_id: str, request: ExpansionRequest) -> ExpansionResponse:
+        try:
+            result = propose_location_expansion(
+                get_database_path(),
+                world_id=world_id,
+                operation_id=request.operation_id,
+                expected_revision=request.expected_revision,
+                proposal_id=request.proposal_id,
+                location_id=request.location_id,
+                anchor_location_id=request.anchor_location_id,
+                name=request.name,
+                description=request.description,
+                parent_location_id=request.parent_location_id,
+                connect_to_anchor=request.connect_to_anchor,
+                actor_entity_id=request.actor_entity_id,
+            )
+        except ExpansionNotFound as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ExpansionConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return ExpansionResponse.model_validate(result)
 
     @application.put("/api/worlds/{world_id}/routes/{route_id}", tags=["world administration"])
     def set_route_route(

@@ -4,11 +4,11 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Controlled narrator-driven lazy expansion — proposed
+### Controlled narrator-driven lazy expansion — complete
 
 **Goal:** allow the narrator to propose bounded new locations and links through structured, validated, revision-aware operations when play reaches an expandable boundary.
 
-**Proposed scope:** define proposal shape, duplicate/budget checks, and atomic creation of ordinary authoritative locations; keep generated geography out of direct storage access.
+**Proposed scope:** accept one bounded structured proposal for one ordinary location tied to an existing anchor, with duplicate-name/ID/proposal checks, a default 100-location expansion budget, optional explicit containment, and optional explicit physical adjacency. Proposal acceptance is atomic, revision-aware, exactly idempotent, and available to the narrator through MCP; no route/entity/procedural geography generation is implied.
 
 **Out of scope:** unrestricted procedural world generation, silent regeneration, multi-parent containment, and unbounded prompt/map expansion.
 
@@ -26,8 +26,11 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 | Nested locations and scoped world maps (migration 0011, hierarchy validation, scoped reads, context breadcrumbs, map navigation) | 2026-08-17 | `8c581c9` |
 | Cross-scale landmark promotion (migration 0012, validated presentation promotions, promoted scoped-map nodes, HTTP administration) | 2026-08-17 | `a3bcfea` |
 | Detailed travel and explicit routes (migration 0013, directed route definitions, exact-origin route travel, HTTP and MCP seams) | 2026-08-17 | `1531e67` |
+| Controlled narrator-driven lazy expansion (migration 0014, bounded structured location proposals, duplicate/budget checks, atomic HTTP/MCP expansion) | 2026-08-17 | pending user commit; suggested `Add controlled location expansion` |
 
 **Route verification:** `243` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted route creation at revision `0 → 1`, traveled the player from `harbor` to `city` at `1 → 2` without a `location_links` row, and replayed the same travel operation with `already_applied: true` without another revision. SQLite readback confirmed `world_route_set`, `entity_route_traveled`, the route endpoints, and final player placement; port 8795 was stopped and confirmed closed.
+
+**Expansion verification:** `248` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted a structured `market` proposal at revision `0 → 1`, created its `city` containment and `harbor` physical link, replayed the proposal without another revision, and rejected a duplicate name with HTTP `409`. SQLite readback confirmed `location_expanded`, the proposal ledger, final location data, containment, link, and world revision; port 8795 was stopped and confirmed closed.
 
 ## How an idea becomes work
 

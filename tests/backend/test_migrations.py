@@ -16,7 +16,7 @@ def test_migrate_creates_versioned_schema_and_is_idempotent(tmp_path: Path) -> N
     first = migrate_database(database_path)
     second = migrate_database(database_path)
 
-    assert first == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+    assert first == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
     assert second == []
 
     with connect_database(database_path) as connection:
@@ -44,6 +44,7 @@ def test_migrate_creates_versioned_schema_and_is_idempotent(tmp_path: Path) -> N
         (11, "location_hierarchy"),
         (12, "location_scope_promotions"),
         (13, "world_routes"),
+        (14, "world_expansion"),
     ]
     assert {
         "worlds",
@@ -58,6 +59,8 @@ def test_migrate_creates_versioned_schema_and_is_idempotent(tmp_path: Path) -> N
         "location_metadata",
         "location_scope_promotions",
         "world_routes",
+        "world_expansion_limits",
+        "world_expansion_proposals",
         "schema_migrations",
     } <= tables
 
@@ -73,7 +76,7 @@ def test_generalization_migration_preserves_existing_ward_data(tmp_path: Path) -
     migrate_database(database_path, migrations_path=migration_one_path)
     seed_ward_world(database_path)
 
-    assert migrate_database(database_path) == [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+    assert migrate_database(database_path) == [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
 
     with connect_database(database_path) as connection:
         assert connection.execute("SELECT COUNT(*) FROM beds").fetchone()[0] == 6

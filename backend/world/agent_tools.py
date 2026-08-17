@@ -6,6 +6,7 @@ from typing import Any
 
 from backend.persistence.database import connect_readonly_database
 from backend.scenarios.ward.mutations import treat_and_discharge_patient
+from backend.world.expansion import propose_location_expansion
 from backend.world.locations import update_location
 from backend.world.mutations import move_entity
 from backend.world.queries import WorldNotFound, get_entity, list_recent_events
@@ -77,6 +78,7 @@ def read_world_status(database_path: str | Path, *, world_id: str) -> dict[str, 
         mutations.append("world_transfer_resource")
     if has_locations:
         mutations.append("world_update_location")
+        mutations.append("world_expand_location")
     if has_routes:
         mutations.append("world_travel_route")
     return {"world": dict(world), "available_mutations": mutations}
@@ -139,6 +141,37 @@ def travel_world_route(
         operation_id=operation_id,
         expected_revision=expected_revision,
         entity_id=entity_id,
+        actor_entity_id=actor_entity_id,
+    )
+
+
+def expand_world_location(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    proposal_id: str,
+    location_id: str,
+    anchor_location_id: str,
+    name: str,
+    description: str = "",
+    parent_location_id: str | None = None,
+    connect_to_anchor: bool = False,
+    actor_entity_id: str | None = None,
+) -> dict[str, Any]:
+    return propose_location_expansion(
+        database_path,
+        world_id=world_id,
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        proposal_id=proposal_id,
+        location_id=location_id,
+        anchor_location_id=anchor_location_id,
+        name=name,
+        description=description,
+        parent_location_id=parent_location_id,
+        connect_to_anchor=connect_to_anchor,
         actor_entity_id=actor_entity_id,
     )
 

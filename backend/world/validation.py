@@ -93,6 +93,26 @@ def validate_worlds(database_path: str | Path) -> list[ValidationIssue]:
 
         for row in connection.execute(
             """
+            SELECT p.proposal_id
+            FROM world_expansion_proposals p
+            LEFT JOIN locations l
+              ON l.world_id = p.world_id AND l.id = p.location_id
+            LEFT JOIN locations a
+              ON a.world_id = p.world_id AND a.id = p.anchor_location_id
+            WHERE l.id IS NULL OR a.id IS NULL
+            ORDER BY p.world_id, p.proposal_id
+            """
+        ):
+            issues.append(
+                ValidationIssue(
+                    "expansion_proposal_invalid",
+                    "Expansion proposal has a missing location or anchor",
+                    row["proposal_id"],
+                )
+            )
+
+        for row in connection.execute(
+            """
             SELECT r.route_id
             FROM world_routes r
             LEFT JOIN locations o

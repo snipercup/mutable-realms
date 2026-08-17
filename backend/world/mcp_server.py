@@ -8,6 +8,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from backend.world.agent_tools import (
+    expand_world_location,
     inspect_entity,
     list_events,
     move_world_entity,
@@ -162,6 +163,37 @@ def world_travel_route(
         operation_id=operation_id,
         expected_revision=expected_revision,
         entity_id=entity_id,
+        actor_entity_id=resolve_actor_entity_id(actor_entity_id),
+    )
+
+
+@mcp.tool()
+def world_expand_location(
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    proposal_id: str,
+    location_id: str,
+    anchor_location_id: str,
+    name: Annotated[str, Field(min_length=1, max_length=200)],
+    description: Annotated[str, Field(max_length=2000)] = "",
+    parent_location_id: str | None = None,
+    connect_to_anchor: bool = False,
+    actor_entity_id: str | None = None,
+) -> dict[str, Any]:
+    """Accept one bounded structured proposal for a new ordinary location."""
+    return expand_world_location(
+        get_database_path(),
+        world_id=resolve_world_id(world_id),
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        proposal_id=proposal_id,
+        location_id=location_id,
+        anchor_location_id=anchor_location_id,
+        name=name,
+        description=description,
+        parent_location_id=parent_location_id,
+        connect_to_anchor=connect_to_anchor,
         actor_entity_id=resolve_actor_entity_id(actor_entity_id),
     )
 

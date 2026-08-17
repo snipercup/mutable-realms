@@ -238,6 +238,27 @@ class WorldRouteRequest(StrictReadModel):
     expected_revision: int = Field(ge=0)
 
 
+class ExpansionRequest(StrictReadModel):
+    proposal_id: str
+    location_id: str
+    anchor_location_id: str
+    name: str = Field(min_length=1)
+    description: str = ""
+    parent_location_id: str | None = None
+    connect_to_anchor: bool = False
+    actor_entity_id: str | None = None
+    operation_id: str
+    expected_revision: int = Field(ge=0)
+
+
+class ExpansionResponse(StrictReadModel):
+    already_applied: bool
+    location_id: str
+    proposal_id: str
+    world_id: str
+    world_revision: int = Field(ge=1)
+
+
 class WorldRouteMutationResponse(StrictReadModel):
     already_applied: bool
     route_id: str
