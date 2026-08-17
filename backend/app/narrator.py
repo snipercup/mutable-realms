@@ -35,12 +35,27 @@ Narrator = Callable[[str, str, str, dict[str, Any] | None], str]
 
 
 @dataclass(frozen=True)
+class NarratorStartLocation:
+    """One bounded authoritative location proposed for world start."""
+
+    name: str
+    description: str | None
+    parent_name: str | None
+    link_to_start: bool
+
+
+@dataclass(frozen=True)
 class NarratorStartResult:
     """Validated information required to create a world-specific start."""
 
     location_name: str
     location_description: str | None
     narration: str
+    locations: tuple[NarratorStartLocation, ...] = ()
+
+    @property
+    def start_location_name(self) -> str:
+        return self.location_name
 
 
 StartNarrator = Callable[[str, dict[str, Any], dict[str, Any]], NarratorStartResult]
@@ -163,12 +178,21 @@ def build_world_start_prompt(
     """Compose the strict structured prompt used before a player exists."""
     return (
         "You are starting a new Mutable Realms world. The supplied world and "
-        "character data are authoritative. Choose one appropriate initial "
-        "location from the opening scene or world context; do not invent a "
-        "kingdom-wide map. Return ONLY valid JSON with exactly these keys: "
-        "location_name (non-empty string), location_description (string or null), "
-        "narration (player-facing prose). The location belongs to this world, "
-        "not to the reusable character definition.\n\n"
+        "character data are authoritative. Infer the player's physical starting "
+        "scale from the opening scene: a street-level approach for buildings, "
+        "street-level for a mall or other urban opening, and a city or province "
+        "scale for wilderness openings. Then choose a small, grounded set of "
+        "locations that gives the player meaningful nearby choices; do not invent "
+        "a kingdom-wide map. Return ONLY valid JSON with exactly these keys: "
+        "start_location_name (non-empty string), locations (array of 1 to 6 "
+        "objects with name, description (`location_description`), parent_name (null unless "
+        "that parent is also listed), and link_to_start (boolean true or false), and "
+        "narration (player-facing prose). parent_name expresses containment only; "
+        "link_to_start explicitly requests a local physical movement link. The "
+        "location belongs to this world, not to the reusable character definition. "
+        "For Aerthalon, when the opening scene places the player on the way to "
+        "or in front of the Adventurer's Guild in Elaris, use Main Street as "
+        "the start location and place the Adventurer's Guild beneath it.\n\n"
         f"World id: {world_id}\n"
         f"World state: {json.dumps(world, sort_keys=True)}\n"
         f"Reusable character: {json.dumps(character, sort_keys=True)}\n\n"
@@ -193,14 +217,25 @@ def _parse_start_result(output: str) -> NarratorStartResult:
             "narration agent start result must be a JSON object",
             category="invalid_start_response",
         )
-    allowed = {"location_name", "location_description", "narration"}
+    allowed = {
+        "start_location_name",
+        "locations",
+        "location_name",
+        "location_description",
+        "narration",
+    }
+    if "location_name" in payload and "start_location_name" in payload:
+        raise NarratorError(
+            "narration agent start mixes legacy and structured location fields",
+            category="invalid_start_response",
+        )
     unexpected = set(payload) - allowed
     if unexpected:
         raise NarratorError(
             "narration agent start result has unexpected fields",
             category="invalid_start_response",
         )
-    location_name = payload.get("location_name")
+    location_name = payload.get("start_location_name", payload.get("location_name"))
     narration = payload.get("narration")
     description = payload.get("location_description")
     if not isinstance(location_name, str) or not location_name.strip():
@@ -233,7 +268,130 @@ def _parse_start_result(output: str) -> NarratorStartResult:
             "narration agent start location_description is too long",
             category="invalid_start_response",
         )
-    return NarratorStartResult(location_name.strip(), description, narration.strip())
+    if "locations" not in payload:
+        locations = (
+            NarratorStartLocation(
+                name=location_name.strip(),
+                description=description.strip() if isinstance(description, str) else None,
+                parent_name=None,
+                link_to_start=False,
+            ),
+        )
+    else:
+        raw_locations = payload["locations"]
+        if not isinstance(raw_locations, list) or not 1 <= len(raw_locations) <= 6:
+            raise NarratorError(
+                "narration agent start locations must contain between 1 and 6 items",
+                category="invalid_start_response",
+            )
+        locations_list: list[NarratorStartLocation] = []
+        seen_names: set[str] = set()
+        for raw_location in raw_locations:
+            if not isinstance(raw_location, dict) or set(raw_location) != {
+                "name",
+                "description",
+                "parent_name",
+                "link_to_start",
+            }:
+                raise NarratorError(
+                    "narration agent start location has invalid fields",
+                    category="invalid_start_response",
+                )
+            name = raw_location["name"]
+            raw_description = raw_location["description"]
+            parent_name = raw_location["parent_name"]
+            link_to_start = raw_location["link_to_start"]
+            if not isinstance(name, str) or not name.strip() or len(name.strip()) > 200:
+                raise NarratorError(
+                    "narration agent start location name is invalid",
+                    category="invalid_start_response",
+                )
+            key = name.strip().casefold()
+            if key in seen_names:
+                raise NarratorError(
+                    "narration agent start contains duplicate location names",
+                    category="invalid_start_response",
+                )
+            if raw_description is not None and (
+                not isinstance(raw_description, str) or len(raw_description.strip()) > 5_000
+            ):
+                raise NarratorError(
+                    "narration agent start location description is invalid",
+                    category="invalid_start_response",
+                )
+            if parent_name is not None and not isinstance(parent_name, str):
+                raise NarratorError(
+                    "narration agent start parent_name is invalid",
+                    category="invalid_start_response",
+                )
+            if link_to_start is None:
+                link_to_start = False
+            elif isinstance(link_to_start, str):
+                if link_to_start.strip().casefold() != location_name.strip().casefold():
+                    raise NarratorError(
+                        "narration agent start link target must be the selected start location",
+                        category="invalid_start_response",
+                    )
+                link_to_start = True
+            elif not isinstance(link_to_start, bool):
+                raise NarratorError(
+                    "narration agent start link_to_start must be boolean",
+                    category="invalid_start_response",
+                )
+            seen_names.add(key)
+            locations_list.append(
+                NarratorStartLocation(
+                    name=name.strip(),
+                    description=raw_description.strip()
+                    if isinstance(raw_description, str)
+                    else None,
+                    parent_name=parent_name.strip() if isinstance(parent_name, str) else None,
+                    link_to_start=link_to_start,
+                )
+            )
+        locations = tuple(locations_list)
+        location_names = {location.name.casefold() for location in locations}
+        if location_name.strip().casefold() not in location_names:
+            raise NarratorError(
+                "narration agent start location is not present in locations",
+                category="invalid_start_response",
+            )
+        locations = tuple(
+            NarratorStartLocation(
+                name=location.name,
+                description=location.description,
+                parent_name=(
+                    location.parent_name
+                    if location.parent_name is not None
+                    and location.parent_name.casefold() in location_names
+                    else None
+                ),
+                link_to_start=location.link_to_start,
+            )
+            for location in locations
+        )
+        for location in locations:
+            if (
+                location.parent_name is not None
+                and location.parent_name.casefold() == location.name.casefold()
+            ):
+                raise NarratorError(
+                    "narration agent start location cannot contain itself",
+                    category="invalid_start_response",
+                )
+    return NarratorStartResult(
+        location_name.strip(),
+        next(
+            (
+                location.description
+                for location in locations
+                if location.name.casefold() == location_name.strip().casefold()
+            ),
+            description.strip() if isinstance(description, str) else None,
+        ),
+        narration.strip(),
+        locations,
+    )
 
 
 def clean_narration(output: str) -> str:

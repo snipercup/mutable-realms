@@ -133,10 +133,16 @@ def _commit_world_mutation(
     summary: str,
     payload: dict[str, Any],
     expected_revision: int,
+    result_fields: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Record the operation + event, bump the revision, and return the result."""
     next_revision = expected_revision + 1
-    result = {"already_applied": False, "world_id": world_id, "world_revision": next_revision}
+    result = {
+        "already_applied": False,
+        "world_id": world_id,
+        "world_revision": next_revision,
+        **(result_fields or {}),
+    }
     result_json = json.dumps(result, sort_keys=True, separators=(",", ":"))
     connection.execute(
         "UPDATE worlds SET revision = ? WHERE id = ? AND revision = ?",
@@ -571,8 +577,10 @@ def instance_player_character(
     character_id: str,
     location_name: str,
     location_description: str | None = None,
+    location_layout: list[dict[str, Any]] | None = None,
+    result_fields: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Copy a reusable character definition into a world as its sole player."""
+    """Copy a reusable character definition and bounded start layout into a world."""
     _validate_world_id(world_id)
     _validate_operation_id(operation_id)
     if not character_id.strip():
@@ -581,11 +589,78 @@ def instance_player_character(
     trimmed_description = location_description.strip() if location_description else None
     if not trimmed_location:
         raise WorldAdminConflict("location name must not be blank")
+    if location_layout is None:
+        location_layout = [
+            {
+                "name": trimmed_location,
+                "description": trimmed_description,
+                "parent_name": None,
+                "link_to_start": False,
+            }
+        ]
+    if not 1 <= len(location_layout) <= 6:
+        raise WorldAdminConflict("start location layout must contain between 1 and 6 locations")
+    normalized_layout: list[dict[str, Any]] = []
+    names: dict[str, str] = {}
+    for raw_location in location_layout:
+        if not isinstance(raw_location, dict):
+            raise WorldAdminConflict("start location layout item must be an object")
+        name = raw_location.get("name")
+        description = raw_location.get("description")
+        parent_name = raw_location.get("parent_name")
+        link_to_start = raw_location.get("link_to_start")
+        if not isinstance(name, str) or not name.strip() or len(name.strip()) > 200:
+            raise WorldAdminConflict("start location name is invalid")
+        if description is not None and not isinstance(description, str):
+            raise WorldAdminConflict("start location description is invalid")
+        if parent_name is not None and not isinstance(parent_name, str):
+            raise WorldAdminConflict("start location parent is invalid")
+        if not isinstance(link_to_start, bool):
+            raise WorldAdminConflict("start location link_to_start must be boolean")
+        trimmed_name = name.strip()
+        key = trimmed_name.casefold()
+        if key in names:
+            raise WorldAdminConflict("start location layout contains duplicate names")
+        names[key] = trimmed_name
+        normalized_layout.append(
+            {
+                "name": trimmed_name,
+                "description": description.strip() if isinstance(description, str) else None,
+                "parent_name": parent_name.strip() if isinstance(parent_name, str) else None,
+                "link_to_start": link_to_start,
+            }
+        )
+    start_key = trimmed_location.casefold()
+    if start_key not in names:
+        raise WorldAdminConflict("start location is not present in layout")
+    for item in normalized_layout:
+        parent = item["parent_name"]
+        if parent is not None and parent.casefold() not in names:
+            raise WorldAdminConflict("start location parent is not present in layout")
+        if parent is not None and parent.casefold() == item["name"].casefold():
+            raise WorldAdminConflict("start location cannot contain itself")
+    # A parent chain must terminate; this rejects multi-row containment cycles.
+    for item in normalized_layout:
+        seen: set[str] = set()
+        current = item["name"]
+        while True:
+            current_key = current.casefold()
+            if current_key in seen:
+                raise WorldAdminConflict("start location layout contains a containment cycle")
+            seen.add(current_key)
+            current_item = next(
+                entry for entry in normalized_layout if entry["name"].casefold() == current_key
+            )
+            parent = current_item["parent_name"]
+            if parent is None:
+                break
+            current = parent
     request_json = json.dumps(
         {
             "character_id": character_id,
             "location_name": trimmed_location,
             "location_description": trimmed_description,
+            "location_layout": normalized_layout,
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -618,29 +693,64 @@ def instance_player_character(
             ).fetchone()
             if existing_player is not None:
                 raise WorldAdminConflict(f"world already has a player: {world_id}")
-            location_id = f"{world_id}-start"
+            location_ids = {
+                item["name"].casefold(): f"{world_id}-start"
+                if item["name"].casefold() == start_key
+                else f"{world_id}-start-{index}"
+                for index, item in enumerate(normalized_layout, start=2)
+            }
+            location_id = location_ids[start_key]
             entity_id = f"{world_id}-player"
-            if (
-                connection.execute(
-                    "SELECT 1 FROM locations WHERE id = ?", (location_id,)
+            for candidate_id in location_ids.values():
+                if connection.execute(
+                    "SELECT 1 FROM locations WHERE id = ?", (candidate_id,)
+                ).fetchone():
+                    raise WorldAdminConflict(f"starting location already exists: {candidate_id}")
+            for item in normalized_layout:
+                existing_name = connection.execute(
+                    "SELECT id FROM locations WHERE world_id = ? AND lower(name) = lower(?)",
+                    (world_id, item["name"]),
                 ).fetchone()
-                is not None
-            ):
-                raise WorldAdminConflict(f"starting location already exists: {location_id}")
+                if existing_name is not None:
+                    raise WorldAdminConflict(
+                        f"starting location name already exists: {item['name']}"
+                    )
             if (
                 connection.execute("SELECT 1 FROM entities WHERE id = ?", (entity_id,)).fetchone()
                 is not None
             ):
                 raise WorldAdminConflict(f"player entity already exists: {entity_id}")
-            connection.execute(
-                "INSERT INTO locations(id, world_id, name, description) VALUES (?, ?, ?, ?)",
-                (
-                    location_id,
-                    world_id,
-                    trimmed_location,
-                    trimmed_description or f"Starting location for {definition['name']}",
-                ),
-            )
+            for item in normalized_layout:
+                item_id = location_ids[item["name"].casefold()]
+                connection.execute(
+                    "INSERT INTO locations(id, world_id, name, description) VALUES (?, ?, ?, ?)",
+                    (
+                        item_id,
+                        world_id,
+                        item["name"],
+                        item["description"] or f"Starting area for {definition['name']}",
+                    ),
+                )
+            for item in normalized_layout:
+                parent = item["parent_name"]
+                if parent is not None:
+                    connection.execute(
+                        "INSERT INTO location_containment("
+                        "world_id, child_location_id, parent_location_id) "
+                        "VALUES (?, ?, ?)",
+                        (
+                            world_id,
+                            location_ids[item["name"].casefold()],
+                            location_ids[parent.casefold()],
+                        ),
+                    )
+                if item["link_to_start"] and item["name"].casefold() != start_key:
+                    first, second = sorted((location_ids[item["name"].casefold()], location_id))
+                    connection.execute(
+                        "INSERT INTO location_links(world_id, location_a, location_b) "
+                        "VALUES (?, ?, ?)",
+                        (world_id, first, second),
+                    )
             connection.execute(
                 "INSERT INTO entities(id, world_id, kind, name) VALUES (?, ?, 'character', ?)",
                 (entity_id, world_id, definition["name"]),
@@ -672,12 +782,19 @@ def instance_player_character(
                     "character_id": character_id,
                     "entity_id": entity_id,
                     "location_id": location_id,
+                    "location_ids": location_ids,
                 },
                 expected_revision=expected_revision,
+                result_fields=result_fields,
             )
             connection.commit()
             result.update(
-                {"character_id": character_id, "entity_id": entity_id, "location_id": location_id}
+                {
+                    "character_id": character_id,
+                    "entity_id": entity_id,
+                    "location_id": location_id,
+                    "location_ids": location_ids,
+                }
             )
             return result
         except WorldAdminError:

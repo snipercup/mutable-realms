@@ -118,6 +118,67 @@ def test_instance_copies_definition_into_two_independent_worlds(tmp_path: Path) 
     assert read_world(path, "world-b")["player"]["name"] == "Fate"
 
 
+def test_instance_commits_contextual_start_layout_atomically(tmp_path: Path) -> None:
+    path = _database(tmp_path)
+    _world(path, "world-a")
+    create_player_character(path, character_id="fate", operation_id="create-1", name="Fate")
+    layout = [
+        {
+            "name": "Main Street",
+            "description": "A broad street outside the guild.",
+            "parent_name": None,
+            "link_to_start": False,
+        },
+        {
+            "name": "Adventurer's Guild",
+            "description": "Tall doors beneath a brass crest.",
+            "parent_name": "Main Street",
+            "link_to_start": True,
+        },
+    ]
+    result = instance_player_character(
+        path,
+        world_id="world-a",
+        operation_id="instance-layout",
+        expected_revision=1,
+        character_id="fate",
+        location_name="Main Street",
+        location_layout=layout,
+    )
+    assert result["world_revision"] == 2
+    assert read_world(path, "world-a")["player"]["location_name"] == "Main Street"
+    import sqlite3
+
+    with sqlite3.connect(path) as connection:
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM locations WHERE world_id = 'world-a'"
+            ).fetchone()[0]
+            == 2
+        )
+        assert (
+            connection.execute(
+                "SELECT parent_location_id FROM location_containment WHERE child_location_id = ?",
+                (result["location_ids"]["adventurer's guild"],),
+            ).fetchone()[0]
+            == result["location_ids"]["main street"]
+        )
+        assert (
+            connection.execute("SELECT 1 FROM location_links WHERE world_id = 'world-a'").fetchone()
+            is not None
+        )
+    replay = instance_player_character(
+        path,
+        world_id="world-a",
+        operation_id="instance-layout",
+        expected_revision=1,
+        character_id="fate",
+        location_name="Main Street",
+        location_layout=layout,
+    )
+    assert replay["already_applied"] is True
+
+
 def test_world_allows_no_more_than_one_player_instance(tmp_path: Path) -> None:
     path = _database(tmp_path)
     _world(path, "world-a")
@@ -240,6 +301,15 @@ def test_narrator_world_start_instances_selected_character_and_replays(tmp_path:
     assert body["revision_before"] == 1
     assert body["revision_after"] == 2
     assert calls["count"] == 1
+    import json
+    import sqlite3
+
+    with sqlite3.connect(path) as connection:
+        stored = connection.execute(
+            "SELECT result_json FROM operations WHERE world_id = ? AND operation_id = ?",
+            ("world-a", "start-1"),
+        ).fetchone()[0]
+    assert json.loads(stored)["narration"] == "You arrive beneath silver lanterns."
 
     status, replay = asyncio.run(_request(app, "POST", "/api/worlds/world-a/start", payload))
     assert status == 201

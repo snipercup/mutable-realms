@@ -47,7 +47,8 @@ Future narration grounded in the changed world
 12. **Landmark promotion is presentation-only.** A promotion references one same-world map scope and one existing location; it does not create a second parent, duplicate a location, or add movement adjacency. Removing a promotion leaves containment and `location_links` unchanged.
 13. **Routes are explicit transit edges.** A route has same-world directed endpoints and an active state. Route travel requires the entity's exact current location to equal the route origin and records an authoritative landing location; it never infers or rewrites `location_links`, containment, or map visibility.
 14. **Lazy expansion is bounded and explicit.** Each accepted expansion creates one ordinary location tied to an existing anchor, records a stable proposal ID, rejects duplicate names/IDs, and counts against the world's expansion budget. It never creates entities, routes, or unbounded geography implicitly; optional containment and physical adjacency are separate explicit fields.
-15. **Narration-only goals.** Quests are not tracked as world state; only their effects persist through named operations. Accepted trade-off: nothing prevents narrating a quest twice — if double rewards ever hurt play, add a minimal completed-goal ledger (quest identifier + completion event, no lifecycle/board).
+15. **World starts are bounded layouts.** A narrator-driven start may create one to six locations selected from the opening context, with one explicit player start, optional single-parent containment, and only explicitly requested local links. It must not infer movement from containment, generate an unbounded map, overwrite existing locations, or regenerate an already-started world. The entire layout and player placement commit atomically at one world revision and replay exactly by operation ID.
+16. **Narration-only goals.** Quests are not tracked as world state; only their effects persist through named operations. Accepted trade-off: nothing prevents narrating a quest twice — if double rewards ever hurt play, add a minimal completed-goal ledger (quest identifier + completion event, no lifecycle/board).
 
 ## System inventory
 
@@ -138,5 +139,7 @@ The infrastructure side then implements the general capability as a vertical sli
 | Phase 15 | Direct player interface: turn relay + page input | 2026-08-08 |
 | §22 slice | `backup` command with verified artifacts | 2026-08-08 |
 | Scenario + worlds idea | Scenarios (templates) · world instancing · world management (create/update/elements/remove) · `0007`–`0009` | 2026-08-08 |
+| Nested locations, promotions, routes, and controlled expansion | `0011`–`0014`; hierarchy/scoped maps, presentation promotions, explicit routes, bounded narrator expansion | 2026-08-17 |
+| Contextual narrator world starts | Bounded structured start layouts, contextual player placement, containment/link creation, atomic replay-safe start | 2026-08-17 |
 
 The current live state (2026-08-08): ward-world and town-world both at revision 2; the narration profile is bound to town-world / sailor; the page accepts player actions for that world.

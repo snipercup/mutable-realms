@@ -112,6 +112,56 @@ def test_build_world_start_prompt_requires_structured_location_and_narration() -
     assert "Diplomat" in prompt
 
 
+def test_build_world_start_prompt_requires_bounded_contextual_layout() -> None:
+    prompt = build_world_start_prompt(
+        "world-of-aerthalon",
+        {
+            "id": "world-of-aerthalon",
+            "elements": [
+                {
+                    "element_type": "opening_scene",
+                    "content": "You are on the street in front of the Adventurer's Guild.",
+                }
+            ],
+        },
+        {"id": "fate", "name": "Fate"},
+    )
+    assert "street-level" in prompt
+    assert "city or province" in prompt
+    assert "locations" in prompt
+    assert "start_location_name" in prompt
+    assert "Main Street" in prompt
+
+
+def test_hermes_narrator_start_parses_contextual_layout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            '{"start_location_name":"Main Street",'
+            '"locations":[{"name":"Main Street",'
+            '"description":"A broad street.","parent_name":null,"link_to_start":false},'
+            '{"name":"Adventurer\\u0027s Guild","description":"Guild doors.",'
+            '"parent_name":"Main Street","link_to_start":true}],'
+            '"narration":"You stand before the guild doors."}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    result = HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+    assert result.start_location_name == "Main Street"
+    assert [location.name for location in result.locations] == [
+        "Main Street",
+        "Adventurer's Guild",
+    ]
+    assert result.locations[1].parent_name == "Main Street"
+    assert result.locations[1].link_to_start is True
+
+
 def test_hermes_narrator_start_parses_structured_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -167,6 +217,51 @@ def test_hermes_narrator_start_rejects_invalid_json(
     )
     with pytest.raises(NarratorError, match="invalid start JSON"):
         HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+
+
+def test_hermes_narrator_start_rejects_mixed_location_contracts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            '{"location_name":"Old", "start_location_name":"New",'
+            '"location_description":null,"narration":"Welcome."}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    with pytest.raises(NarratorError, match="mixes legacy"):
+        HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+
+
+def test_hermes_narrator_start_normalizes_model_layout_variants(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            '{"start_location_name":"Copperlane Street","locations":['
+            '{"name":"Copperlane Street","description":"Street.",'
+            '"parent_name":"Eliris","link_to_start":null},'
+            '{"name":"Adventurer\\u0027s Guildhall","description":"Guild.",'
+            '"parent_name":"Eliris","link_to_start":"Copperlane Street"}],'
+            '"narration":"You stand outside."}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    result = HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+    assert result.locations[0].parent_name is None
+    assert result.locations[0].link_to_start is False
+    assert result.locations[1].parent_name is None
+    assert result.locations[1].link_to_start is True
 
 
 def test_hermes_narrator_raises_on_empty_reply(

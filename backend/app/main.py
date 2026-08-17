@@ -699,7 +699,9 @@ def create_app(
                     raise WorldAdminConflict(
                         "operation id was already used with a different request"
                     )
-                return WorldStartResponse.model_validate(stored)
+                return WorldStartResponse.model_validate(
+                    {key: stored[key] for key in WorldStartResponse.model_fields}
+                )
             world = read_world(database_path, world_id)
             if world.get("player") is not None:
                 raise WorldAdminConflict(f"world already has a player: {world_id}")
@@ -733,8 +735,31 @@ def create_app(
                 operation_id=request.operation_id,
                 expected_revision=request.expected_revision,
                 character_id=request.character_id,
-                location_name=result.location_name,
+                location_name=result.start_location_name,
                 location_description=result.location_description,
+                location_layout=(
+                    [
+                        {
+                            "name": location.name,
+                            "description": location.description,
+                            "parent_name": location.parent_name,
+                            "link_to_start": location.link_to_start,
+                        }
+                        for location in result.locations
+                    ]
+                    if result.locations
+                    else None
+                ),
+                result_fields={
+                    "outcome": "world_started",
+                    "narration": result.narration,
+                    "character_id": request.character_id,
+                    "player_id": f"{world_id}-player",
+                    "location_id": f"{world_id}-start",
+                    "location_name": result.start_location_name,
+                    "revision_before": request.expected_revision,
+                    "revision_after": request.expected_revision + 1,
+                },
             )
             response = {
                 "outcome": "world_started",
@@ -747,12 +772,6 @@ def create_app(
                 "revision_before": request.expected_revision,
                 "revision_after": instance["world_revision"],
             }
-            with connect_database(database_path) as connection:
-                connection.execute(
-                    "UPDATE operations SET result_json = ? WHERE world_id = ? AND operation_id = ?",
-                    (json.dumps(response, sort_keys=True), world_id, request.operation_id),
-                )
-                connection.commit()
             return WorldStartResponse.model_validate(response)
         except WorldAdminNotFound as error:
             raise HTTPException(status_code=404, detail="world not found") from error
