@@ -143,7 +143,7 @@ Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup ap
 | `GET /api/worlds/{world_id}` | One world with its owned story elements and player summary. |
 | `GET /api/worlds/{world_id}/player` | Current player and placement. |
 | `POST /api/worlds/{world_id}/player` | Provision a player + starting location (body `{player_name, location_name, operation_id, expected_revision}`). |
-| `GET /api/worlds/{world_id}/map` | Derived map. Optional `scope_location_id` selects an administrative/read-only scope and `limit` bounds the visible graph to 1–100 direct children plus bounded sibling neighbors. Without an explicit scope, a world with a player uses the player's current location as the scope on every read; the response includes that anchor, direct children, sibling neighbors marked `is_neighbor`, exact/player-visible location IDs, and `boundary_links` for exits beyond the visible graph. A playerless world or explicitly flat read retains the legacy world-wide response. |
+| `GET /api/worlds/{world_id}/map` | Derived map. Optional `scope_location_id` selects an administrative/read-only scope and `limit` bounds the visible graph to 1–100 direct children plus bounded sibling neighbors. Without an explicit scope, a world with a player uses the player's current location as the scope on every read; the response includes that anchor, direct children, sibling neighbors marked `is_neighbor`, exact/player-visible location IDs, `boundary_links` for exits beyond the visible set, and `route_chain` for active directed routes reachable from the scope, ordered by destination `short`, `mid`, then `long` range metadata. Route entries are informational and do not create UI travel controls. |
 | `GET /api/worlds/{world_id}/locations/current` | Player's current location and generic contents. |
 | `GET /api/worlds/{world_id}/locations/{location_id}` | One location and its contents. |
 | `GET /api/worlds/{world_id}/entities/{entity_id}` | One entity and optional character state. |
@@ -168,7 +168,10 @@ The expansion service is the controlled narrator-facing creation seam. `world_ex
 
 The active structured start contract creates 3–6 locations and may mark a parentless sibling as `geography_role: boundary` with a direction and range band. A generic road beyond a gate, a sea route, or train track endpoint can therefore be named and oriented without being confused with a static child landmark. Route records remain the authoritative directed travel chain; future map work can render short/mid/long route destinations from those records rather than inferring routes from sibling placement.
 
+`route_chain` is a derived, bounded breadth-first presentation of active `world_routes` beginning at the map scope. Each entry contains the directed route, destination name, `chain_depth`, destination `geography_role`, direction, and range band. Cycles and duplicate route IDs are suppressed; at most 100 route entries are returned. A missing range band is sorted after `short`, `mid`, and `long`. The response does not imply that a route is accessible to the player; narrator-driven route travel remains the only gameplay mutation seam.
+
 `POST /api/worlds/{world_id}/route-travel` and MCP `world_travel_route` apply one active route to a character. The operation requires the exact current location to equal the route origin, validates the character/actor and revision, moves only the entity placement, records `entity_route_traveled`, and supports exact replay. It does not consult or modify `location_links`; route travel is explicit transit, not inferred local adjacency. Travel is rejected when the route is inactive or absent; successful travel requires an active, present route. No time, cost, discovery, or automatic route generation is implied.
+
 
 ### World administration
 

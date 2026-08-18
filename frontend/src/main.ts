@@ -115,6 +115,20 @@ type WorldMapBoundaryLink = {
   to_location_name: string;
 };
 
+type WorldMapRoute = {
+  route_id: string;
+  chain_depth: number;
+  name: string;
+  description: string | null;
+  route_kind: string;
+  origin_location_id: string;
+  destination_location_id: string;
+  destination_name: string;
+  geography_role: string;
+  direction: string | null;
+  range_band: string | null;
+};
+
 type WorldMap = {
   world: World;
   player_location_id: string | null;
@@ -124,6 +138,7 @@ type WorldMap = {
   child_total: number;
   has_more: boolean;
   boundary_links: WorldMapBoundaryLink[];
+  route_chain: WorldMapRoute[];
   locations: WorldMapLocation[];
 };
 
@@ -724,8 +739,35 @@ function renderMap(state: WorldState): HTMLElement {
         .join(", ")}.`;
       browser.append(exits);
     }
-    if (browser.childElementCount > 0) {
-      panel.append(browser);
+    if (state.map.route_chain.length > 0) {
+      const routes = element("section", "map-route-chain");
+      routes.append(element("h3", "map-route-heading", "Routes from here"));
+      const rangeLabels: Record<string, string> = { short: "Short range", mid: "Mid range", long: "Long range" };
+      const grouped = new Map<string, WorldMapRoute[]>();
+      for (const route of state.map.route_chain) {
+        const band = route.range_band ?? "unspecified";
+        const bucket = grouped.get(band) ?? [];
+        bucket.push(route);
+        grouped.set(band, bucket);
+      }
+      for (const band of ["short", "mid", "long", "unspecified"]) {
+        const routesInBand = grouped.get(band);
+        if (routesInBand === undefined) continue;
+        const lane = element("div", "map-route-lane");
+        lane.append(element("strong", "map-route-band", rangeLabels[band] ?? "Other range"));
+        for (const route of routesInBand) {
+          const item = element("div", "map-route-item");
+          const path = [route.direction, route.name, "→", route.destination_name]
+            .filter((value): value is string => value !== null)
+            .join(" ");
+          item.append(element("span", "map-route-path", path));
+          item.append(element("span", "map-route-kind", `${route.route_kind} · ${route.chain_depth} leg${route.chain_depth === 1 ? "" : "s"}`));
+          lane.append(item);
+        }
+        routes.append(lane);
+      }
+      routes.append(element("p", "muted map-route-note", "Routes show authored connections only; travel remains narrator-driven."));
+      browser.append(routes);
     }
   }
   return panel;

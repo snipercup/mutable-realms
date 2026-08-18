@@ -119,6 +119,20 @@ class WorldMapBoundaryLinkRead(StrictReadModel):
     to_location_name: str
 
 
+class WorldMapRouteRead(StrictReadModel):
+    route_id: str
+    chain_depth: int = Field(default=1, ge=1)
+    name: str
+    description: str | None
+    route_kind: str
+    origin_location_id: str
+    destination_location_id: str
+    destination_name: str
+    geography_role: str
+    direction: str | None
+    range_band: str | None
+
+
 class WorldMapBreadcrumbRead(StrictReadModel):
     id: str
     name: str
@@ -136,6 +150,7 @@ class WorldMapRead(StrictReadModel):
     child_total: int = Field(default=0, ge=0)
     has_more: bool = False
     boundary_links: list[WorldMapBoundaryLinkRead] = Field(default_factory=list)
+    route_chain: list[WorldMapRouteRead] = Field(default_factory=list)
     locations: list[WorldMapLocationRead]
 
 

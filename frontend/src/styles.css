@@ -132,6 +132,13 @@ h1, h2, h3, p { margin: 0; }
 .map-label { fill: #dbe6f5; font-size: 12px; font-weight: 600; }
 .map-count { fill: #e2e8f0; font-size: 10px; font-weight: 700; }
 .map-route-meta { fill: #9aaaca; font-size: 9px; font-weight: 500; }
+.map-route-chain { margin-top: 14px; }
+.map-route-heading { margin-bottom: 8px; font-size: 14px; }
+.map-route-lane { border-left: 2px solid #3d5277; margin: 8px 0; padding-left: 10px; }
+.map-route-band { color: #b9c8df; display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.map-route-item { display: flex; gap: 10px; justify-content: space-between; padding: 5px 0; }
+.map-route-path { color: #e3ebf7; }
+.map-route-kind, .map-route-note { color: #92a3c1; font-size: 11px; }
 
 .narration-panel { margin-top: 18px; padding: 22px; }
 .narration-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }

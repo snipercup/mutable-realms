@@ -212,9 +212,7 @@ def test_read_api_map_follows_current_player_location_after_sibling_move(tmp_pat
         "plaza",
         "tavern",
     ]
-    assert not any(
-        link["to_location_id"] == "plaza" for link in world_map["boundary_links"]
-    )
+    assert not any(link["to_location_id"] == "plaza" for link in world_map["boundary_links"])
 
 
 def test_read_api_map_includes_bounded_sibling_locations(tmp_path: Path) -> None:
@@ -252,6 +250,56 @@ def test_read_api_map_includes_bounded_sibling_locations(tmp_path: Path) -> None
         "south-road",
     ]
     assert world_map["locations"][1]["is_neighbor"] == 1
+
+
+def test_read_api_map_includes_route_chain_by_range(tmp_path: Path) -> None:
+    database_path = tmp_path / "world.sqlite3"
+    migrate_database(database_path)
+    seed_town_world(database_path)
+    with connect_database(database_path) as connection:
+        connection.executemany(
+            "INSERT INTO location_metadata("
+            "world_id, location_id, geography_role, direction, range_band) "
+            "VALUES (?, ?, 'route', ?, ?)",
+            [
+                (TOWN_WORLD_ID, "docks", "east", "short"),
+                (TOWN_WORLD_ID, "tavern", "north", "long"),
+            ],
+        )
+        connection.executemany(
+            "INSERT INTO world_routes("
+            "world_id, route_id, origin_location_id, destination_location_id, "
+            "name, description, route_kind) "
+            "VALUES (?, ?, 'market', ?, ?, ?, ?)",
+            [
+                (
+                    TOWN_WORLD_ID,
+                    "market-docks",
+                    "docks",
+                    "Quay Road",
+                    "A short road to the docks.",
+                    "road",
+                ),
+                (
+                    TOWN_WORLD_ID,
+                    "market-tavern",
+                    "tavern",
+                    "North Track",
+                    "A long route to the tavern.",
+                    "rail",
+                ),
+            ],
+        )
+        connection.execute(
+            "UPDATE entity_locations SET location_id = 'market' WHERE entity_id = 'sailor'"
+        )
+        connection.commit()
+
+    world_map = get_world_map(database_path, world_id=TOWN_WORLD_ID)
+    assert [(route["route_id"], route["range_band"]) for route in world_map["route_chain"]] == [
+        ("market-docks", "short"),
+        ("market-tavern", "long"),
+    ]
 
 
 def test_read_api_map_renders_world_without_links(tmp_path: Path) -> None:

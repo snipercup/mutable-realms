@@ -20,16 +20,15 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 - Expose neighboring/previous locations as boundary exits when explicit persisted links leave the current scope; exits are orientation/travel hints, not UI travel controls.
 - Keep map state derived from SQLite after movement so a successful narrated move immediately changes the map's working set.
 - Preserve flat-world compatibility and explicit scope navigation for administrative/read-only map browsing.
-- Keep child-location and sibling-location accessibility narrator-driven; this slice does not infer new travel permissions from containment.
-- Define the remaining boundary-neighbor behavior for transition locations: a gate, shore, road mouth, trailhead, or city edge may need a bounded outside-area neighbor rather than only same-settlement siblings.
+- Include active explicit route chains from the current scope, ordered and grouped by destination range (`short`, `mid`, `long`), with route kind, direction, destination, and chain depth.
+- Keep route-chain entries informational; map nodes and route rows are not UI travel controls.
 
 **Out of scope:**
 
 - Aerthalon-specific names, automatic roads, travel-time simulation, route generation, fast travel, or UI-driven movement.
 - Removing `location_links` or changing the existing movement precondition.
-- Cardinal-direction metadata and arrows; those remain a later presentation slice once current-location scoping is correct.
 
-**Verification:** the map-presentation and sibling-start slices are pushed in `c793cdf` and `c1add38`. The boundary-geography foundation is implemented locally: migration `0015` persists geography role, direction, and range band; structured start parsing and atomic persistence carry those fields; scoped map reads expose them; and the SVG labels directional/range metadata. `259` backend tests pass; `npm run lint`, `npm run frontend-build`, and `git diff --check` pass. An isolated HTTP/SQLite start on a fresh database returned a City Gate scope and a North Road neighbor with `geography_role: boundary`, `direction: north`, `range_band: mid`, and revision `2`. The next increment is explicit route-chain visualization for short/mid/long destinations and a live fresh-world start showing a boundary road outside a gate.
+**Verification:** the map-presentation, sibling-start, and boundary-geography foundation slices are pushed in `c793cdf`, `c1add38`, and `9f29fa1`. Explicit route-chain visualization is implemented locally but uncommitted: scoped map responses now return a bounded breadth-first `route_chain`, the frontend groups routes into short/mid/long lanes, and route rows remain informational. `260` backend tests pass; `npm run lint`, `npm run frontend-build`, and `git diff --check` pass. Fresh isolated HTTP/SQLite verification returned scope `Fish Market` with `Quay Road → Harbor Docks` as `short`, depth `1`, and `North Track → The Drowned Gull` as `long`, depth `2`; the inactive route was excluded.
 
 ## Recently completed
 
@@ -48,6 +47,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 | Scoped map presentation polish (omit scope anchor node, remove redundant child list, preserve boundary exits, suppress internal scoped-map link edges) | 2026-08-17 | `78a8875` |
 | Hide current location from scoped maps (scope metadata only, no player highlight) | 2026-08-18 | `c793cdf` |
 | Require sibling locations in structured world starts (3–6 bounded locations with child + sibling topology) | 2026-08-18 | `c1add38` |
+| Boundary geography orientation metadata (geography role, direction, range band; migration `0015`) | 2026-08-18 | `9f29fa1` |
 
 **Route verification:** `243` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted route creation at revision `0 → 1`, traveled the player from `harbor` to `city` at `1 → 2` without a `location_links` row, and replayed the same travel operation with `already_applied: true` without another revision. SQLite readback confirmed `world_route_set`, `entity_route_traveled`, the route endpoints, and final player placement; port 8795 was stopped and confirmed closed.
 

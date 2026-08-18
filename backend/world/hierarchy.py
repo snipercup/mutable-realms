@@ -534,6 +534,53 @@ def read_scoped_world_map(
                     }
                 )
 
+        route_chain: list[dict[str, Any]] = []
+        pending: list[tuple[str, int, tuple[str, ...]]] = [(resolved_scope_id, 0, ())]
+        seen_routes: set[str] = set()
+        while pending and len(route_chain) < 100:
+            origin_id, depth, route_path = pending.pop(0)
+            for route in connection.execute(
+                """
+                SELECT r.route_id, r.name, r.description, r.route_kind,
+                       r.origin_location_id, r.destination_location_id,
+                       destination.name AS destination_name,
+                       COALESCE(metadata.geography_role, 'route') AS geography_role,
+                       metadata.direction, metadata.range_band
+                FROM world_routes r
+                JOIN locations destination
+                  ON destination.world_id = r.world_id
+                 AND destination.id = r.destination_location_id
+                LEFT JOIN location_metadata metadata
+                  ON metadata.world_id = r.world_id
+                 AND metadata.location_id = r.destination_location_id
+                WHERE r.world_id = ? AND r.origin_location_id = ? AND r.is_active = 1
+                ORDER BY r.route_id
+                """,
+                (world_id, origin_id),
+            ):
+                route_id = route["route_id"]
+                if route_id in seen_routes or route_id in route_path:
+                    continue
+                seen_routes.add(route_id)
+                route_chain.append({**dict(route), "chain_depth": depth + 1})
+                pending.append(
+                    (
+                        route["destination_location_id"],
+                        depth + 1,
+                        (*route_path, route_id),
+                    )
+                )
+        range_order = {"short": 0, "mid": 1, "long": 2}
+        route_chain.sort(
+            key=lambda item: (
+                range_order.get(item["range_band"], 3),
+                item["chain_depth"],
+                item["direction"] or "",
+                item["name"],
+                item["route_id"],
+            )
+        )
+
         counts: dict[str, dict[str, int]] = {}
         for row in connection.execute(
             """
@@ -592,6 +639,7 @@ def read_scoped_world_map(
             boundaries,
             key=lambda item: (item["from_location_id"], item["to_location_id"]),
         ),
+        "route_chain": route_chain,
         "breadcrumbs": breadcrumbs,
         "child_total": total,
         "has_more": total > limit,
