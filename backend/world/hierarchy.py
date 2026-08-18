@@ -418,6 +418,9 @@ def read_scoped_world_map(
             SELECT l.id, l.name, l.description, m.kind,
                    COALESCE(m.is_map_scope, 0) AS is_map_scope,
                    COALESCE(m.is_default_scope, 0) AS is_default_scope,
+                   COALESCE(m.geography_role, 'local') AS geography_role,
+                   m.direction,
+                   m.range_band,
                    0 AS is_promoted,
                    0 AS is_neighbor,
                    (SELECT COUNT(*) FROM location_containment children

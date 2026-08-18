@@ -105,6 +105,9 @@ class WorldMapLocationRead(StrictReadModel):
     is_default_scope: bool = False
     is_promoted: bool = False
     is_neighbor: bool = False
+    geography_role: str = "local"
+    direction: str | None = None
+    range_band: str | None = None
     child_count: int = Field(default=0, ge=0)
     entity_kinds: dict[str, int]
     linked_location_ids: list[str]

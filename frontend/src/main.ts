@@ -93,6 +93,9 @@ type WorldMapLocation = {
   is_map_scope: boolean;
   is_default_scope: boolean;
   is_neighbor: boolean;
+  geography_role: string;
+  direction: string | null;
+  range_band: string | null;
   child_count: number;
   entity_kinds: Record<string, number>;
   linked_location_ids: string[];
@@ -666,6 +669,17 @@ function renderMap(state: WorldState): HTMLElement {
       svgElement("circle", { r: 20, class: "map-node-circle" }),
       svgElement("text", { y: 40, class: "map-label", "text-anchor": "middle" }),
     );
+    if (location.direction !== null || location.range_band !== null) {
+      const routeMeta = svgElement("text", {
+        y: 54,
+        class: "map-route-meta",
+        "text-anchor": "middle",
+      });
+      routeMeta.textContent = [location.direction, location.range_band]
+        .filter((value): value is string => value !== null)
+        .join(" · ");
+      group.append(routeMeta);
+    }
     const label = group.querySelector("text");
     if (label !== null) label.textContent = location.name;
 

@@ -131,6 +131,7 @@ h1, h2, h3, p { margin: 0; }
 .map-node--neighbor .map-node-circle { stroke-dasharray: 5 3; }
 .map-label { fill: #dbe6f5; font-size: 12px; font-weight: 600; }
 .map-count { fill: #e2e8f0; font-size: 10px; font-weight: 700; }
+.map-route-meta { fill: #9aaaca; font-size: 9px; font-weight: 500; }
 
 .narration-panel { margin-top: 18px; padding: 22px; }
 .narration-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }

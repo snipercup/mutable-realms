@@ -616,6 +616,9 @@ def instance_player_character(
         description = raw_location.get("description")
         parent_name = raw_location.get("parent_name")
         link_to_start = raw_location.get("link_to_start")
+        geography_role = raw_location.get("geography_role", "local")
+        direction = raw_location.get("direction")
+        range_band = raw_location.get("range_band")
         if not isinstance(name, str) or not name.strip() or len(name.strip()) > 200:
             raise WorldAdminConflict("start location name is invalid")
         if description is not None and not isinstance(description, str):
@@ -624,6 +627,21 @@ def instance_player_character(
             raise WorldAdminConflict("start location parent is invalid")
         if not isinstance(link_to_start, bool):
             raise WorldAdminConflict("start location link_to_start must be boolean")
+        if geography_role not in {"local", "boundary", "route"}:
+            raise WorldAdminConflict("start location geography_role is invalid")
+        if direction is not None and direction not in {
+            "north",
+            "northeast",
+            "east",
+            "southeast",
+            "south",
+            "southwest",
+            "west",
+            "northwest",
+        }:
+            raise WorldAdminConflict("start location direction is invalid")
+        if range_band is not None and range_band not in {"short", "mid", "long"}:
+            raise WorldAdminConflict("start location range_band is invalid")
         trimmed_name = name.strip()
         key = trimmed_name.casefold()
         if key in names:
@@ -635,6 +653,9 @@ def instance_player_character(
                 "description": description.strip() if isinstance(description, str) else None,
                 "parent_name": parent_name.strip() if isinstance(parent_name, str) else None,
                 "link_to_start": link_to_start,
+                "geography_role": geography_role,
+                "direction": direction,
+                "range_band": range_band,
             }
         )
     start_key = trimmed_location.casefold()
@@ -738,12 +759,27 @@ def instance_player_character(
                         item["description"] or f"Starting area for {definition['name']}",
                     ),
                 )
-            connection.execute(
-                "INSERT INTO location_metadata("
-                "world_id, location_id, kind, is_map_scope, is_default_scope) "
-                "VALUES (?, ?, 'local-area', 1, 1)",
-                (world_id, location_id),
-            )
+            for item in normalized_layout:
+                item_id = location_ids[item["name"].casefold()]
+                connection.execute(
+                    "INSERT INTO location_metadata("
+                    "world_id, location_id, kind, geography_role, direction, range_band, "
+                    "is_map_scope, is_default_scope) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        world_id,
+                        item_id,
+                        "local-area"
+                        if item_id == location_id
+                        else item["geography_role"]
+                        if item["geography_role"] != "local"
+                        else None,
+                        item["geography_role"],
+                        item["direction"],
+                        item["range_band"],
+                        int(item_id == location_id),
+                        int(item_id == location_id),
+                    ),
+                )
             for item in normalized_layout:
                 parent = item["parent_name"]
                 if parent is not None:

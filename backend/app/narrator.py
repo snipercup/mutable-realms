@@ -42,6 +42,9 @@ class NarratorStartLocation:
     description: str | None
     parent_name: str | None
     link_to_start: bool
+    geography_role: str = "local"
+    direction: str | None = None
+    range_band: str | None = None
 
 
 @dataclass(frozen=True)
@@ -59,6 +62,19 @@ class NarratorStartResult:
 
 
 StartNarrator = Callable[[str, dict[str, Any], dict[str, Any]], NarratorStartResult]
+
+_START_GEOGRAPHY_ROLES = {"local", "boundary", "route"}
+_START_DIRECTIONS = {
+    "north",
+    "northeast",
+    "east",
+    "southeast",
+    "south",
+    "southwest",
+    "west",
+    "northwest",
+}
+_START_RANGE_BANDS = {"short", "mid", "long"}
 
 DEFAULT_PROFILE = os.environ.get("MUTABLE_REALMS_NARRATOR_PROFILE", "mutable-realms-narration")
 NARRATOR_TIMEOUT_SECONDS = float(os.environ.get("MUTABLE_REALMS_NARRATOR_TIMEOUT", "120"))
@@ -191,8 +207,10 @@ def build_world_start_prompt(
         "movement links. Return ONLY valid JSON with exactly these keys: "
         "start_location_name (non-empty string), locations (array of 3 to 6 "
         "objects with exactly these fields: name, description (the location description), "
-        "parent_name (null unless that parent is also listed), and link_to_start "
-        "(boolean true or false); do not use location_description inside a location "
+        "parent_name (null unless that parent is also listed), link_to_start, "
+        "geography_role (local, boundary, or route), direction (a cardinal or "
+        "intercardinal direction, or null), and range_band (short, mid, long, or "
+        "null); do not use location_description inside a location "
         "object. The top-level legacy field is location_description only when locations "
         "is omitted. The top-level locations array and narration are required. "
         "link_to_start explicitly requests a local physical movement link. The "
@@ -307,12 +325,25 @@ def _parse_start_result(output: str) -> NarratorStartResult:
                     if key != "location_description"
                 }
                 raw_location["description"] = description_alias
-            if not isinstance(raw_location, dict) or set(raw_location) != {
-                "name",
-                "description",
-                "parent_name",
-                "link_to_start",
-            }:
+            if (
+                not isinstance(raw_location, dict)
+                or not {
+                    "name",
+                    "description",
+                    "parent_name",
+                    "link_to_start",
+                }.issubset(raw_location)
+                or set(raw_location)
+                - {
+                    "name",
+                    "description",
+                    "parent_name",
+                    "link_to_start",
+                    "geography_role",
+                    "direction",
+                    "range_band",
+                }
+            ):
                 raise NarratorError(
                     "narration agent start location has invalid fields",
                     category="invalid_start_response",
@@ -321,6 +352,9 @@ def _parse_start_result(output: str) -> NarratorStartResult:
             raw_description = raw_location["description"]
             parent_name = raw_location["parent_name"]
             link_to_start = raw_location["link_to_start"]
+            geography_role = raw_location.get("geography_role", "local")
+            direction = raw_location.get("direction")
+            range_band = raw_location.get("range_band")
             if not isinstance(name, str) or not name.strip() or len(name.strip()) > 200:
                 raise NarratorError(
                     "narration agent start location name is invalid",
@@ -342,6 +376,21 @@ def _parse_start_result(output: str) -> NarratorStartResult:
             if parent_name is not None and not isinstance(parent_name, str):
                 raise NarratorError(
                     "narration agent start parent_name is invalid",
+                    category="invalid_start_response",
+                )
+            if geography_role not in _START_GEOGRAPHY_ROLES:
+                raise NarratorError(
+                    "narration agent start geography_role is invalid",
+                    category="invalid_start_response",
+                )
+            if direction is not None and direction not in _START_DIRECTIONS:
+                raise NarratorError(
+                    "narration agent start direction is invalid",
+                    category="invalid_start_response",
+                )
+            if range_band is not None and range_band not in _START_RANGE_BANDS:
+                raise NarratorError(
+                    "narration agent start range_band is invalid",
                     category="invalid_start_response",
                 )
             if link_to_start is None:
@@ -367,6 +416,9 @@ def _parse_start_result(output: str) -> NarratorStartResult:
                     else None,
                     parent_name=parent_name.strip() if isinstance(parent_name, str) else None,
                     link_to_start=link_to_start,
+                    geography_role=geography_role,
+                    direction=direction,
+                    range_band=range_band,
                 )
             )
         locations = tuple(locations_list)
@@ -387,6 +439,9 @@ def _parse_start_result(output: str) -> NarratorStartResult:
                     else None
                 ),
                 link_to_start=location.link_to_start,
+                geography_role=location.geography_role,
+                direction=location.direction,
+                range_band=location.range_band,
             )
             for location in locations
         )

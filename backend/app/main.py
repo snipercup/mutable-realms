@@ -744,6 +744,9 @@ def create_app(
                             "description": location.description,
                             "parent_name": location.parent_name,
                             "link_to_start": location.link_to_start,
+                            "geography_role": location.geography_role,
+                            "direction": location.direction,
+                            "range_band": location.range_band,
                         }
                         for location in result.locations
                     ]

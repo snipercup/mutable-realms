@@ -147,7 +147,8 @@ def test_hermes_narrator_start_parses_contextual_layout(
             '{"name":"Adventurer\\u0027s Guild","description":"Guild doors.",'
             '"parent_name":"Main Street","link_to_start":true},'
             '{"name":"North Road","description":"A road north.",'
-            '"parent_name":null,"link_to_start":false}],'
+            '"parent_name":null,"link_to_start":false,'
+            '"geography_role":"boundary","direction":"north","range_band":"mid"}],'
             '"narration":"You stand before the guild doors."}'
         )
         stderr = ""
@@ -166,6 +167,9 @@ def test_hermes_narrator_start_parses_contextual_layout(
     assert result.locations[1].parent_name == "Main Street"
     assert result.locations[1].link_to_start is True
     assert result.locations[2].parent_name is None
+    assert result.locations[2].geography_role == "boundary"
+    assert result.locations[2].direction == "north"
+    assert result.locations[2].range_band == "mid"
 
 
 def test_hermes_narrator_start_rejects_structured_layout_without_sibling(

@@ -341,7 +341,9 @@ def test_narrator_world_start_instances_selected_character_and_replays(tmp_path:
             locations=(
                 NarratorStartLocation("Elaris", "A square.", None, False),
                 NarratorStartLocation("Guild Hall", "Guild doors.", "Elaris", True),
-                NarratorStartLocation("North Road", "A road north.", None, False),
+                NarratorStartLocation(
+                    "North Road", "A road north.", None, False, "boundary", "north", "mid"
+                ),
             ),
         )
 
@@ -381,6 +383,11 @@ def test_narrator_world_start_instances_selected_character_and_replays(tmp_path:
     world = read_world(path, "world-a")
     assert world["player"]["name"] == "Fate"
     assert world["player"]["location_name"] == "Elaris"
+    world_map = get_world_map(path, world_id="world-a")
+    north_road = next(item for item in world_map["locations"] if item["name"] == "North Road")
+    assert north_road["geography_role"] == "boundary"
+    assert north_road["direction"] == "north"
+    assert north_road["range_band"] == "mid"
     with sqlite3.connect(path) as connection:
         assert [
             row[0]
@@ -395,6 +402,11 @@ def test_narrator_world_start_instances_selected_character_and_replays(tmp_path:
             ).fetchone()
             is not None
         )
+        assert connection.execute(
+            "SELECT geography_role, direction, range_band FROM location_metadata "
+            "WHERE world_id = ? AND location_id = ?",
+            ("world-a", "world-a-start-4"),
+        ).fetchone() == ("boundary", "north", "mid")
 
 
 def test_narrator_world_start_failure_leaves_world_playerless(tmp_path: Path) -> None:
