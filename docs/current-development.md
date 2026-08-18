@@ -11,7 +11,8 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 **Scope:**
 
 - Resolve the default map scope from the authoritative player's current location on every map read; do not retain the previous location's `is_default_scope` as the active player view.
-- Render the current location as the map anchor/player node, never as a child of itself.
+- Render only child and sibling location nodes inside the scoped map; the current location remains authoritative scope metadata for the title but is not rendered as a map node.
+- Do not highlight the current player location in the map; the map title communicates where the player is.
 - Render up to 100 direct child locations belonging to the current scope, plus bounded sibling locations that share the current location's parent; root-level locations with no parent are treated as virtual-world siblings.
 - Mark sibling locations as presentation neighbors, not child locations or inferred movement destinations.
 - Expose neighboring/previous locations as boundary exits when explicit persisted links leave the current scope; exits are orientation/travel hints, not UI travel controls.
@@ -25,7 +26,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 - Removing `location_links` or changing the existing movement precondition.
 - Cardinal-direction metadata and arrows; those remain a later presentation slice once current-location scoping is correct.
 
-**Verification:** `258` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and `git diff --check` passes. Regression coverage includes current-location scope precedence, bounded sibling rendering, root-level virtual siblings, and no synthetic exit when a sibling is already visible. Live Aerthalon readback showed Main Street has four genuine children, no self-child, and no sibling/outbound links were created by the narrator. An isolated HTTP/SQLite verification returned a Fish Market anchor, Fruit Store child, and Harbor Plaza, Harbor Docks, North Road, South Road, and The Drowned Gull as `is_neighbor` nodes; the temporary server was stopped and port `8795` confirmed closed. The frontend now renders the anchor centrally, removes the `Derived from world state` eyebrow and duplicate Player area/current-scope navigation, and gives neighbor nodes a dashed outline. Final browser verification remains pending.
+**Verification:** pending this presentation refinement. The current location remains in the backend response as scope metadata, while the frontend must render only children/neighbors and no player highlight. Required evidence is a rebuilt frontend, a Main Street map DOM check with no Main Street node/ring, and regression coverage preserving child and sibling nodes.
 
 ## Recently completed
 

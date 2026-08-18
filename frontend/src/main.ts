@@ -607,7 +607,9 @@ function renderMap(state: WorldState): HTMLElement {
     panel.append(navigation);
   }
 
-  const renderedLocations = state.map.locations.slice(0, MAP_RENDER_LIMIT);
+  const renderedLocations = state.map.locations
+    .filter((location) => location.id !== state.map.scope_location?.id)
+    .slice(0, MAP_RENDER_LIMIT);
   if (state.map.locations.length > MAP_RENDER_LIMIT || state.map.has_more) {
     panel.append(
       element(
@@ -625,19 +627,10 @@ function renderMap(state: WorldState): HTMLElement {
     "aria-label": `Map of ${scopeName}`,
   });
 
-  const anchorId = state.map.scope_location?.id;
-  const ordered = [...renderedLocations].sort((a, b) => {
-    if (a.id === anchorId) return -1;
-    if (b.id === anchorId) return 1;
-    return a.name.localeCompare(b.name);
-  });
+  const ordered = [...renderedLocations].sort((a, b) => a.name.localeCompare(b.name));
   const positions = new Map<string, [number, number]>();
-  const childLocations = anchorId === undefined
-    ? ordered
-    : ordered.filter((location) => location.id !== anchorId);
-  if (anchorId !== undefined) positions.set(anchorId, [MAP_CENTER_X, MAP_CENTER_Y]);
-  mapPositions(childLocations.length).forEach((position, index) => {
-    positions.set(childLocations[index].id, position);
+  mapPositions(ordered.length).forEach((position, index) => {
+    positions.set(ordered[index].id, position);
   });
 
   if (state.map.scope_location === null) {
@@ -665,22 +658,14 @@ function renderMap(state: WorldState): HTMLElement {
 
   for (const location of ordered) {
     const [x, y] = positions.get(location.id) ?? [MAP_CENTER_X, MAP_CENTER_Y];
-    const playerHere = state.map.player_visible_location_id === location.id;
     const group = svgElement("g", {
-      class: playerHere
-        ? "map-node map-node--player"
-        : location.is_neighbor
-          ? "map-node map-node--neighbor"
-          : "map-node",
+      class: location.is_neighbor ? "map-node map-node--neighbor" : "map-node",
       transform: `translate(${x}, ${y})`,
     });
     group.append(
       svgElement("circle", { r: 20, class: "map-node-circle" }),
       svgElement("text", { y: 40, class: "map-label", "text-anchor": "middle" }),
     );
-    if (playerHere) {
-      group.append(svgElement("circle", { r: 27, class: "map-node-ring" }));
-    }
     const label = group.querySelector("text");
     if (label !== null) label.textContent = location.name;
 
