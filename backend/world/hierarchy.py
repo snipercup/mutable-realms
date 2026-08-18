@@ -410,46 +410,7 @@ def read_scoped_world_map(
             if exists is None:
                 raise KeyError(f"location not found: {resolved_scope_id}")
         elif player_location_id is not None:
-            resolved = connection.execute(
-                """
-                WITH RECURSIVE chain(id, depth) AS (
-                    SELECT ?, 0
-                    UNION ALL
-                    SELECT lc.parent_location_id, chain.depth + 1
-                    FROM location_containment lc
-                    JOIN chain ON chain.id = lc.child_location_id
-                    WHERE lc.world_id = ?
-                )
-                SELECT chain.id
-                FROM chain
-                JOIN location_metadata m
-                  ON m.world_id = ? AND m.location_id = chain.id
-                WHERE m.is_default_scope = 1
-                ORDER BY chain.depth LIMIT 1
-                """,
-                (player_location_id, world_id, world_id),
-            ).fetchone()
-            if resolved is None:
-                resolved = connection.execute(
-                    """
-                    WITH RECURSIVE chain(id, depth) AS (
-                        SELECT ?, 0
-                        UNION ALL
-                        SELECT lc.parent_location_id, chain.depth + 1
-                        FROM location_containment lc
-                        JOIN chain ON chain.id = lc.child_location_id
-                        WHERE lc.world_id = ?
-                    )
-                    SELECT chain.id
-                    FROM chain
-                    JOIN location_metadata m
-                      ON m.world_id = ? AND m.location_id = chain.id
-                    WHERE m.is_map_scope = 1
-                    ORDER BY chain.depth LIMIT 1
-                    """,
-                    (player_location_id, world_id, world_id),
-                ).fetchone()
-            resolved_scope_id = resolved["id"] if resolved is not None else None
+            resolved_scope_id = player_location_id
         if resolved_scope_id is None:
             return None
 
@@ -458,6 +419,7 @@ def read_scoped_world_map(
                    COALESCE(m.is_map_scope, 0) AS is_map_scope,
                    COALESCE(m.is_default_scope, 0) AS is_default_scope,
                    0 AS is_promoted,
+                   0 AS is_neighbor,
                    (SELECT COUNT(*) FROM location_containment children
                     WHERE children.world_id = l.world_id
                       AND children.parent_location_id = l.id) AS child_count
@@ -478,6 +440,33 @@ def read_scoped_world_map(
             + "ORDER BY l.name, l.id LIMIT ?",
             (world_id, resolved_scope_id, limit + 1),
         ).fetchall()
+        sibling_select = base_select.replace("0 AS is_neighbor", "1 AS is_neighbor")
+        parent = connection.execute(
+            "SELECT parent_location_id FROM location_containment "
+            "WHERE world_id = ? AND child_location_id = ?",
+            (world_id, resolved_scope_id),
+        ).fetchone()
+        if parent is None:
+            sibling_rows = connection.execute(
+                sibling_select
+                + " WHERE l.world_id = ? AND l.id <> ? "
+                + "AND NOT EXISTS (SELECT 1 FROM location_containment parent "
+                + "WHERE parent.world_id = l.world_id "
+                + "AND parent.child_location_id = l.id) "
+                + "ORDER BY l.name, l.id LIMIT ?",
+                (world_id, resolved_scope_id, limit + 1),
+            ).fetchall()
+        else:
+            sibling_rows = connection.execute(
+                sibling_select
+                + " JOIN location_containment sibling_parent "
+                + "ON sibling_parent.world_id = l.world_id "
+                + "AND sibling_parent.child_location_id = l.id "
+                + "WHERE l.world_id = ? AND l.id <> ? "
+                + "AND sibling_parent.parent_location_id = ? "
+                + "ORDER BY l.name, l.id LIMIT ?",
+                (world_id, resolved_scope_id, parent["parent_location_id"], limit + 1),
+            ).fetchall()
         promoted_select = base_select.replace("0 AS is_promoted", "1 AS is_promoted")
         promoted_rows = connection.execute(
             promoted_select
@@ -503,7 +492,8 @@ def read_scoped_world_map(
             (world_id, resolved_scope_id, world_id, resolved_scope_id),
         ).fetchone()[0]
         visible_children = sorted(
-            [*child_rows, *promoted_rows], key=lambda row: (row["name"], row["id"])
+            [*child_rows, *promoted_rows, *sibling_rows],
+            key=lambda row: (row["name"], row["id"]),
         )[:limit]
         visible_rows = [scope, *visible_children]
         visible_ids = {row["id"] for row in visible_rows}

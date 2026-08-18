@@ -92,6 +92,7 @@ type WorldMapLocation = {
   kind: string | null;
   is_map_scope: boolean;
   is_default_scope: boolean;
+  is_neighbor: boolean;
   child_count: number;
   entity_kinds: Record<string, number>;
   linked_location_ids: string[];
@@ -588,21 +589,11 @@ function svgElement(
 function renderMap(state: WorldState): HTMLElement {
   const panel = element("section", "panel map-panel");
   const scopeName = state.map.scope_location?.name ?? state.world.name;
-  panel.append(
-    element("span", "eyebrow", "Derived from world state"),
-    element("h2", "section-title", `Map of ${scopeName}`),
-  );
+  panel.append(element("h2", "section-title", `Map of ${scopeName}`));
 
-  if (state.map.scope_location !== null) {
+  if (state.map.scope_location !== null && state.map.breadcrumbs.length > 0) {
     const navigation = element("nav", "map-scope-nav");
     navigation.setAttribute("aria-label", "Map scope");
-    const localButton = element("button", "button subtle", "Player area");
-    localButton.type = "button";
-    localButton.addEventListener("click", () => {
-      selectedMapScopeId = null;
-      void refresh();
-    });
-    navigation.append(localButton);
     for (const breadcrumb of state.map.breadcrumbs) {
       const button = element("button", "button subtle", breadcrumb.name);
       button.type = "button";
@@ -613,15 +604,10 @@ function renderMap(state: WorldState): HTMLElement {
       });
       navigation.append(button);
     }
-    navigation.append(element("span", "map-scope-current", scopeName));
     panel.append(navigation);
   }
 
-  const mapLocations =
-    state.map.scope_location === null
-      ? state.map.locations
-      : state.map.locations.filter((location) => location.id !== state.map.scope_location?.id);
-  const renderedLocations = mapLocations.slice(0, MAP_RENDER_LIMIT);
+  const renderedLocations = state.map.locations.slice(0, MAP_RENDER_LIMIT);
   if (state.map.locations.length > MAP_RENDER_LIMIT || state.map.has_more) {
     panel.append(
       element(
@@ -639,10 +625,19 @@ function renderMap(state: WorldState): HTMLElement {
     "aria-label": `Map of ${scopeName}`,
   });
 
-  const ordered = [...renderedLocations].sort((a, b) => a.name.localeCompare(b.name));
+  const anchorId = state.map.scope_location?.id;
+  const ordered = [...renderedLocations].sort((a, b) => {
+    if (a.id === anchorId) return -1;
+    if (b.id === anchorId) return 1;
+    return a.name.localeCompare(b.name);
+  });
   const positions = new Map<string, [number, number]>();
-  mapPositions(ordered.length).forEach((position, index) => {
-    positions.set(ordered[index].id, position);
+  const childLocations = anchorId === undefined
+    ? ordered
+    : ordered.filter((location) => location.id !== anchorId);
+  if (anchorId !== undefined) positions.set(anchorId, [MAP_CENTER_X, MAP_CENTER_Y]);
+  mapPositions(childLocations.length).forEach((position, index) => {
+    positions.set(childLocations[index].id, position);
   });
 
   if (state.map.scope_location === null) {
@@ -672,7 +667,11 @@ function renderMap(state: WorldState): HTMLElement {
     const [x, y] = positions.get(location.id) ?? [MAP_CENTER_X, MAP_CENTER_Y];
     const playerHere = state.map.player_visible_location_id === location.id;
     const group = svgElement("g", {
-      class: playerHere ? "map-node map-node--player" : "map-node",
+      class: playerHere
+        ? "map-node map-node--player"
+        : location.is_neighbor
+          ? "map-node map-node--neighbor"
+          : "map-node",
       transform: `translate(${x}, ${y})`,
     });
     group.append(

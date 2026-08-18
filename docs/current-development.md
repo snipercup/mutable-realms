@@ -4,33 +4,28 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Scope-aware local maps and directional neighboring locations — in progress
+### Current-location local maps after narrated movement — in progress
 
-**Goal:** make the map describe the player's local geographic area rather than repeatedly labeling the current location as the map itself. When the player is at **Main Street**, the map should show Main Street's child locations in the center and nearby sibling/neighbor locations around the edge, with directional orientation such as north, south, east, and west. The map should help the player understand where nearby streets, merchant roads, and outskirts lie without becoming a travel control.
+**Goal:** make every playable scenario show a map of the player's current location rather than a world-wide fallback or a stale previous scope. When the player moves from Main Street to Market Row, the map should discard the previous visible nodes, show Market Row as the player location, show Main Street as an exit when the persisted movement graph supports it, and show up to 100 direct child locations of Market Row. The same rule must work for tropical beaches, roads, settlements, interiors, and other scenario geography without Aerthalon-specific assumptions.
 
 **Scope:**
 
-- Reconcile the contextual-start slice as committed in `7ec6bc0`.
-- The scoped map response may retain the scope node as metadata, but the player-facing SVG renders only the locations inside that scope; the anchor is not drawn as a child of itself.
-- Scoped maps do not repeat direct child locations in a separate browser/list; the map is the child-location index. Boundary exits remain as text because they describe where narration may take the player beyond the current view.
-- Internal `location_links` are not rendered as edges in scoped maps. They remain authoritative data for narration and movement validation; legacy flat maps may continue rendering their links for compatibility.
-- Make the map title and scope explicit. A map centered on Main Street must not imply that Main Street is contained by itself or render `Map of Main Street` as though the current location were its own enclosing map.
-- Preserve the distinction between containment and presentation scope. A location cannot be its own parent; the current location is the map center or anchor, not an enclosing location.
-- Extend narrator-created location data with bounded directional/orientation metadata for sibling or neighboring locations, so the derived map can show arrows or directional markers without guessing geography from names.
-- Render directional relationships as presentation edges/arrows rather than treating every visible relationship as a local movement link.
-- Keep player movement narrator-driven; the map must not add click-to-travel behavior or become authoritative for accessibility.
-- Keep world state authoritative in SQLite and derive the map entirely from persisted locations, containment, and validated directional metadata.
-- Bound the number of visible neighbors and preserve useful overflow behavior as local areas grow toward side streets, merchant roads, and outskirts.
-- Ensure existing flat worlds, worlds without directional metadata, and existing `location_links` remain compatible during the transition.
+- Resolve the default map scope from the authoritative player's current location on every map read; do not retain the previous location's `is_default_scope` as the active player view.
+- Render the current location as the map anchor/player node, never as a child of itself.
+- Render up to 100 direct child locations belonging to the current scope, plus bounded sibling locations that share the current location's parent; root-level locations with no parent are treated as virtual-world siblings.
+- Mark sibling locations as presentation neighbors, not child locations or inferred movement destinations.
+- Expose neighboring/previous locations as boundary exits when explicit persisted links leave the current scope; exits are orientation/travel hints, not UI travel controls.
+- Keep map state derived from SQLite after movement so a successful narrated move immediately changes the map's working set.
+- Preserve flat-world compatibility and explicit scope navigation for administrative/read-only map browsing.
+- Keep child-location and sibling-location accessibility narrator-driven; this slice does not infer new travel permissions from containment.
 
 **Out of scope:**
 
-- Automatic roads, travel-time simulation, route generation, fast travel, or UI-driven movement.
-- Inferring cardinal directions from location names, insertion order, or SVG placement.
-- Removing or redefining `location_links` and the current movement precondition in this slice; any change to authoritative travel semantics requires a separately scoped decision and migration/compatibility plan.
-- Treating map arrows as proof that travel is possible. Narration and validated world operations remain responsible for movement.
+- Aerthalon-specific names, automatic roads, travel-time simulation, route generation, fast travel, or UI-driven movement.
+- Removing `location_links` or changing the existing movement precondition.
+- Cardinal-direction metadata and arrows; those remain a later presentation slice once current-location scoping is correct.
 
-**Verification:** implementation pending final browser verification. The backend map contract remains unchanged; the scoped frontend now omits the scope anchor from rendered nodes, removes the redundant child-location browser, preserves boundary-exit text, and suppresses internal scoped-map edges.
+**Verification:** `258` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and `git diff --check` passes. Regression coverage includes current-location scope precedence, bounded sibling rendering, root-level virtual siblings, and no synthetic exit when a sibling is already visible. Live Aerthalon readback showed Main Street has four genuine children, no self-child, and no sibling/outbound links were created by the narrator. An isolated HTTP/SQLite verification returned a Fish Market anchor, Fruit Store child, and Harbor Plaza, Harbor Docks, North Road, South Road, and The Drowned Gull as `is_neighbor` nodes; the temporary server was stopped and port `8795` confirmed closed. The frontend now renders the anchor centrally, removes the `Derived from world state` eyebrow and duplicate Player area/current-scope navigation, and gives neighbor nodes a dashed outline. Final browser verification remains pending.
 
 ## Recently completed
 
@@ -46,12 +41,15 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 | Detailed travel and explicit routes (migration 0013, directed route definitions, exact-origin route travel, HTTP and MCP seams) | 2026-08-17 | `1531e67` |
 | Controlled narrator-driven lazy expansion (migration 0014, bounded structured location proposals, duplicate/budget checks, atomic HTTP/MCP expansion) | 2026-08-17 | `108ed5e` |
 | Narrator-driven contextual starting locations (bounded structured start layouts, contextual player placement, containment/link creation, atomic replay-safe start) | 2026-08-17 | `7ec6bc0` |
+| Scoped map presentation polish (omit scope anchor node, remove redundant child list, preserve boundary exits, suppress internal scoped-map link edges) | 2026-08-17 | `78a8875` |
 
 **Route verification:** `243` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted route creation at revision `0 → 1`, traveled the player from `harbor` to `city` at `1 → 2` without a `location_links` row, and replayed the same travel operation with `already_applied: true` without another revision. SQLite readback confirmed `world_route_set`, `entity_route_traveled`, the route endpoints, and final player placement; port 8795 was stopped and confirmed closed.
 
 **Expansion verification:** `248` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted a structured `market` proposal at revision `0 → 1`, created its `city` containment and `harbor` physical link, replayed the proposal without another revision, and rejected a duplicate name with HTTP `409`. SQLite readback confirmed `location_expanded`, the proposal ledger, final location data, containment, link, and world revision; port 8795 was stopped and confirmed closed.
 
 **Contextual-start verification:** `252` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 started an Aerthalon-like world at **Main Street** with the Adventurer's Guild as a child location and an explicit local link. The world revision advanced `1 → 2`; SQLite readback confirmed the narration was stored in the same operation result, and exact replay returned the identical response without another revision. Same-world name collisions are rejected rather than silently duplicated; port 8795 was stopped and confirmed closed. An independent review found and the implementation fixed a separate-transaction replay hazard before closeout.
+
+**Scoped-map polish verification:** `256` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and `git diff --check` passes. Temporary HTTP verification served the rebuilt frontend and confirmed the scoped map API continued returning boundary exits; the user then manually verified the Aerthalon map after pushing `78a8875`. The temporary server was stopped and port 8795 was confirmed closed. The backend map contract and authoritative movement data were unchanged.
 
 ## How an idea becomes work
 

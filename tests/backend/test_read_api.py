@@ -12,6 +12,7 @@ from backend.persistence.migrations import migrate_database
 from backend.scenarios.town.seed import TOWN_WORLD_ID, seed_town_world
 from backend.scenarios.ward.mutations import treat_and_discharge_patient
 from backend.scenarios.ward.seed import WARD_WORLD_ID, seed_ward_world
+from backend.world.queries import get_world_map
 from tests.backend.general_world import GENERAL_WORLD_ID, seed_general_world
 
 
@@ -56,6 +57,9 @@ def test_read_api_exposes_world_map_with_links_and_entity_kinds(tmp_path: Path) 
     assert by_id["market"]["linked_location_ids"] == ["docks", "plaza"]
     assert by_id["plaza"]["entity_kinds"] == {"character": 1}
     assert by_id["market"]["entity_kinds"] == {"character": 1, "item": 1}
+    assert by_id["market"]["is_neighbor"] == 1
+    assert by_id["tavern"]["is_neighbor"] == 1
+    assert by_id["docks"]["is_neighbor"] == 1
 
 
 def test_read_api_map_renders_one_scope_and_reports_boundary_exits(tmp_path: Path) -> None:
@@ -139,10 +143,12 @@ def test_read_api_map_includes_explicit_promoted_landmark(tmp_path: Path) -> Non
     assert world_map["child_total"] == 2
     docks = next(location for location in world_map["locations"] if location["id"] == "docks")
     assert docks["is_promoted"] is True
-    assert docks["linked_location_ids"] == ["market"]
+    assert docks["linked_location_ids"] == ["market", "tavern"]
 
 
-def test_read_api_map_uses_nearest_default_scope_for_player(tmp_path: Path) -> None:
+def test_read_api_map_uses_current_player_location_over_parent_default_scope(
+    tmp_path: Path,
+) -> None:
     database_path = tmp_path / "world.sqlite3"
     migrate_database(database_path)
     seed_town_world(database_path)
@@ -164,9 +170,88 @@ def test_read_api_map_uses_nearest_default_scope_for_player(tmp_path: Path) -> N
     status, world_map = asyncio.run(_get(app, f"/api/worlds/{TOWN_WORLD_ID}/map"))
 
     assert status == 200
-    assert world_map["scope_location"]["id"] == "market"
+    assert world_map["scope_location"]["id"] == "plaza"
     assert world_map["player_location_id"] == "plaza"
     assert world_map["player_visible_location_id"] == "plaza"
+
+
+def test_read_api_map_follows_current_player_location_after_sibling_move(tmp_path: Path) -> None:
+    database_path = tmp_path / "world.sqlite3"
+    migrate_database(database_path)
+    seed_town_world(database_path)
+    with connect_database(database_path) as connection:
+        connection.execute(
+            "INSERT INTO locations(id, world_id, name, description) "
+            "VALUES ('fruit-store', ?, 'Fruit Store', 'A tropical fruit stall.')",
+            (TOWN_WORLD_ID,),
+        )
+        connection.execute(
+            "INSERT INTO location_containment(world_id, child_location_id, parent_location_id) "
+            "VALUES (?, 'fruit-store', 'market')",
+            (TOWN_WORLD_ID,),
+        )
+        connection.execute(
+            "INSERT INTO location_metadata("
+            "world_id, location_id, kind, is_map_scope, is_default_scope) "
+            "VALUES (?, 'plaza', 'street', 1, 1)",
+            (TOWN_WORLD_ID,),
+        )
+        connection.execute(
+            "UPDATE entity_locations SET location_id = 'market' WHERE entity_id = 'sailor'"
+        )
+        connection.commit()
+
+    world_map = get_world_map(database_path, world_id=TOWN_WORLD_ID)
+
+    assert world_map["scope_location"]["id"] == "market"
+    assert world_map["player_location_id"] == "market"
+    assert [location["id"] for location in world_map["locations"]] == [
+        "market",
+        "fruit-store",
+        "docks",
+        "plaza",
+        "tavern",
+    ]
+    assert not any(
+        link["to_location_id"] == "plaza" for link in world_map["boundary_links"]
+    )
+
+
+def test_read_api_map_includes_bounded_sibling_locations(tmp_path: Path) -> None:
+    database_path = tmp_path / "world.sqlite3"
+    migrate_database(database_path)
+    seed_town_world(database_path)
+    with connect_database(database_path) as connection:
+        connection.executemany(
+            "INSERT INTO locations(id, world_id, name, description) VALUES (?, ?, ?, ?)",
+            [
+                ("north-road", TOWN_WORLD_ID, "North Road", "A road north."),
+                ("south-road", TOWN_WORLD_ID, "South Road", "A road south."),
+            ],
+        )
+        connection.execute(
+            "INSERT INTO location_containment(world_id, child_location_id, parent_location_id) "
+            "VALUES (?, 'market', 'north-road')",
+            (TOWN_WORLD_ID,),
+        )
+        connection.execute(
+            "INSERT INTO location_containment(world_id, child_location_id, parent_location_id) "
+            "VALUES (?, 'south-road', 'north-road')",
+            (TOWN_WORLD_ID,),
+        )
+        connection.execute(
+            "UPDATE entity_locations SET location_id = 'market' WHERE entity_id = 'sailor'"
+        )
+        connection.commit()
+
+    world_map = get_world_map(database_path, world_id=TOWN_WORLD_ID)
+
+    assert world_map["scope_location"]["id"] == "market"
+    assert [location["id"] for location in world_map["locations"]] == [
+        "market",
+        "south-road",
+    ]
+    assert world_map["locations"][1]["is_neighbor"] == 1
 
 
 def test_read_api_map_renders_world_without_links(tmp_path: Path) -> None:
