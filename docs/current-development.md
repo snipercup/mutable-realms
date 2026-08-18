@@ -13,6 +13,8 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 - Resolve the default map scope from the authoritative player's current location on every map read; do not retain the previous location's `is_default_scope` as the active player view.
 - Render only child and sibling location nodes inside the scoped map; the current location remains authoritative scope metadata for the title but is not rendered as a map node.
 - Do not highlight the current player location in the map; the map title communicates where the player is.
+- Require the structured start response to contain 3–6 locations: the parentless selected start, at least one direct child of that start, and at least one other parentless sibling at the same scale.
+- Keep siblings as persisted presentation geography only; `parent_name` creates containment and `link_to_start` creates explicit movement adjacency independently.
 - Render up to 100 direct child locations belonging to the current scope, plus bounded sibling locations that share the current location's parent; root-level locations with no parent are treated as virtual-world siblings.
 - Mark sibling locations as presentation neighbors, not child locations or inferred movement destinations.
 - Expose neighboring/previous locations as boundary exits when explicit persisted links leave the current scope; exits are orientation/travel hints, not UI travel controls.
@@ -26,7 +28,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 - Removing `location_links` or changing the existing movement precondition.
 - Cardinal-direction metadata and arrows; those remain a later presentation slice once current-location scoping is correct.
 
-**Verification:** pending this presentation refinement. The current location remains in the backend response as scope metadata, while the frontend must render only children/neighbors and no player highlight. Required evidence is a rebuilt frontend, a Main Street map DOM check with no Main Street node/ring, and regression coverage preserving child and sibling nodes.
+**Verification:** the pushed map-presentation refinement is complete in `c793cdf`. The start-contract refinement is implemented locally but remains uncommitted. `259` backend tests pass; parser coverage rejects structured layouts without a sibling, and an HTTP start regression persists Elaris, Guild Hall as a child, and North Road as a sibling atomically with replay. Legacy one-location starts remain accepted. Full live `Begin your story` verification against a fresh temporary database is still required before closeout.
 
 ## Recently completed
 
@@ -43,6 +45,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 | Controlled narrator-driven lazy expansion (migration 0014, bounded structured location proposals, duplicate/budget checks, atomic HTTP/MCP expansion) | 2026-08-17 | `108ed5e` |
 | Narrator-driven contextual starting locations (bounded structured start layouts, contextual player placement, containment/link creation, atomic replay-safe start) | 2026-08-17 | `7ec6bc0` |
 | Scoped map presentation polish (omit scope anchor node, remove redundant child list, preserve boundary exits, suppress internal scoped-map link edges) | 2026-08-17 | `78a8875` |
+| Hide current location from scoped maps (scope metadata only, no player highlight) | 2026-08-18 | `c793cdf` |
 
 **Route verification:** `243` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted route creation at revision `0 → 1`, traveled the player from `harbor` to `city` at `1 → 2` without a `location_links` row, and replayed the same travel operation with `already_applied: true` without another revision. SQLite readback confirmed `world_route_set`, `entity_route_traveled`, the route endpoints, and final player placement; port 8795 was stopped and confirmed closed.
 

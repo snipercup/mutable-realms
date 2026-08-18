@@ -7,7 +7,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from backend.app.main import create_app
-from backend.app.narrator import NarratorError, NarratorStartResult
+from backend.app.narrator import NarratorError, NarratorStartLocation, NarratorStartResult
 from backend.persistence.migrations import migrate_database
 from backend.world.characters import (
     CharacterConflict,
@@ -335,7 +335,14 @@ def test_narrator_world_start_instances_selected_character_and_replays(tmp_path:
         assert world["player"] is None
         assert character["id"] == "fate"
         return NarratorStartResult(
-            "Elaris", "A moonlit guild square.", "You arrive beneath silver lanterns."
+            "Elaris",
+            "A moonlit guild square.",
+            "You arrive beneath silver lanterns.",
+            locations=(
+                NarratorStartLocation("Elaris", "A square.", None, False),
+                NarratorStartLocation("Guild Hall", "Guild doors.", "Elaris", True),
+                NarratorStartLocation("North Road", "A road north.", None, False),
+            ),
         )
 
     app = create_app(path, start_narrator=starter)
@@ -374,6 +381,20 @@ def test_narrator_world_start_instances_selected_character_and_replays(tmp_path:
     world = read_world(path, "world-a")
     assert world["player"]["name"] == "Fate"
     assert world["player"]["location_name"] == "Elaris"
+    with sqlite3.connect(path) as connection:
+        assert [
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM locations WHERE world_id = ? ORDER BY name", ("world-a",)
+            )
+        ] == ["Elaris", "Guild Hall", "North Road"]
+        assert (
+            connection.execute(
+                "SELECT 1 FROM location_containment WHERE world_id = ? AND parent_location_id = ?",
+                ("world-a", "world-a-start"),
+            ).fetchone()
+            is not None
+        )
 
 
 def test_narrator_world_start_failure_leaves_world_playerless(tmp_path: Path) -> None:

@@ -183,8 +183,13 @@ def build_world_start_prompt(
         "street-level for a mall or other urban opening, and a city or province "
         "scale for wilderness openings. Then choose a small, grounded set of "
         "locations that gives the player meaningful nearby choices; do not invent "
-        "a kingdom-wide map. Return ONLY valid JSON with exactly these keys: "
-        "start_location_name (non-empty string), locations (array of 1 to 6 "
+        "a kingdom-wide map. The bounded initial layout is required to contain "
+        "3 to 6 locations: the selected start location, at least one child "
+        "location whose parent_name is the start, and at least one sibling "
+        "location with parent_name null. Siblings are nearby same-scale places "
+        "such as another road, plaza, beach, or district; they are not automatic "
+        "movement links. Return ONLY valid JSON with exactly these keys: "
+        "start_location_name (non-empty string), locations (array of 3 to 6 "
         "objects with exactly these fields: name, description (the location description), "
         "parent_name (null unless that parent is also listed), and link_to_start "
         "(boolean true or false); do not use location_description inside a location "
@@ -281,9 +286,9 @@ def _parse_start_result(output: str) -> NarratorStartResult:
         )
     else:
         raw_locations = payload["locations"]
-        if not isinstance(raw_locations, list) or not 1 <= len(raw_locations) <= 6:
+        if not isinstance(raw_locations, list) or not 3 <= len(raw_locations) <= 6:
             raise NarratorError(
-                "narration agent start locations must contain between 1 and 6 items",
+                "narration agent start locations must contain between 3 and 6 items",
                 category="invalid_start_response",
             )
         locations_list: list[NarratorStartLocation] = []
@@ -394,6 +399,24 @@ def _parse_start_result(output: str) -> NarratorStartResult:
                     "narration agent start location cannot contain itself",
                     category="invalid_start_response",
                 )
+        start_key = location_name.strip().casefold()
+        start_location = next(
+            location for location in locations if location.name.casefold() == start_key
+        )
+        has_child = any(
+            location.parent_name is not None and location.parent_name.casefold() == start_key
+            for location in locations
+        )
+        has_sibling = any(
+            location.name.casefold() != start_key and location.parent_name is None
+            for location in locations
+        )
+        if start_location.parent_name is not None or not has_child or not has_sibling:
+            raise NarratorError(
+                "narration agent structured start must include the start, at least one "
+                "child location, and at least one sibling location",
+                category="invalid_start_response",
+            )
     return NarratorStartResult(
         location_name.strip(),
         next(

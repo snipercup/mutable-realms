@@ -131,6 +131,8 @@ def test_build_world_start_prompt_requires_bounded_contextual_layout() -> None:
     assert "locations" in prompt
     assert "start_location_name" in prompt
     assert "Main Street" in prompt
+    assert "at least one child location" in prompt
+    assert "at least one sibling location" in prompt
 
 
 def test_hermes_narrator_start_parses_contextual_layout(
@@ -143,7 +145,9 @@ def test_hermes_narrator_start_parses_contextual_layout(
             '"locations":[{"name":"Main Street",'
             '"description":"A broad street.","parent_name":null,"link_to_start":false},'
             '{"name":"Adventurer\\u0027s Guild","description":"Guild doors.",'
-            '"parent_name":"Main Street","link_to_start":true}],'
+            '"parent_name":"Main Street","link_to_start":true},'
+            '{"name":"North Road","description":"A road north.",'
+            '"parent_name":null,"link_to_start":false}],'
             '"narration":"You stand before the guild doors."}'
         )
         stderr = ""
@@ -157,9 +161,33 @@ def test_hermes_narrator_start_parses_contextual_layout(
     assert [location.name for location in result.locations] == [
         "Main Street",
         "Adventurer's Guild",
+        "North Road",
     ]
     assert result.locations[1].parent_name == "Main Street"
     assert result.locations[1].link_to_start is True
+    assert result.locations[2].parent_name is None
+
+
+def test_hermes_narrator_start_rejects_structured_layout_without_sibling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            '{"start_location_name":"Main Street","locations":['
+            '{"name":"Main Street","description":"Street.",'
+            '"parent_name":null,"link_to_start":false},'
+            '{"name":"Guild","description":"Guild.",'
+            '"parent_name":"Main Street","link_to_start":true},'
+            '{"name":"Market","description":"Market.",'
+            '"parent_name":"Main Street","link_to_start":false}],'
+            '"narration":"Welcome."}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr("backend.app.narrator.subprocess.run", lambda *args, **kwargs: _Completed())
+    with pytest.raises(NarratorError, match="sibling"):
+        HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
 
 
 def test_hermes_narrator_start_parses_structured_result(
@@ -248,7 +276,9 @@ def test_hermes_narrator_start_normalizes_model_layout_variants(
             '{"name":"Copperlane Street","description":"Street.",'
             '"parent_name":"Eliris","link_to_start":null},'
             '{"name":"Adventurer\\u0027s Guildhall","description":"Guild.",'
-            '"parent_name":"Eliris","link_to_start":"Copperlane Street"}],'
+            '"parent_name":"Copperlane Street","link_to_start":"Copperlane Street"},'
+            '{"name":"North Road","description":"Road.",'
+            '"parent_name":null,"link_to_start":false}],'
             '"narration":"You stand outside."}'
         )
         stderr = ""
@@ -260,7 +290,7 @@ def test_hermes_narrator_start_normalizes_model_layout_variants(
     result = HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
     assert result.locations[0].parent_name is None
     assert result.locations[0].link_to_start is False
-    assert result.locations[1].parent_name is None
+    assert result.locations[1].parent_name == "Copperlane Street"
     assert result.locations[1].link_to_start is True
 
 
@@ -272,7 +302,11 @@ def test_hermes_narrator_start_accepts_nested_location_description_alias(
         stdout = (
             '{"start_location_name":"Main Street","locations":['
             '{"name":"Main Street","location_description":"Street.",'
-            '"parent_name":null,"link_to_start":true}],'
+            '"parent_name":null,"link_to_start":true},'
+            '{"name":"Guild","location_description":"Guild.",'
+            '"parent_name":"Main Street","link_to_start":false},'
+            '{"name":"North Road","location_description":"Road.",'
+            '"parent_name":null,"link_to_start":false}],'
             '"narration":"You arrive."}'
         )
         stderr = ""
