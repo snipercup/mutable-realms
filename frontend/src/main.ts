@@ -593,6 +593,43 @@ function mapPositions(count: number): Array<[number, number]> {
   });
 }
 
+const MAP_DIRECTION_VECTORS: Record<string, [number, number]> = {
+  north: [0, -1],
+  northeast: [0.707, -0.707],
+  east: [1, 0],
+  southeast: [0.707, 0.707],
+  south: [0, 1],
+  southwest: [-0.707, 0.707],
+  west: [-1, 0],
+  northwest: [-0.707, -0.707],
+};
+
+const MAP_RANGE_RADIUS: Record<string, number> = { short: 72, mid: 108, long: 140 };
+
+function orientedMapPositions(locations: WorldMapLocation[]): Map<string, [number, number]> {
+  const positions = new Map<string, [number, number]>();
+  const fallback = mapPositions(locations.length);
+  const occupied = new Map<string, number>();
+  locations.forEach((location, index) => {
+    const vector = location.direction === null ? undefined : MAP_DIRECTION_VECTORS[location.direction];
+    if (vector === undefined) {
+      positions.set(location.id, fallback[index]);
+      return;
+    }
+    const range = MAP_RANGE_RADIUS[location.range_band ?? ""] ?? MAP_RADIUS;
+    const bucket = `${location.direction}:${location.range_band ?? "unspecified"}`;
+    const collisionIndex = occupied.get(bucket) ?? 0;
+    occupied.set(bucket, collisionIndex + 1);
+    const perpendicular: [number, number] = [-vector[1], vector[0]];
+    const offset = (collisionIndex - 0.5) * 28;
+    positions.set(location.id, [
+      MAP_CENTER_X + vector[0] * range + perpendicular[0] * offset,
+      MAP_CENTER_Y + vector[1] * range + perpendicular[1] * offset,
+    ]);
+  });
+  return positions;
+}
+
 function svgElement(
   tag: string,
   attributes: Record<string, string | number>,
@@ -646,10 +683,7 @@ function renderMap(state: WorldState): HTMLElement {
   });
 
   const ordered = [...renderedLocations].sort((a, b) => a.name.localeCompare(b.name));
-  const positions = new Map<string, [number, number]>();
-  mapPositions(ordered.length).forEach((position, index) => {
-    positions.set(ordered[index].id, position);
-  });
+  const positions = orientedMapPositions(ordered);
 
   if (state.map.scope_location === null) {
     const drawnEdges = new Set<string>();

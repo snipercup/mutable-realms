@@ -13,6 +13,32 @@ from backend.world.worlds import WorldAdminConflict, WorldAdminNotFound
 _LOCATION_HIERARCHY_EVENT = "location_hierarchy_set"
 _LOCATION_SCOPE_PROMOTION_EVENT = "location_scope_promotion_set"
 _MAX_KIND_LENGTH = 100
+_MAP_DIRECTION_ORDER = {
+    "north": 0,
+    "northeast": 1,
+    "east": 2,
+    "southeast": 3,
+    "south": 4,
+    "southwest": 5,
+    "west": 6,
+    "northwest": 7,
+}
+_MAP_RANGE_ORDER = {"short": 0, "mid": 1, "long": 2}
+
+
+def _map_location_sort_key(row: sqlite3.Row | dict[str, Any]) -> tuple[Any, ...]:
+    """Sort authored orientation first, then use a stable fallback."""
+    direction = row["direction"]
+    range_band = row["range_band"]
+    if direction is None and range_band is None:
+        return (1, 0, 0, row["name"], row["id"])
+    return (
+        0,
+        _MAP_RANGE_ORDER.get(range_band or "", 3),
+        _MAP_DIRECTION_ORDER.get(direction or "", 8),
+        row["name"],
+        row["id"],
+    )
 
 
 def _canonical_json(value: dict[str, Any]) -> str:
@@ -496,7 +522,7 @@ def read_scoped_world_map(
         ).fetchone()[0]
         visible_children = sorted(
             [*child_rows, *promoted_rows, *sibling_rows],
-            key=lambda row: (row["name"], row["id"]),
+            key=_map_location_sort_key,
         )[:limit]
         visible_rows = [scope, *visible_children]
         visible_ids = {row["id"] for row in visible_rows}
@@ -626,13 +652,17 @@ def read_scoped_world_map(
                 None,
             )
 
+    if any(row["direction"] is not None or row["range_band"] is not None for row in visible_rows):
+        ordered_rows = [scope, *sorted(visible_children, key=_map_location_sort_key)]
+    else:
+        ordered_rows = sorted(visible_rows, key=lambda row: (row["name"], row["id"]))
     locations = [
         {
             **dict(row),
             "entity_kinds": counts.get(row["id"], {}),
             "linked_location_ids": sorted(linked.get(row["id"], [])),
         }
-        for row in sorted(visible_rows, key=lambda item: (item["name"], item["id"]))
+        for row in ordered_rows
     ]
     return {
         "boundary_links": sorted(

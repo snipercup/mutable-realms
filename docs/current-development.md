@@ -32,9 +32,36 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 **Timeout verification:** the world-start timeout hardening is pushed as `b72fe38`. Start narration now uses a separate bounded `240`-second default (`MUTABLE_REALMS_START_NARRATOR_TIMEOUT`, bounded 5–300 s) distinct from the normal turn relay timeout, timeout logs include world ID, configured timeout, and measured elapsed seconds, and the HTTP layer keeps the player-friendly message. `263` backend tests pass; `npm run lint`, `npm run frontend-build`, and `git diff --check` pass. Note: the running server on port `8790` still has the old 120 s start deadline until the container is restarted.
 
+### Coarse geographic orientation for sibling locations — complete
+
+**Recommendation:** extend the existing explicit direction and distance-band metadata instead of introducing universal coordinates. The first implementation should describe a location relative to its relevant map scope with a cardinal/intercardinal direction and a coarse distance band (`short`, `mid`, or `long`), for example: `Thornmere` is `east` at `mid` range from `Elaris`. This is sufficient for sensible sibling ordering and labels, is legible to narration agents, and does not imply a precision the world model cannot support.
+
+**Goal:** make sibling locations and larger transition geography appear in a spatially sensible order without requiring the player or every location to have a precise point coordinate.
+
+**Scope:**
+
+- Reuse and formalize the existing `direction` + `range_band` metadata as the authoritative coarse orientation for scoped-map siblings, promoted landmarks, boundary geography, and route destinations.
+- Define the reference scope for each orientation relationship explicitly; direction and distance are relative metadata, not values inferred from SVG placement, containment, route order, or names.
+- Use direction for deterministic API ordering and map placement; use range band for radial separation, labels, and route/map grouping. Preserve stable name/id fallback ordering when metadata is absent.
+- Keep `short`, `mid`, and `long` as semantic bands rather than pretending that they are globally comparable measurements. A future slice may add world- or province-scale numeric distance if play demonstrates that bands are insufficient.
+- Keep the player location discrete: the player is located in an authoritative location and has no required personal coordinates. Entering or leaving a location remains a location mutation, not coordinate movement.
+- Do not add coordinates in this slice. Coarse coordinates remain a later, optional large-scale reference-frame extension for provinces or larger regions; they must not be required for city, interior, or other local locations, and must not become a second source of truth for direction/range metadata.
+- Preserve the existing separation between presentation orientation and movement permission. A sibling shown to the east is not necessarily reachable; `location_links` and explicit `world_routes` remain authoritative for travel.
+
+**Out of scope:**
+
+- Universal coordinates for every location or player position.
+- Distance simulation, pathfinding, automatic route generation, travel-time calculation, or inferring geography from coordinates alone.
+- Replacing explicit routes, containment, or movement links with a geometric graph.
+- Redesigning the current map renderer before the metadata contract and fallback behavior are tested.
+
+**Implementation status:** the first slice now reuses `location_metadata.direction` and `range_band`. Scoped-map API results keep the selected scope first, then order annotated locations by range (`short`, `mid`, `long`), direction (north clockwise through northwest), name, and ID; unannotated locations retain stable name/ID fallback ordering. The frontend places annotated nodes at deterministic direction/range positions with collision offsets and keeps the circular fallback for unannotated nodes.
+
+**Verification:** the backend contract test covers an `Elaris` scope with `Northgate` north/short, `Thornmere` east/mid, and `Westmoor` west/mid, confirms deterministic ordering and metadata, confirms unannotated locations retain stable name ordering, and confirms orientation alone creates no movement link. `264` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and `git diff --check` passes.
+
 ### Awaiting next selected slice
 
-The route-chain visualization and world-start timeout slices are complete. No next implementation idea has been selected; do not infer one from the roadmap. The tracker is intentionally holding here until the user chooses the next capability.
+The route-chain visualization, world-start timeout, and coarse geographic-orientation slices are complete. No next implementation idea has been selected; do not infer one from the roadmap. The tracker is intentionally holding here until the user chooses the next capability.
 
 ## Recently completed
 
@@ -57,6 +84,7 @@ The route-chain visualization and world-start timeout slices are complete. No ne
 | Boundary geography orientation metadata (geography role, direction, range band; migration `0015`) | 2026-08-18 | `9f29fa1` |
 | Explicit route-chain visualization for scoped maps (bounded active route traversal, short/mid/long lanes, informational frontend display) | 2026-08-18 | `28685d9` |
 | Separate bounded world-start narration timeout (distinct 240 s start deadline, measured timeout logging, player-friendly HTTP message preserved) | 2026-08-19 | `b72fe38` |
+| Coarse geographic orientation for sibling locations (direction/range ordering and deterministic map placement) | 2026-08-19 | working tree; commit pending |
 
 **Route verification:** `243` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted route creation at revision `0 → 1`, traveled the player from `harbor` to `city` at `1 → 2` without a `location_links` row, and replayed the same travel operation with `already_applied: true` without another revision. SQLite readback confirmed `world_route_set`, `entity_route_traveled`, the route endpoints, and final player placement; port 8795 was stopped and confirmed closed.
 

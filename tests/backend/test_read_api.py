@@ -252,6 +252,60 @@ def test_read_api_map_includes_bounded_sibling_locations(tmp_path: Path) -> None
     assert world_map["locations"][1]["is_neighbor"] == 1
 
 
+def test_read_api_map_orders_oriented_siblings_by_range_then_direction(tmp_path: Path) -> None:
+    database_path = tmp_path / "world.sqlite3"
+    migrate_database(database_path)
+    seed_town_world(database_path)
+    with connect_database(database_path) as connection:
+        connection.executemany(
+            "INSERT INTO locations(id, world_id, name, description) VALUES (?, ?, ?, ?)",
+            [
+                ("elaris", TOWN_WORLD_ID, "Elaris", "A provincial capital."),
+                ("northgate", TOWN_WORLD_ID, "Northgate", "A nearby gate."),
+                ("thornmere", TOWN_WORLD_ID, "Thornmere", "A distant town."),
+                ("westmoor", TOWN_WORLD_ID, "Westmoor", "A western town."),
+            ],
+        )
+        connection.executemany(
+            "INSERT INTO location_metadata("
+            "world_id, location_id, kind, geography_role, direction, range_band, is_map_scope) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+                (TOWN_WORLD_ID, "elaris", "province", "local", None, None, 1),
+                (TOWN_WORLD_ID, "northgate", "gate", "boundary", "north", "short", 0),
+                (TOWN_WORLD_ID, "thornmere", "settlement", "boundary", "east", "mid", 0),
+                (TOWN_WORLD_ID, "westmoor", "settlement", "boundary", "west", "mid", 0),
+            ],
+        )
+        connection.commit()
+
+    world_map = get_world_map(
+        database_path,
+        world_id=TOWN_WORLD_ID,
+        scope_location_id="elaris",
+    )
+
+    assert world_map["scope_location"]["id"] == "elaris"
+    thornmere = next(
+        location for location in world_map["locations"] if location["id"] == "thornmere"
+    )
+    assert thornmere["direction"] == "east"
+    assert thornmere["range_band"] == "mid"
+    assert [location["id"] for location in world_map["locations"][:4]] == [
+        "elaris",
+        "northgate",
+        "thornmere",
+        "westmoor",
+    ]
+    unannotated_names = [
+        location["name"]
+        for location in world_map["locations"]
+        if location["id"] not in {"elaris", "northgate", "thornmere", "westmoor"}
+    ]
+    assert unannotated_names == sorted(unannotated_names)
+    assert thornmere["linked_location_ids"] == []
+
+
 def test_read_api_map_includes_route_chain_by_range(tmp_path: Path) -> None:
     database_path = tmp_path / "world.sqlite3"
     migrate_database(database_path)
