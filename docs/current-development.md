@@ -22,18 +22,19 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 - Preserve flat-world compatibility and explicit scope navigation for administrative/read-only map browsing.
 - Include active explicit route chains from the current scope, ordered and grouped by destination range (`short`, `mid`, `long`), with route kind, direction, destination, and chain depth.
 - Keep route-chain entries informational; map nodes and route rows are not UI travel controls.
-- Give world-start narration a separate bounded timeout from normal turn relay, and log timeout duration without exposing operational detail in the player-facing error.
 
 **Out of scope:**
 
 - Aerthalon-specific names, automatic roads, travel-time simulation, route generation, fast travel, or UI-driven movement.
 - Removing `location_links` or changing the existing movement precondition.
 
-**Verification:** the complete map slice is pushed in `c793cdf`, `c1add38`, `9f29fa1`, and `28685d9`. World-start timeout hardening is implemented locally but uncommitted: start narration now uses a separate bounded 240-second default, timeout logs include world ID/configured/elapsed seconds, and HTTP retains the player-friendly message. `263` backend tests pass; `npm run lint`, `npm run frontend-build`, and `git diff --check` pass. Fresh isolated HTTP/SQLite verification confirmed a bounded route chain from `Fish Market`: `Quay Road → Harbor Docks` as `short`, depth `1`, and `North Track → The Drowned Gull` as `long`, depth `2`; inactive routes were excluded. Route rows remain informational and travel remains narrator-driven.
+**Verification:** the complete map slice is pushed in `c793cdf`, `c1add38`, `9f29fa1`, and `28685d9`. Fresh isolated HTTP/SQLite verification confirmed a bounded route chain from `Fish Market`: `Quay Road → Harbor Docks` as `short`, depth `1`, and `North Track → The Drowned Gull` as `long`, depth `2`; inactive routes were excluded. Route rows remain informational and travel remains narrator-driven.
+
+**Timeout verification:** the world-start timeout hardening is pushed as `b72fe38`. Start narration now uses a separate bounded `240`-second default (`MUTABLE_REALMS_START_NARRATOR_TIMEOUT`, bounded 5–300 s) distinct from the normal turn relay timeout, timeout logs include world ID, configured timeout, and measured elapsed seconds, and the HTTP layer keeps the player-friendly message. `263` backend tests pass; `npm run lint`, `npm run frontend-build`, and `git diff --check` pass. Note: the running server on port `8790` still has the old 120 s start deadline until the container is restarted.
 
 ### Awaiting next selected slice
 
-The route-chain visualization slice is complete. No next implementation idea has been selected; do not infer one from the roadmap. The tracker is intentionally holding here until the user chooses the next capability.
+The route-chain visualization and world-start timeout slices are complete. No next implementation idea has been selected; do not infer one from the roadmap. The tracker is intentionally holding here until the user chooses the next capability.
 
 ## Recently completed
 
@@ -55,6 +56,7 @@ The route-chain visualization slice is complete. No next implementation idea has
 | Require sibling locations in structured world starts (3–6 bounded locations with child + sibling topology) | 2026-08-18 | `c1add38` |
 | Boundary geography orientation metadata (geography role, direction, range band; migration `0015`) | 2026-08-18 | `9f29fa1` |
 | Explicit route-chain visualization for scoped maps (bounded active route traversal, short/mid/long lanes, informational frontend display) | 2026-08-18 | `28685d9` |
+| Separate bounded world-start narration timeout (distinct 240 s start deadline, measured timeout logging, player-friendly HTTP message preserved) | 2026-08-19 | `b72fe38` |
 
 **Route verification:** `243` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted route creation at revision `0 → 1`, traveled the player from `harbor` to `city` at `1 → 2` without a `location_links` row, and replayed the same travel operation with `already_applied: true` without another revision. SQLite readback confirmed `world_route_set`, `entity_route_traveled`, the route endpoints, and final player placement; port 8795 was stopped and confirmed closed.
 
