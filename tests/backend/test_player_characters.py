@@ -196,6 +196,7 @@ def test_instance_accepts_bounded_main_street_layout_with_ten_children(tmp_path:
             "description": "The central street.",
             "parent_name": None,
             "link_to_start": False,
+            "map_form": "street",
         }
     ]
     layout.extend(
@@ -229,6 +230,7 @@ def test_instance_accepts_bounded_main_street_layout_with_ten_children(tmp_path:
     assert result["world_revision"] == 2
     world_map = get_world_map(path, world_id="world-a")
     assert world_map["scope_location"]["name"] == "Main Street"
+    assert world_map["locations"][0]["map_form"] == "street"
     assert world_map["child_total"] == 10
     assert sum(location["is_neighbor"] for location in world_map["locations"]) == 1
 

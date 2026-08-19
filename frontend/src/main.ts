@@ -96,6 +96,7 @@ type WorldMapLocation = {
   geography_role: string;
   direction: string | null;
   range_band: string | null;
+  map_form: string | null;
   child_count: number;
   entity_kinds: Record<string, number>;
   linked_location_ids: string[];
@@ -107,6 +108,7 @@ type WorldMapBreadcrumb = {
   kind: string | null;
   is_map_scope: boolean;
   is_default_scope: boolean;
+  map_form: string | null;
 };
 
 type WorldMapBoundaryLink = {
@@ -571,7 +573,7 @@ function renderEntity(entityState: EntitySummary, playerId: string): HTMLElement
 }
 
 const MAP_WIDTH = 480;
-const MAP_HEIGHT = 320;
+const MAP_HEIGHT = 640;
 const MAP_RENDER_LIMIT = 30;
 const MAP_CENTER_X = MAP_WIDTH / 2;
 const MAP_CENTER_Y = MAP_HEIGHT / 2;
@@ -643,6 +645,18 @@ function centerMapPositions(locations: WorldMapLocation[]): Map<string, [number,
   return positions;
 }
 
+function streetMapPositions(locations: WorldMapLocation[]): Map<string, [number, number]> {
+  const positions = new Map<string, [number, number]>();
+  const rowGap = Math.max(42, Math.min(58, 480 / Math.max(locations.length, 1)));
+  const startY = MAP_CENTER_Y - ((locations.length - 1) * rowGap) / 2;
+  locations.forEach((location, index) => {
+    const side = index % 2 === 0 ? -1 : 1;
+    const y = startY + Math.floor(index / 2) * rowGap;
+    positions.set(location.id, [MAP_CENTER_X + side * 72, y]);
+  });
+  return positions;
+}
+
 function perimeterMapPositions(locations: WorldMapLocation[]): Map<string, [number, number]> {
   const positions = new Map<string, [number, number]>();
   const fallback = mapPositions(locations.length).map(([x, y]) => [
@@ -678,6 +692,31 @@ function svgElement(
     node.setAttribute(key, String(value));
   }
   return node;
+}
+
+function mapShape(location: WorldMapLocation, isSibling: boolean): SVGElement {
+  const form = location.map_form ?? (location.is_neighbor ? "landmark" : "building");
+  const size = isSibling ? 14 : 20;
+  const attributes = { class: "map-node-shape", "data-map-form": form };
+  if (form === "building") {
+    return svgElement("rect", { ...attributes, x: -size, y: -size * 0.7, width: size * 2, height: size * 1.4, rx: 2 });
+  }
+  if (form === "street") {
+    return svgElement("path", { ...attributes, d: `M ${-size} ${size * 0.45} L ${size} ${-size * 0.45} L ${size} ${size * 0.45} L ${-size} ${-size * 0.45} Z` });
+  }
+  if (form === "district" || form === "city") {
+    return svgElement("polygon", { ...attributes, points: `0,${-size} ${size},${-size * 0.35} ${size * 0.65},${size} ${-size * 0.65},${size} ${-size},${-size * 0.35}` });
+  }
+  if (form === "mine") {
+    return svgElement("path", { ...attributes, d: `M ${-size} ${size} L 0 ${-size} L ${size} ${size} Z M ${-size * 0.35} ${size} L ${-size * 0.35} ${size * 0.1} L ${size * 0.35} ${size * 0.1} L ${size * 0.35} ${size} Z` });
+  }
+  if (form === "forest") {
+    return svgElement("path", { ...attributes, d: `M 0 ${-size} L ${size * 0.65} ${size * 0.1} L ${size * 0.3} ${size * 0.1} L ${size} ${size} L 0 ${size * 0.55} L ${-size} ${size} L ${-size * 0.3} ${size * 0.1} L ${-size * 0.65} ${size * 0.1} Z` });
+  }
+  if (form === "water") {
+    return svgElement("path", { ...attributes, d: `M ${-size} 0 Q ${-size * 0.5} ${-size * 0.5} 0 0 T ${size} 0 M ${-size} ${size * 0.5} Q ${-size * 0.5} 0 0 ${size * 0.5} T ${size} ${size * 0.5}` });
+  }
+  return svgElement("circle", { ...attributes, r: size });
 }
 
 function renderMap(state: WorldState): HTMLElement {
@@ -724,11 +763,39 @@ function renderMap(state: WorldState): HTMLElement {
   const ordered = [...renderedLocations].sort((a, b) => a.name.localeCompare(b.name));
   const children = ordered.filter((location) => !location.is_neighbor);
   const siblings = ordered.filter((location) => location.is_neighbor);
+  const isStreetScope = state.map.scope_location?.map_form === "street"
+    || state.map.scope_location?.name.toLocaleLowerCase() === "main street";
   const positions = state.map.scope_location === null
     ? orientedMapPositions(ordered)
-    : new Map([...centerMapPositions(children), ...perimeterMapPositions(siblings)]);
+    : new Map([
+        ...(isStreetScope
+          ? streetMapPositions(children)
+          : centerMapPositions(children)),
+        ...perimeterMapPositions(siblings),
+      ]);
 
   if (state.map.scope_location !== null) {
+    if (isStreetScope) {
+      svg.append(
+        svgElement("rect", {
+          x: MAP_CENTER_X - 22,
+          y: MAP_CENTER_Y - 250,
+          width: 44,
+          height: 500,
+          rx: 10,
+          class: "map-street-road",
+          "data-map-layer": "road",
+        }),
+        svgElement("line", {
+          x1: MAP_CENTER_X,
+          y1: MAP_CENTER_Y - 250,
+          x2: MAP_CENTER_X,
+          y2: MAP_CENTER_Y + 250,
+          class: "map-street-road-marking",
+          "data-map-layer": "road-marking",
+        }),
+      );
+    }
     svg.append(
       svgElement("circle", {
         cx: MAP_CENTER_X,
@@ -766,27 +833,30 @@ function renderMap(state: WorldState): HTMLElement {
   for (const location of ordered) {
     const [x, y] = positions.get(location.id) ?? [MAP_CENTER_X, MAP_CENTER_Y];
     const isSibling = state.map.scope_location !== null && location.is_neighbor;
+    const isStreetChild = isStreetScope && !isSibling;
+    const labelOnLeft = x < MAP_CENTER_X;
+    const labelX = isStreetChild ? (labelOnLeft ? -28 : 28) : 0;
+    const labelAnchor = isStreetChild ? (labelOnLeft ? "end" : "start") : "middle";
     const group = svgElement("g", {
       class: isSibling ? "map-node map-node--neighbor" : "map-node",
       "data-map-layer": isSibling ? "perimeter" : "center",
       transform: `translate(${x}, ${y})`,
     });
     group.append(
-      svgElement("circle", {
-        r: isSibling ? MAP_BORDER_NODE_RADIUS : 20,
-        class: "map-node-circle",
-      }),
+      mapShape(location, isSibling),
       svgElement("text", {
-        y: isSibling ? 29 : 40,
+        x: labelX,
+        y: isStreetChild ? 4 : isSibling ? 29 : 40,
         class: "map-label",
-        "text-anchor": "middle",
+        "text-anchor": labelAnchor,
       }),
     );
     if (location.direction !== null || location.range_band !== null) {
       const routeMeta = svgElement("text", {
-        y: isSibling ? 42 : 54,
+        x: labelX,
+        y: isStreetChild ? 16 : isSibling ? 42 : 54,
         class: "map-route-meta",
-        "text-anchor": "middle",
+        "text-anchor": labelAnchor,
       });
       routeMeta.textContent = [location.direction, location.range_band]
         .filter((value): value is string => value !== null)

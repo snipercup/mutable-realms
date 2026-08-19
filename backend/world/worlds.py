@@ -619,6 +619,7 @@ def instance_player_character(
         geography_role = raw_location.get("geography_role", "local")
         direction = raw_location.get("direction")
         range_band = raw_location.get("range_band")
+        map_form = raw_location.get("map_form")
         if not isinstance(name, str) or not name.strip() or len(name.strip()) > 200:
             raise WorldAdminConflict("start location name is invalid")
         if description is not None and not isinstance(description, str):
@@ -642,6 +643,10 @@ def instance_player_character(
             raise WorldAdminConflict("start location direction is invalid")
         if range_band is not None and range_band not in {"short", "mid", "long"}:
             raise WorldAdminConflict("start location range_band is invalid")
+        if map_form is not None and map_form not in {
+            "building", "street", "district", "city", "mine", "forest", "water", "landmark"
+        }:
+            raise WorldAdminConflict("start location map_form is invalid")
         trimmed_name = name.strip()
         key = trimmed_name.casefold()
         if key in names:
@@ -656,6 +661,7 @@ def instance_player_character(
                 "geography_role": geography_role,
                 "direction": direction,
                 "range_band": range_band,
+                "map_form": map_form,
             }
         )
     start_key = trimmed_location.casefold()
@@ -763,8 +769,8 @@ def instance_player_character(
                 item_id = location_ids[item["name"].casefold()]
                 connection.execute(
                     "INSERT INTO location_metadata("
-                    "world_id, location_id, kind, geography_role, direction, range_band, "
-                    "is_map_scope, is_default_scope) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    "world_id, location_id, kind, geography_role, direction, range_band, map_form, "
+                    "is_map_scope, is_default_scope) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         world_id,
                         item_id,
@@ -776,6 +782,7 @@ def instance_player_character(
                         item["geography_role"],
                         item["direction"],
                         item["range_band"],
+                        item["map_form"],
                         int(item_id == location_id),
                         int(item_id == location_id),
                     ),

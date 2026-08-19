@@ -48,6 +48,7 @@ class NarratorStartLocation:
     geography_role: str = "local"
     direction: str | None = None
     range_band: str | None = None
+    map_form: str | None = None
 
 
 @dataclass(frozen=True)
@@ -80,6 +81,7 @@ _START_DIRECTIONS = {
 _START_RANGE_BANDS = {"short", "mid", "long"}
 _MAX_START_LOCATIONS = 16
 _MIN_MAIN_STREET_CHILDREN = 10
+_START_MAP_FORMS = {"building", "street", "district", "city", "mine", "forest", "water", "landmark"}
 
 _DEFAULT_NARRATOR_TIMEOUT_SECONDS = 120.0
 _DEFAULT_START_NARRATOR_TIMEOUT_SECONDS = 240.0
@@ -243,8 +245,9 @@ def build_world_start_prompt(
         "objects with exactly these fields: name, description (the location description), "
         "parent_name (null unless that parent is also listed), link_to_start, "
         "geography_role (local, boundary, or route), direction (a cardinal or "
-        "intercardinal direction, or null), and range_band (short, mid, long, or "
-        "null); do not use location_description inside a location "
+        "intercardinal direction, or null), range_band (short, mid, long, or "
+        "null), and map_form (building, street, district, city, mine, forest, "
+        "water, landmark, or null); "
         "object. The top-level legacy field is location_description only when locations "
         "is omitted. The top-level locations array and narration are required. "
         "link_to_start explicitly requests a local physical movement link. The "
@@ -379,6 +382,7 @@ def _parse_start_result(output: str) -> NarratorStartResult:
                     "geography_role",
                     "direction",
                     "range_band",
+                    "map_form",
                 }
             ):
                 raise NarratorError(
@@ -392,6 +396,7 @@ def _parse_start_result(output: str) -> NarratorStartResult:
             geography_role = raw_location.get("geography_role", "local")
             direction = raw_location.get("direction")
             range_band = raw_location.get("range_band")
+            map_form = raw_location.get("map_form")
             if not isinstance(name, str) or not name.strip() or len(name.strip()) > 200:
                 raise NarratorError(
                     "narration agent start location name is invalid",
@@ -430,6 +435,11 @@ def _parse_start_result(output: str) -> NarratorStartResult:
                     "narration agent start range_band is invalid",
                     category="invalid_start_response",
                 )
+            if map_form is not None and map_form not in _START_MAP_FORMS:
+                raise NarratorError(
+                    "narration agent start map_form is invalid",
+                    category="invalid_start_response",
+                )
             if link_to_start is None:
                 link_to_start = False
             elif isinstance(link_to_start, str):
@@ -456,6 +466,7 @@ def _parse_start_result(output: str) -> NarratorStartResult:
                     geography_role=geography_role,
                     direction=direction,
                     range_band=range_band,
+                    map_form=map_form,
                 )
             )
         locations = tuple(locations_list)
@@ -479,6 +490,7 @@ def _parse_start_result(output: str) -> NarratorStartResult:
                 geography_role=location.geography_role,
                 direction=location.direction,
                 range_band=location.range_band,
+                map_form=location.map_form,
             )
             for location in locations
         )

@@ -127,8 +127,17 @@ h1, h2, h3, p { margin: 0; }
 .map-panel { padding: 22px; }
 .map-svg { display: block; width: 100%; height: auto; max-width: 520px; margin: 0 auto; }
 .map-edge { stroke: #3a4a63; stroke-width: 2; }
+.map-street-road { fill: #263449; stroke: #52657f; stroke-width: 1; }
+.map-street-road-marking { stroke: #d2b36a; stroke-width: 1; stroke-dasharray: 8 8; opacity: .8; }
 .map-node-circle { fill: #1b2740; stroke: #5a6f94; stroke-width: 2; }
+.map-node-shape { fill: #1b2740; stroke: #5a6f94; stroke-width: 2; }
+.map-node-shape[data-map-form="street"] { fill: #253c5c; }
+.map-node-shape[data-map-form="district"], .map-node-shape[data-map-form="city"] { fill: #354568; }
+.map-node-shape[data-map-form="mine"] { fill: #634b3b; }
+.map-node-shape[data-map-form="forest"] { fill: #28513f; }
+.map-node-shape[data-map-form="water"] { fill: none; stroke: #5ca9c8; stroke-linecap: round; }
 .map-node--neighbor .map-node-circle { stroke-dasharray: 5 3; }
+.map-node--neighbor .map-node-shape { stroke-dasharray: 5 3; stroke-width: 1.5; }
 .map-scope-border { fill: none; stroke: #405579; stroke-width: 1; stroke-dasharray: 4 5; opacity: .72; }
 .map-node--neighbor .map-node-circle { fill: #172238; stroke-width: 1.5; }
 .map-node--neighbor .map-label { font-size: 10px; }

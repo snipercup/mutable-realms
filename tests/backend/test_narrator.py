@@ -135,8 +135,39 @@ def test_build_world_start_prompt_requires_bounded_contextual_layout() -> None:
     assert "Main Street" in prompt
     assert "at least one child location" in prompt
     assert "at least one sibling location" in prompt
+    assert "map_form" in prompt
+    assert "mine" in prompt
     assert "3 to 16 locations" in prompt
     assert "at least 10 direct child locations" in prompt
+
+
+def test_hermes_narrator_start_parses_allowlisted_map_form(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            '{"start_location_name":"Elaris Street","locations":['
+            '{"name":"Elaris Street","description":"Street.","parent_name":null,'
+            '"link_to_start":false,"map_form":"street"},'
+            '{"name":"Guild","description":"Guild.","parent_name":"Elaris Street",'
+            '"link_to_start":false,"map_form":"building"},'
+            '{"name":"North Road","description":"Road.","parent_name":null,'
+            '"link_to_start":false,"map_form":"forest"}],'
+            '"narration":"You arrive."}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    result = HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+    assert [location.map_form for location in result.locations] == [
+        "street",
+        "building",
+        "forest",
+    ]
 
 
 def test_hermes_narrator_start_accepts_ten_main_street_children(

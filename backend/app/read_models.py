@@ -108,6 +108,7 @@ class WorldMapLocationRead(StrictReadModel):
     geography_role: str = "local"
     direction: str | None = None
     range_band: str | None = None
+    map_form: str | None = None
     child_count: int = Field(default=0, ge=0)
     entity_kinds: dict[str, int]
     linked_location_ids: list[str]
@@ -139,6 +140,7 @@ class WorldMapBreadcrumbRead(StrictReadModel):
     kind: str | None = None
     is_map_scope: bool = False
     is_default_scope: bool = False
+    map_form: str | None = None
 
 
 class WorldMapRead(StrictReadModel):

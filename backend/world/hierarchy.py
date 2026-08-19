@@ -397,6 +397,7 @@ def read_location_ancestors(
                 WHERE lc.world_id = ?
             )
             SELECT l.id, l.name, l.description, m.kind,
+                   m.map_form,
                    COALESCE(m.is_map_scope, 0) AS is_map_scope,
                    COALESCE(m.is_default_scope, 0) AS is_default_scope
             FROM ancestors a
@@ -442,6 +443,7 @@ def read_scoped_world_map(
 
         base_select = """
             SELECT l.id, l.name, l.description, m.kind,
+                   m.map_form,
                    COALESCE(m.is_map_scope, 0) AS is_map_scope,
                    COALESCE(m.is_default_scope, 0) AS is_default_scope,
                    COALESCE(m.geography_role, 'local') AS geography_role,
@@ -629,7 +631,7 @@ def read_scoped_world_map(
         breadcrumbs = [
             {
                 key: ancestor[key]
-                for key in ("id", "name", "kind", "is_map_scope", "is_default_scope")
+                for key in ("id", "name", "kind", "is_map_scope", "is_default_scope", "map_form")
             }
             for ancestor in ancestors
         ]
@@ -677,7 +679,8 @@ def read_scoped_world_map(
         "player_location_id": player_location_id,
         "player_visible_location_id": player_visible_location_id,
         "scope_location": {
-            key: scope[key] for key in ("id", "name", "kind", "is_map_scope", "is_default_scope")
+            key: scope[key]
+            for key in ("id", "name", "kind", "is_map_scope", "is_default_scope", "map_form")
         },
     }
 
@@ -755,6 +758,7 @@ def read_location_children(
         rows = connection.execute(
             """
             SELECT l.id, l.name, l.description, m.kind,
+                   m.map_form,
                    COALESCE(m.is_map_scope, 0) AS is_map_scope,
                    COALESCE(m.is_default_scope, 0) AS is_default_scope
             FROM location_containment lc

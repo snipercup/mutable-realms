@@ -4,22 +4,35 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Larger street-level narrator starts — complete
+### Lively semantic map shapes and a larger map canvas — in progress
 
-**Goal:** when a new story begins at a street-scale location such as Main Street, give the map a useful local working set instead of only a few locations. A Main Street start must contain at least 10 direct child locations beneath the street, plus the parentless start and nearby sibling locations, while remaining bounded and atomic.
+**Goal:** make the map communicate the character of the current location instead of representing every place as an identical circle. The map should become twice as high, then use bounded semantic shapes appropriate to the current scale and setting: individual buildings along a street, street clusters within a district, simplified district clusters within a city, and distinct visual motifs for places such as mines and forests.
 
-**Cause found:** the structured start prompt requested only 3–6 total locations, the narrator parser rejected more than 6, and the atomic character-instance service independently rejected layouts above 6. Those three constraints prevented a Main Street start from ever persisting ten children.
+**Recommendation:** keep the narrator responsible for choosing **semantic map forms**, but keep SVG geometry deterministic in the frontend. The narrator must never emit raw SVG, arbitrary paths, CSS, scripts, or executable drawing instructions. A validated vocabulary such as `building`, `street`, `district`, `city`, `mine`, `forest`, `water`, and `landmark`, plus bounded presentation hints, gives the narrator creative control while keeping rendering safe, testable, and consistent.
 
-**Scope:**
+**Proposed scope:**
 
-- Raise the coordinated structured-start and atomic-instancing ceiling to 16 total locations.
-- Require the `Main Street` structured start contract to contain at least 10 direct children; other opening scales may use fewer locations within the same 16-location bound.
-- Preserve one parentless selected start, at least one parentless sibling, optional containment, explicit links only, revision-aware atomic persistence, and exact replay.
-- Keep the map API's existing bounded read limit and derived center/perimeter presentation unchanged; this slice increases authoritative start-layout capacity only.
+- Increase the SVG map canvas height from `320` to `640` while preserving the current width unless layout testing shows that width also needs adjustment.
+- Define a small, extensible semantic visual vocabulary for map locations and clusters. Start with street buildings, street segments, district clusters, simplified city districts, mine entrances/tunnels, forest patches/trees, water/coast, and generic landmarks.
+- Let the narrator select the semantic form from the current opening context and location meaning; validate the value against an allowlist and apply deterministic defaults when omitted.
+- Represent shapes as derived SVG primitives and bounded deterministic geometry—rectangles, polygons, paths from fixed templates, lines, clusters, and symbols—not narrator-authored arbitrary SVG.
+- Use containment and scale to compose forms: a street's direct child buildings form a building row or block; a district's street children form bounded street clusters; a city's district children form a simplified district arrangement. Do not infer new authoritative locations from visual geometry.
+- Keep child/sibling separation from the previous slice: child forms occupy the central layer, sibling forms remain on the perimeter/border layer, and the border remains visually compact.
+- Preserve direction/range metadata for placement and use `kind`, geography role, and semantic form for rendering style. Missing or invalid presentation hints fall back to the generic node without rejecting an otherwise valid world.
+- Keep entity counts, labels, route information, and accessibility text visible even when a location uses a non-circular shape.
+- Keep all geometry bounded, deterministic, collision-aware, and derived from the current map response. The same authoritative state must produce the same rendered map after refresh.
+- Add browser-verifiable data attributes for semantic form, scale/layer, and shape template so frontend tests can assert rendering without relying only on pixels.
 
-**Out of scope:** unbounded generation, automatic routes or links, changes to existing worlds, player coordinates, or relaxing hierarchy/duplicate/name validation.
+**Out of scope:**
 
-**Verification:** targeted tests cover the expanded prompt/parser contract, rejection of undersized Main Street layouts, and atomic persistence of ten children plus a sibling. `267` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and `git diff --check` passes. The live Aerthalon database was read-only inspected and remains at four locations from the previous start; no live-world mutation was performed during verification.
+- Narrator-generated SVG, arbitrary drawing code, unbounded procedural geometry, or user-authored executable map content.
+- New movement rules, automatic roads/routes, coordinate systems, or changes to containment.
+- A full GIS engine, realistic cartography, terrain simulation, animation, zoom/pan system, or 3D rendering.
+- Making the visualization authoritative or requiring every location to have a custom shape.
+
+**Implementation status:** migration `0016_location_map_forms` adds an allowlisted `map_form` presentation hint. Structured narrator starts accept and validate the semantic form, persist it with the location metadata, and the frontend now renders fixed SVG templates for buildings, streets, districts/cities, mines, forests, water, and landmarks. The map canvas is now 640px high. Street scopes—including existing `Main Street` data whose hint predates this field—lay child buildings out in two lines beside a central road with dashed lane markings instead of a circular arrangement. Street child labels and metadata now sit outside each building, on the side away from the road, so text does not cover either the shape or the road visual. Raw SVG remains impossible through the narrator contract.
+
+**Verification:** targeted contract and persistence tests are in progress. Full suite, lint, frontend build, and live/browser verification remain before completion.
 
 ## Recently completed
 
@@ -44,7 +57,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 | Separate bounded world-start narration timeout (distinct 240 s start deadline, measured timeout logging, player-friendly HTTP message preserved) | 2026-08-19 | `b72fe38` |
 | Coarse geographic orientation for sibling locations (direction/range ordering and deterministic map placement) | 2026-08-19 | `347d30f` |
 | Separate scoped-map children and sibling neighbors (central child layer, compact perimeter sibling layer, visual border) | 2026-08-19 | `63bc423` |
-| Larger street-level narrator starts (16-location bound, ten Main Street children, atomic persistence) | 2026-08-19 | working tree; commit pending |
+| Larger street-level narrator starts (16-location bound, ten Main Street children, atomic persistence) | 2026-08-19 | `70c95d9` |
 
 **Route verification:** `243` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted route creation at revision `0 → 1`, traveled the player from `harbor` to `city` at `1 → 2` without a `location_links` row, and replayed the same travel operation with `already_applied: true` without another revision. SQLite readback confirmed `world_route_set`, `entity_route_traveled`, the route endpoints, and final player placement; port 8795 was stopped and confirmed closed.
 
