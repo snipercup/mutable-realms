@@ -1,3 +1,4 @@
+import json
 import logging
 import subprocess
 
@@ -134,8 +135,99 @@ def test_build_world_start_prompt_requires_bounded_contextual_layout() -> None:
     assert "Main Street" in prompt
     assert "at least one child location" in prompt
     assert "at least one sibling location" in prompt
+    assert "3 to 16 locations" in prompt
+    assert "at least 10 direct child locations" in prompt
 
 
+def test_hermes_narrator_start_accepts_ten_main_street_children(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    locations = [
+        {
+            "name": "Main Street",
+            "description": "The street.",
+            "parent_name": None,
+            "link_to_start": False,
+        }
+    ]
+    locations.extend(
+        {
+            "name": f"Main Street Child {index}",
+            "description": "A nearby place.",
+            "parent_name": "Main Street",
+            "link_to_start": False,
+        }
+        for index in range(1, 11)
+    )
+    locations.append(
+        {
+            "name": "North Road",
+            "description": "A neighboring road.",
+            "parent_name": None,
+            "link_to_start": False,
+        }
+    )
+
+    class _Completed:
+        returncode = 0
+        stdout = json.dumps(
+            {
+                "start_location_name": "Main Street",
+                "locations": locations,
+                "narration": "You arrive on Main Street.",
+            }
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    result = HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+
+    assert len(result.locations) == 12
+    assert sum(location.parent_name == "Main Street" for location in result.locations) == 10
+
+
+def test_hermes_narrator_start_rejects_undersized_main_street_layout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = json.dumps(
+            {
+                "start_location_name": "Main Street",
+                "locations": [
+                    {
+                        "name": "Main Street",
+                        "description": "The street.",
+                        "parent_name": None,
+                        "link_to_start": False,
+                    },
+                    {
+                        "name": "Guild",
+                        "description": "A guild.",
+                        "parent_name": "Main Street",
+                        "link_to_start": False,
+                    },
+                    {
+                        "name": "North Road",
+                        "description": "A sibling.",
+                        "parent_name": None,
+                        "link_to_start": False,
+                    },
+                ],
+                "narration": "You arrive.",
+            }
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    with pytest.raises(NarratorError, match="at least 10 child locations"):
+        HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
 
 
 def test_hermes_narrator_uses_separate_start_timeout_and_logs_timeout(
@@ -183,11 +275,11 @@ def test_hermes_narrator_start_parses_contextual_layout(
     class _Completed:
         returncode = 0
         stdout = (
-            '{"start_location_name":"Main Street",'
-            '"locations":[{"name":"Main Street",'
+            '{"start_location_name":"Elaris Street",'
+            '"locations":[{"name":"Elaris Street",'
             '"description":"A broad street.","parent_name":null,"link_to_start":false},'
             '{"name":"Adventurer\\u0027s Guild","description":"Guild doors.",'
-            '"parent_name":"Main Street","link_to_start":true},'
+            '"parent_name":"Elaris Street","link_to_start":true},'
             '{"name":"North Road","description":"A road north.",'
             '"parent_name":null,"link_to_start":false,'
             '"geography_role":"boundary","direction":"north","range_band":"mid"}],'
@@ -200,13 +292,13 @@ def test_hermes_narrator_start_parses_contextual_layout(
         lambda *args, **kwargs: _Completed(),
     )
     result = HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
-    assert result.start_location_name == "Main Street"
+    assert result.start_location_name == "Elaris Street"
     assert [location.name for location in result.locations] == [
-        "Main Street",
+        "Elaris Street",
         "Adventurer's Guild",
         "North Road",
     ]
-    assert result.locations[1].parent_name == "Main Street"
+    assert result.locations[1].parent_name == "Elaris Street"
     assert result.locations[1].link_to_start is True
     assert result.locations[2].parent_name is None
     assert result.locations[2].geography_role == "boundary"
@@ -346,11 +438,11 @@ def test_hermes_narrator_start_accepts_nested_location_description_alias(
     class _Completed:
         returncode = 0
         stdout = (
-            '{"start_location_name":"Main Street","locations":['
-            '{"name":"Main Street","location_description":"Street.",'
-            '"parent_name":null,"link_to_start":true},'
-            '{"name":"Guild","location_description":"Guild.",'
-            '"parent_name":"Main Street","link_to_start":false},'
+            '{"start_location_name":"Elaris Street","locations":['
+                '{"name":"Elaris Street","location_description":"Street.",'
+                '"parent_name":null,"link_to_start":true},'
+                '{"name":"Guild","location_description":"Guild.",'
+                '"parent_name":"Elaris Street","link_to_start":false},'
             '{"name":"North Road","location_description":"Road.",'
             '"parent_name":null,"link_to_start":false}],'
             '"narration":"You arrive."}'

@@ -605,8 +605,8 @@ def instance_player_character(
                 "link_to_start": False,
             }
         ]
-    if not 1 <= len(location_layout) <= 6:
-        raise WorldAdminConflict("start location layout must contain between 1 and 6 locations")
+    if not 1 <= len(location_layout) <= 16:
+        raise WorldAdminConflict("start location layout must contain between 1 and 16 locations")
     normalized_layout: list[dict[str, Any]] = []
     names: dict[str, str] = {}
     for raw_location in location_layout:

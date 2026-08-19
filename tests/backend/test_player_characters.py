@@ -186,6 +186,53 @@ def test_instance_commits_contextual_start_layout_atomically(tmp_path: Path) -> 
     assert replay["already_applied"] is True
 
 
+def test_instance_accepts_bounded_main_street_layout_with_ten_children(tmp_path: Path) -> None:
+    path = _database(tmp_path)
+    _world(path, "world-a")
+    create_player_character(path, character_id="fate", operation_id="create-1", name="Fate")
+    layout = [
+        {
+            "name": "Main Street",
+            "description": "The central street.",
+            "parent_name": None,
+            "link_to_start": False,
+        }
+    ]
+    layout.extend(
+        {
+            "name": f"Main Street Child {index}",
+            "description": "A local place.",
+            "parent_name": "Main Street",
+            "link_to_start": False,
+        }
+        for index in range(1, 11)
+    )
+    layout.append(
+        {
+            "name": "North Road",
+            "description": "A nearby sibling street.",
+            "parent_name": None,
+            "link_to_start": False,
+        }
+    )
+
+    result = instance_player_character(
+        path,
+        world_id="world-a",
+        operation_id="instance-large-layout",
+        expected_revision=1,
+        character_id="fate",
+        location_name="Main Street",
+        location_layout=layout,
+    )
+
+    assert result["world_revision"] == 2
+    world_map = get_world_map(path, world_id="world-a")
+    assert world_map["scope_location"]["name"] == "Main Street"
+    assert world_map["child_total"] == 10
+    assert sum(location["is_neighbor"] for location in world_map["locations"]) == 1
+
+
 def test_contextual_start_uses_player_location_as_default_map_scope(tmp_path: Path) -> None:
     path = _database(tmp_path)
     _world(path, "world-a")

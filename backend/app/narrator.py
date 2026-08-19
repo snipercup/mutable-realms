@@ -78,6 +78,8 @@ _START_DIRECTIONS = {
     "northwest",
 }
 _START_RANGE_BANDS = {"short", "mid", "long"}
+_MAX_START_LOCATIONS = 16
+_MIN_MAIN_STREET_CHILDREN = 10
 
 _DEFAULT_NARRATOR_TIMEOUT_SECONDS = 120.0
 _DEFAULT_START_NARRATOR_TIMEOUT_SECONDS = 240.0
@@ -228,12 +230,16 @@ def build_world_start_prompt(
         "scale for wilderness openings. Then choose a small, grounded set of "
         "locations that gives the player meaningful nearby choices; do not invent "
         "a kingdom-wide map. The bounded initial layout is required to contain "
-        "3 to 6 locations: the selected start location, at least one child "
+        "3 to 16 locations: the selected start location, at least one child "
         "location whose parent_name is the start, and at least one sibling "
         "location with parent_name null. Siblings are nearby same-scale places "
         "such as another road, plaza, beach, or district; they are not automatic "
-        "movement links. Return ONLY valid JSON with exactly these keys: "
-        "start_location_name (non-empty string), locations (array of 3 to 6 "
+        "movement links. For street-level urban openings such as Main Street, "
+        "include at least 10 direct child locations beneath the street so the "
+        "local map represents a meaningful block of places; keep the complete "
+        "layout within the 16-location bound. Other opening scales may use fewer "
+        "locations when appropriate. Return ONLY valid JSON with exactly these keys: "
+        "start_location_name (non-empty string), locations (array of 3 to 16 "
         "objects with exactly these fields: name, description (the location description), "
         "parent_name (null unless that parent is also listed), link_to_start, "
         "geography_role (local, boundary, or route), direction (a cardinal or "
@@ -332,9 +338,12 @@ def _parse_start_result(output: str) -> NarratorStartResult:
         )
     else:
         raw_locations = payload["locations"]
-        if not isinstance(raw_locations, list) or not 3 <= len(raw_locations) <= 6:
+        if (
+            not isinstance(raw_locations, list)
+            or not 3 <= len(raw_locations) <= _MAX_START_LOCATIONS
+        ):
             raise NarratorError(
-                "narration agent start locations must contain between 3 and 6 items",
+                "narration agent start locations must contain between 3 and 16 items",
                 category="invalid_start_response",
             )
         locations_list: list[NarratorStartLocation] = []
@@ -500,6 +509,17 @@ def _parse_start_result(output: str) -> NarratorStartResult:
                 "child location, and at least one sibling location",
                 category="invalid_start_response",
             )
+        if start_key == "main street":
+            child_count = sum(
+                location.parent_name is not None
+                and location.parent_name.casefold() == start_key
+                for location in locations
+            )
+            if child_count < _MIN_MAIN_STREET_CHILDREN:
+                raise NarratorError(
+                    "narration agent Main Street start must include at least 10 child locations",
+                    category="invalid_start_response",
+                )
     return NarratorStartResult(
         location_name.strip(),
         next(
