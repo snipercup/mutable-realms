@@ -4,11 +4,34 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Awaiting next selected slice
+### Separate scoped-map children and sibling neighbors — complete
 
-No implementation idea is currently selected. The tracker is restored to its template holding state and is ready to record the next user-selected capability. Do not infer an idea from the roadmap.
+**Goal:** make scoped maps communicate geography and containment at a glance. Direct child locations such as the Adventurer's Guild should remain in a central working area, while sibling street locations should sit around a compact visual border instead of competing with child nodes in the center.
 
-**Recently completed note:** the route-chain visualization, separate bounded world-start timeout, and coarse geographic-orientation slices were completed and committed through `347d30f`. Their detailed history remains below and in `docs/maintenance-guide.md`.
+**Recommendation:** use a restrained inner/outer map composition rather than adding new world-state coordinates. Treat direct children as the central map layer and sibling neighbors (`is_neighbor`) as a peripheral layer. Draw a thin, low-footprint border or ring between them; render sibling nodes smaller when necessary so the border remains visually clear without consuming most of the map.
+
+**Proposed scope:**
+
+- Keep the authoritative map response and location hierarchy unchanged; this is a derived frontend presentation slice.
+- Classify visible direct children as central nodes and visible sibling neighbors as border nodes. Keep promoted landmarks and other non-child entries on an explicit, deterministic fallback layer rather than silently treating them as children.
+- Render the border as a subtle SVG ring or bounded perimeter inside the existing map viewport, leaving enough central area for child nodes.
+- Place child nodes using the existing directional/range placement where authored, with a compact center layout fallback.
+- Place sibling nodes on the perimeter using their explicit direction/range metadata when available; otherwise use deterministic perimeter ordering. Sibling nodes must not be placed in the central child layout.
+- Use a smaller sibling node radius and compact labels/metadata when needed. Preserve readable names and avoid overlap through deterministic spacing and collision handling.
+- Keep the scope anchor out of the node layer, as it remains the map title/context rather than a rendered location node.
+- Preserve the distinction between presentation and travel: border placement, sibling visibility, and the ring must not create `location_links`, routes, or movement controls.
+- Preserve flat-world and metadata-missing fallbacks without requiring new migrations or player coordinates.
+
+**Out of scope:**
+
+- Changing containment, sibling discovery, route traversal, or movement validation.
+- Adding authoritative map coordinates or changing `direction`/`range_band` semantics.
+- A full map redesign, zoom system, pan interaction, or arbitrary graph layout engine.
+- Hiding sibling locations; the goal is clearer separation, not less geographic context.
+
+**Implementation status:** scoped SVG maps now have separate center and perimeter layers. Direct children use a compact central layout; `is_neighbor` sibling locations use a perimeter layout guided by direction when available and deterministic circular fallback otherwise. A thin dashed border ring separates the layers, sibling circles/labels are smaller, and SVG nodes expose `data-map-layer="center"` or `data-map-layer="perimeter"` for browser verification. Flat maps retain the previous single-layer layout.
+
+**Verification:** `264` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and `git diff --check` passes. A temporary server on port `8795` served the recreated live Aerthalon world without mutation: the map API returned `Main Street` as scope, one child (`Adventurer's Guild`), and two `is_neighbor` siblings (`Elaris Market Square`, `Old Harbor Wharf`), with the existing single child link unchanged. The frontend exposes deterministic `data-map-layer` hooks for center, perimeter, and border assertions. The browser harness timed out twice against the local page, so screenshot-level visual confirmation remains an environmental follow-up; no visual result is claimed from that failed harness.
 
 ## Recently completed
 
@@ -32,6 +55,7 @@ No implementation idea is currently selected. The tracker is restored to its tem
 | Explicit route-chain visualization for scoped maps (bounded active route traversal, short/mid/long lanes, informational frontend display) | 2026-08-18 | `28685d9` |
 | Separate bounded world-start narration timeout (distinct 240 s start deadline, measured timeout logging, player-friendly HTTP message preserved) | 2026-08-19 | `b72fe38` |
 | Coarse geographic orientation for sibling locations (direction/range ordering and deterministic map placement) | 2026-08-19 | `347d30f` |
+| Separate scoped-map children and sibling neighbors (central child layer, compact perimeter sibling layer, visual border) | 2026-08-19 | working tree; commit pending |
 
 **Route verification:** `243` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted route creation at revision `0 → 1`, traveled the player from `harbor` to `city` at `1 → 2` without a `location_links` row, and replayed the same travel operation with `already_applied: true` without another revision. SQLite readback confirmed `world_route_set`, `entity_route_traveled`, the route endpoints, and final player placement; port 8795 was stopped and confirmed closed.
 

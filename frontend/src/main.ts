@@ -576,6 +576,9 @@ const MAP_RENDER_LIMIT = 30;
 const MAP_CENTER_X = MAP_WIDTH / 2;
 const MAP_CENTER_Y = MAP_HEIGHT / 2;
 const MAP_RADIUS = 110;
+const MAP_CHILD_RADIUS = 66;
+const MAP_BORDER_RADIUS = 140;
+const MAP_BORDER_NODE_RADIUS = 14;
 
 const KIND_COLORS: Record<string, string> = {
   character: "#4f8cff",
@@ -625,6 +628,42 @@ function orientedMapPositions(locations: WorldMapLocation[]): Map<string, [numbe
     positions.set(location.id, [
       MAP_CENTER_X + vector[0] * range + perpendicular[0] * offset,
       MAP_CENTER_Y + vector[1] * range + perpendicular[1] * offset,
+    ]);
+  });
+  return positions;
+}
+
+function centerMapPositions(locations: WorldMapLocation[]): Map<string, [number, number]> {
+  const positions = new Map<string, [number, number]>();
+  const fallback = mapPositions(locations.length).map(([x, y]) => [
+    MAP_CENTER_X + ((x - MAP_CENTER_X) * MAP_CHILD_RADIUS) / MAP_RADIUS,
+    MAP_CENTER_Y + ((y - MAP_CENTER_Y) * MAP_CHILD_RADIUS) / MAP_RADIUS,
+  ] as [number, number]);
+  locations.forEach((location, index) => positions.set(location.id, fallback[index]));
+  return positions;
+}
+
+function perimeterMapPositions(locations: WorldMapLocation[]): Map<string, [number, number]> {
+  const positions = new Map<string, [number, number]>();
+  const fallback = mapPositions(locations.length).map(([x, y]) => [
+    MAP_CENTER_X + ((x - MAP_CENTER_X) * MAP_BORDER_RADIUS) / MAP_RADIUS,
+    MAP_CENTER_Y + ((y - MAP_CENTER_Y) * MAP_BORDER_RADIUS) / MAP_RADIUS,
+  ] as [number, number]);
+  const directional = new Map<string, number>();
+  locations.forEach((location, index) => {
+    const direction = location.direction;
+    const vector = direction === null ? undefined : MAP_DIRECTION_VECTORS[direction];
+    if (direction === null || vector === undefined) {
+      positions.set(location.id, fallback[index]);
+      return;
+    }
+    const collisionIndex = directional.get(direction) ?? 0;
+    directional.set(direction, collisionIndex + 1);
+    const perpendicular: [number, number] = [-vector[1], vector[0]];
+    const offset = (collisionIndex - 0.5) * 26;
+    positions.set(location.id, [
+      MAP_CENTER_X + vector[0] * MAP_BORDER_RADIUS + perpendicular[0] * offset,
+      MAP_CENTER_Y + vector[1] * MAP_BORDER_RADIUS + perpendicular[1] * offset,
     ]);
   });
   return positions;
@@ -683,7 +722,23 @@ function renderMap(state: WorldState): HTMLElement {
   });
 
   const ordered = [...renderedLocations].sort((a, b) => a.name.localeCompare(b.name));
-  const positions = orientedMapPositions(ordered);
+  const children = ordered.filter((location) => !location.is_neighbor);
+  const siblings = ordered.filter((location) => location.is_neighbor);
+  const positions = state.map.scope_location === null
+    ? orientedMapPositions(ordered)
+    : new Map([...centerMapPositions(children), ...perimeterMapPositions(siblings)]);
+
+  if (state.map.scope_location !== null) {
+    svg.append(
+      svgElement("circle", {
+        cx: MAP_CENTER_X,
+        cy: MAP_CENTER_Y,
+        r: MAP_BORDER_RADIUS - MAP_BORDER_NODE_RADIUS,
+        class: "map-scope-border",
+        "data-map-layer": "border",
+      }),
+    );
+  }
 
   if (state.map.scope_location === null) {
     const drawnEdges = new Set<string>();
@@ -710,17 +765,26 @@ function renderMap(state: WorldState): HTMLElement {
 
   for (const location of ordered) {
     const [x, y] = positions.get(location.id) ?? [MAP_CENTER_X, MAP_CENTER_Y];
+    const isSibling = state.map.scope_location !== null && location.is_neighbor;
     const group = svgElement("g", {
-      class: location.is_neighbor ? "map-node map-node--neighbor" : "map-node",
+      class: isSibling ? "map-node map-node--neighbor" : "map-node",
+      "data-map-layer": isSibling ? "perimeter" : "center",
       transform: `translate(${x}, ${y})`,
     });
     group.append(
-      svgElement("circle", { r: 20, class: "map-node-circle" }),
-      svgElement("text", { y: 40, class: "map-label", "text-anchor": "middle" }),
+      svgElement("circle", {
+        r: isSibling ? MAP_BORDER_NODE_RADIUS : 20,
+        class: "map-node-circle",
+      }),
+      svgElement("text", {
+        y: isSibling ? 29 : 40,
+        class: "map-label",
+        "text-anchor": "middle",
+      }),
     );
     if (location.direction !== null || location.range_band !== null) {
       const routeMeta = svgElement("text", {
-        y: 54,
+        y: isSibling ? 42 : 54,
         class: "map-route-meta",
         "text-anchor": "middle",
       });
@@ -737,7 +801,8 @@ function renderMap(state: WorldState): HTMLElement {
     );
     let glyphX = -((kinds.length - 1) * 16) / 2;
     for (const [kind, count] of kinds) {
-      const glyph = svgElement("g", { transform: `translate(${glyphX}, 60)` });
+      const glyphY = isSibling ? 47 : 60;
+      const glyph = svgElement("g", { transform: `translate(${glyphX}, ${glyphY})` });
       const color = KIND_COLORS[kind] ?? "#94a3b8";
       if (kind === "character") {
         glyph.append(svgElement("circle", { r: 5, fill: color }));

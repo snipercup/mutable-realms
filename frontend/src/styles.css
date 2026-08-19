@@ -129,6 +129,11 @@ h1, h2, h3, p { margin: 0; }
 .map-edge { stroke: #3a4a63; stroke-width: 2; }
 .map-node-circle { fill: #1b2740; stroke: #5a6f94; stroke-width: 2; }
 .map-node--neighbor .map-node-circle { stroke-dasharray: 5 3; }
+.map-scope-border { fill: none; stroke: #405579; stroke-width: 1; stroke-dasharray: 4 5; opacity: .72; }
+.map-node--neighbor .map-node-circle { fill: #172238; stroke-width: 1.5; }
+.map-node--neighbor .map-label { font-size: 10px; }
+.map-node--neighbor .map-count { font-size: 8px; }
+.map-node--neighbor .map-route-meta { font-size: 8px; }
 .map-label { fill: #dbe6f5; font-size: 12px; font-weight: 600; }
 .map-count { fill: #e2e8f0; font-size: 10px; font-weight: 700; }
 .map-route-meta { fill: #9aaaca; font-size: 9px; font-weight: 500; }
