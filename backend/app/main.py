@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 from collections.abc import AsyncIterator
@@ -119,6 +120,9 @@ from backend.world.worlds import (
 )
 
 DEFAULT_FRONTEND_PATH = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 def create_app(
@@ -719,6 +723,12 @@ def create_app(
         try:
             result = starter(world_id, world, character)
         except NarratorError as error:
+            if error.category == "narrator_timeout":
+                LOGGER.warning(
+                    "world start request timed out: world_id=%s detail=%s",
+                    world_id,
+                    str(error),
+                )
             public_detail = {
                 "invalid_start_response": "narration agent returned an invalid start response",
                 "narrator_timeout": "narration agent timed out while preparing the world",

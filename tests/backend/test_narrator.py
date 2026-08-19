@@ -1,4 +1,5 @@
-from __future__ import annotations
+import logging
+import subprocess
 
 import pytest
 
@@ -133,6 +134,47 @@ def test_build_world_start_prompt_requires_bounded_contextual_layout() -> None:
     assert "Main Street" in prompt
     assert "at least one child location" in prompt
     assert "at least one sibling location" in prompt
+
+
+
+
+def test_hermes_narrator_uses_separate_start_timeout_and_logs_timeout(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    def run(*args: object, **kwargs: object) -> object:
+        calls.append(kwargs)
+        raise subprocess.TimeoutExpired(cmd="hermes", timeout=240)
+
+    monkeypatch.setattr("backend.app.narrator.subprocess.run", run)
+    with caplog.at_level(logging.WARNING, logger="backend.app.narrator"):
+        with pytest.raises(NarratorError, match="240s") as error:
+            HermesNarrator(timeout=11, start_timeout=240).start(
+                "world-a", {"id": "world-a"}, {"id": "fate"}
+            )
+
+    assert error.value.category == "narrator_timeout"
+    assert calls == [{"capture_output": True, "text": True, "timeout": 240, "check": False}]
+    assert "world_id=world-a" in caplog.text
+    assert "timeout_seconds=240.0" in caplog.text
+    assert "elapsed_seconds=" in caplog.text
+
+
+def test_hermes_narrator_bounds_timeout_environment_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.app.narrator import _bounded_timeout
+
+    monkeypatch.setenv("LOW_TIMEOUT", "1")
+    monkeypatch.setenv("HIGH_TIMEOUT", "999")
+    monkeypatch.setenv("INVALID_TIMEOUT", "not-a-number")
+    monkeypatch.setenv("NAN_TIMEOUT", "nan")
+    assert _bounded_timeout("MISSING_TIMEOUT", 240) == 240
+    assert _bounded_timeout("LOW_TIMEOUT", 240) == 5
+    assert _bounded_timeout("HIGH_TIMEOUT", 240) == 300
+    assert _bounded_timeout("INVALID_TIMEOUT", 240) == 240
+    assert _bounded_timeout("NAN_TIMEOUT", 240) == 240
 
 
 def test_hermes_narrator_start_parses_contextual_layout(

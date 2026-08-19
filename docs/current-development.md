@@ -4,7 +4,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Current-location local maps after narrated movement — in progress
+### Current-location local maps after narrated movement — complete
 
 **Goal:** make every playable scenario show a map of the player's current location rather than a world-wide fallback or a stale previous scope. When the player moves from Main Street to Market Row, the map should discard the previous visible nodes, show Market Row as the player location, show Main Street as an exit when the persisted movement graph supports it, and show up to 100 direct child locations of Market Row. At transition locations such as a city gate, the local working set should also expose bounded geography beyond the current settlement when the opening context supports that boundary. The same rule must work for tropical beaches, roads, settlements, interiors, and other scenario geography without Aerthalon-specific assumptions.
 
@@ -22,15 +22,21 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 - Preserve flat-world compatibility and explicit scope navigation for administrative/read-only map browsing.
 - Include active explicit route chains from the current scope, ordered and grouped by destination range (`short`, `mid`, `long`), with route kind, direction, destination, and chain depth.
 - Keep route-chain entries informational; map nodes and route rows are not UI travel controls.
+- Give world-start narration a separate bounded timeout from normal turn relay, and log timeout duration without exposing operational detail in the player-facing error.
 
 **Out of scope:**
 
 - Aerthalon-specific names, automatic roads, travel-time simulation, route generation, fast travel, or UI-driven movement.
 - Removing `location_links` or changing the existing movement precondition.
 
-**Verification:** the map-presentation, sibling-start, and boundary-geography foundation slices are pushed in `c793cdf`, `c1add38`, and `9f29fa1`. Explicit route-chain visualization is implemented locally but uncommitted: scoped map responses now return a bounded breadth-first `route_chain`, the frontend groups routes into short/mid/long lanes, and route rows remain informational. `260` backend tests pass; `npm run lint`, `npm run frontend-build`, and `git diff --check` pass. Fresh isolated HTTP/SQLite verification returned scope `Fish Market` with `Quay Road → Harbor Docks` as `short`, depth `1`, and `North Track → The Drowned Gull` as `long`, depth `2`; the inactive route was excluded.
+**Verification:** the complete map slice is pushed in `c793cdf`, `c1add38`, `9f29fa1`, and `28685d9`. World-start timeout hardening is implemented locally but uncommitted: start narration now uses a separate bounded 240-second default, timeout logs include world ID/configured/elapsed seconds, and HTTP retains the player-friendly message. `263` backend tests pass; `npm run lint`, `npm run frontend-build`, and `git diff --check` pass. Fresh isolated HTTP/SQLite verification confirmed a bounded route chain from `Fish Market`: `Quay Road → Harbor Docks` as `short`, depth `1`, and `North Track → The Drowned Gull` as `long`, depth `2`; inactive routes were excluded. Route rows remain informational and travel remains narrator-driven.
+
+### Awaiting next selected slice
+
+The route-chain visualization slice is complete. No next implementation idea has been selected; do not infer one from the roadmap. The tracker is intentionally holding here until the user chooses the next capability.
 
 ## Recently completed
+
 
 | Idea | Completed | Commit |
 | --- | --- | --- |
@@ -48,6 +54,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 | Hide current location from scoped maps (scope metadata only, no player highlight) | 2026-08-18 | `c793cdf` |
 | Require sibling locations in structured world starts (3–6 bounded locations with child + sibling topology) | 2026-08-18 | `c1add38` |
 | Boundary geography orientation metadata (geography role, direction, range band; migration `0015`) | 2026-08-18 | `9f29fa1` |
+| Explicit route-chain visualization for scoped maps (bounded active route traversal, short/mid/long lanes, informational frontend display) | 2026-08-18 | `28685d9` |
 
 **Route verification:** `243` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted route creation at revision `0 → 1`, traveled the player from `harbor` to `city` at `1 → 2` without a `location_links` row, and replayed the same travel operation with `already_applied: true` without another revision. SQLite readback confirmed `world_route_set`, `entity_route_traveled`, the route endpoints, and final player placement; port 8795 was stopped and confirmed closed.
 

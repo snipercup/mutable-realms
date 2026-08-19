@@ -21,9 +21,12 @@ receives only player-facing narration.
 from __future__ import annotations
 
 import json
+import logging
+import math
 import os
 import re
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -76,8 +79,33 @@ _START_DIRECTIONS = {
 }
 _START_RANGE_BANDS = {"short", "mid", "long"}
 
+_DEFAULT_NARRATOR_TIMEOUT_SECONDS = 120.0
+_DEFAULT_START_NARRATOR_TIMEOUT_SECONDS = 240.0
+_MIN_NARRATOR_TIMEOUT_SECONDS = 5.0
+_MAX_NARRATOR_TIMEOUT_SECONDS = 300.0
+
+
+def _bounded_timeout(environment_name: str, default: float) -> float:
+    raw_value = os.environ.get(environment_name)
+    if raw_value is None:
+        return default
+    try:
+        value = float(raw_value)
+    except ValueError:
+        return default
+    if not math.isfinite(value):
+        return default
+    return min(max(value, _MIN_NARRATOR_TIMEOUT_SECONDS), _MAX_NARRATOR_TIMEOUT_SECONDS)
+
+
 DEFAULT_PROFILE = os.environ.get("MUTABLE_REALMS_NARRATOR_PROFILE", "mutable-realms-narration")
-NARRATOR_TIMEOUT_SECONDS = float(os.environ.get("MUTABLE_REALMS_NARRATOR_TIMEOUT", "120"))
+NARRATOR_TIMEOUT_SECONDS = _bounded_timeout(
+    "MUTABLE_REALMS_NARRATOR_TIMEOUT", _DEFAULT_NARRATOR_TIMEOUT_SECONDS
+)
+START_NARRATOR_TIMEOUT_SECONDS = _bounded_timeout(
+    "MUTABLE_REALMS_START_NARRATOR_TIMEOUT", _DEFAULT_START_NARRATOR_TIMEOUT_SECONDS
+)
+LOGGER = logging.getLogger(__name__)
 
 # The CLI renders the model's reasoning inside a box drawn with box-drawing
 # characters (CRLF line endings); the reply itself uses plain line endings.
@@ -507,9 +535,11 @@ class HermesNarrator:
         self,
         profile: str = DEFAULT_PROFILE,
         timeout: float = NARRATOR_TIMEOUT_SECONDS,
+        start_timeout: float = START_NARRATOR_TIMEOUT_SECONDS,
     ) -> None:
         self.profile = profile
         self.timeout = timeout
+        self.start_timeout = start_timeout
 
     def __call__(
         self,
@@ -555,17 +585,26 @@ class HermesNarrator:
         """Ask the agent for a structured opening before a player exists."""
         prompt = build_world_start_prompt(world_id, world, character)
         command = ["hermes", "--profile", self.profile, "chat", "-Q", "-q", prompt]
+        started_at = time.monotonic()
         try:
             completed = subprocess.run(
                 command,
                 capture_output=True,
                 text=True,
-                timeout=self.timeout,
+                timeout=self.start_timeout,
                 check=False,
             )
         except subprocess.TimeoutExpired as error:
+            elapsed = time.monotonic() - started_at
+            LOGGER.warning(
+                "world start narration timed out: world_id=%s "
+                "timeout_seconds=%.1f elapsed_seconds=%.1f",
+                world_id,
+                self.start_timeout,
+                elapsed,
+            )
             raise NarratorError(
-                f"narration agent timed out after {self.timeout:.0f}s",
+                f"narration agent timed out after {self.start_timeout:.0f}s",
                 category="narrator_timeout",
             ) from error
         if completed.returncode != 0:

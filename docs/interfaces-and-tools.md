@@ -9,7 +9,8 @@ Technical reference for Mutable Realms: environment variables, commands, HTTP AP
 | `MUTABLE_REALMS_DB_PATH` | Path of the authoritative SQLite database. Required by the server and most commands. | — |
 | `MUTABLE_REALMS_PORT` | HTTP port for `npm run serve`. | `8790` |
 | `MUTABLE_REALMS_NARRATOR_PROFILE` | Hermes profile used by the turn relay. | `mutable-realms-narration` |
-| `MUTABLE_REALMS_NARRATOR_TIMEOUT` | Turn relay timeout in seconds. | `120` |
+| `MUTABLE_REALMS_NARRATOR_TIMEOUT` | Turn relay timeout in seconds. Values are bounded to 5–300 seconds. | `120` |
+| `MUTABLE_REALMS_START_NARRATOR_TIMEOUT` | World-start narration timeout in seconds. Values are bounded to 5–300 seconds. | `240` |
 
 The live database lives outside Git in a bind-mounted state directory; backups are written beside it.
 
@@ -122,6 +123,8 @@ POST /api/worlds/{world_id}/character-instance
 Definition edits and deletion never rewrite an existing world instance; the instance retains copied name/basic info and its own world state.
 
 ### Narrator-driven world start
+
+World-start narration uses `MUTABLE_REALMS_START_NARRATOR_TIMEOUT` separately from normal turn narration. It defaults to 240 seconds and is clamped to 5–300 seconds. When it expires, the server logs the world ID, configured timeout, and measured elapsed duration, but the HTTP response remains the stable player-facing message `narration agent timed out while preparing the world`.
 
 A playerless world can be started from Play mode with a reusable character definition. `POST /api/worlds/{world_id}/start` accepts `{character_id, operation_id, expected_revision}`. The relay gives the narrator the selected world read, story elements/opening scene, and reusable character snapshot. The narrator must infer an appropriate starting scale from that context, then return JSON with `start_location_name`, `locations` (3–6 objects containing `name`, `description`, `parent_name`, and `link_to_start`), and player-facing `narration`. A valid structured layout must contain the selected start as a parentless scope, at least one direct child of that start, and at least one other parentless sibling at the same scale. Siblings are bounded nearby geography, not automatic movement links. A building or mall approach normally uses street level; a wilderness opening may use city or province scale. The selected `start_location_name` is also persisted as the player's default map scope (`is_map_scope = true`, `is_default_scope = true`), so a start at Main Street renders Main Street's child locations as the local map rather than falling back to `Map of <world>`. `parent_name` creates containment only, while `link_to_start` explicitly requests local movement adjacency. Only after that result validates does the server call the atomic character-instance operation, creating the bounded location layout, containment, explicit links, world-specific player, placement, and event in one revision. The start response includes the copied instance IDs and revisions. The operation result stores the narration so an exact replay returns the same response without invoking the narrator again. Invalid structured narrator output leaves the world playerless. Legacy narrator results containing only `location_name` and `location_description` remain compatible and create one location. The parser also normalizes two bounded model-format variants: `null` link flags become `false`, and a link flag containing the selected start-location name becomes `true`; for compatibility, nested `location_description` is accepted as an alias for nested `description`. New narrator responses should use nested `description` exactly; `location_description` is reserved for the legacy top-level response.
 

@@ -93,7 +93,7 @@ Schema changes are versioned from the first schema. Versioned SQL files + a sche
 
 ## Observability
 
-Logs should identify startup, migrations, world mutations, validation failures, API errors, and agent operation failures. Avoid logging huge prompts or full world state by default. Distinguish three conditions as the system grows: application operational (liveness), world valid (validation), agent reachable (narration relay).
+Logs should identify startup, migrations, world mutations, validation failures, API errors, and agent operation failures. Avoid logging huge prompts or full world state by default. Distinguish three conditions as the system grows: application operational (liveness), world valid (validation), agent reachable (narration relay). World-start narration has its own bounded timeout; timeout warnings must include the world ID, configured timeout, and measured elapsed duration, while the API may return a stable player-facing error.
 
 ## Security boundaries
 

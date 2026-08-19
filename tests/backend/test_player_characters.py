@@ -409,6 +409,33 @@ def test_narrator_world_start_instances_selected_character_and_replays(tmp_path:
         ).fetchone() == ("boundary", "north", "mid")
 
 
+def test_narrator_world_start_timeout_keeps_player_friendly_message_and_logs(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    path = _database(tmp_path)
+    _world(path, "world-a")
+    create_player_character(path, character_id="fate", operation_id="create-1", name="Fate")
+
+    def starter(world_id: str, world: dict, character: dict) -> NarratorStartResult:
+        raise NarratorError("narration agent timed out after 240s", category="narrator_timeout")
+
+    app = create_app(path, start_narrator=starter)
+    with caplog.at_level("WARNING", logger="backend.app.main"):
+        status, body = asyncio.run(
+            _request(
+                app,
+                "POST",
+                "/api/worlds/world-a/start",
+                {"character_id": "fate", "operation_id": "start-1", "expected_revision": 1},
+            )
+        )
+    assert status == 502
+    assert body["detail"] == "narration agent timed out while preparing the world"
+    assert "world_id=world-a" in caplog.text
+    assert "after 240s" in caplog.text
+    assert read_world(path, "world-a")["player"] is None
+
+
 def test_narrator_world_start_failure_leaves_world_playerless(tmp_path: Path) -> None:
     path = _database(tmp_path)
     _world(path, "world-a")
