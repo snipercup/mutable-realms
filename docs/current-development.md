@@ -4,64 +4,11 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Current-location local maps after narrated movement — complete
-
-**Goal:** make every playable scenario show a map of the player's current location rather than a world-wide fallback or a stale previous scope. When the player moves from Main Street to Market Row, the map should discard the previous visible nodes, show Market Row as the player location, show Main Street as an exit when the persisted movement graph supports it, and show up to 100 direct child locations of Market Row. At transition locations such as a city gate, the local working set should also expose bounded geography beyond the current settlement when the opening context supports that boundary. The same rule must work for tropical beaches, roads, settlements, interiors, and other scenario geography without Aerthalon-specific assumptions.
-
-**Scope:**
-
-- Resolve the default map scope from the authoritative player's current location on every map read; do not retain the previous location's `is_default_scope` as the active player view.
-- Render only child and sibling location nodes inside the scoped map; the current location remains authoritative scope metadata for the title but is not rendered as a map node.
-- Do not highlight the current player location in the map; the map title communicates where the player is.
-- Require the structured start response to contain 3–6 locations: the parentless selected start, at least one direct child of that start, and at least one other parentless sibling at the same scale.
-- Keep siblings as persisted presentation geography only; `parent_name` creates containment and `link_to_start` creates explicit movement adjacency independently.
-- Render up to 100 direct child locations belonging to the current scope, plus bounded sibling locations that share the current location's parent; root-level locations with no parent are treated as virtual-world siblings.
-- Mark sibling locations as presentation neighbors, not child locations or inferred movement destinations. Boundary/route neighbors may carry explicit `geography_role`, `direction`, and `range_band` metadata so a road, sea lane, or rail line is distinguishable from a static landmark.
-- Expose neighboring/previous locations as boundary exits when explicit persisted links leave the current scope; exits are orientation/travel hints, not UI travel controls.
-- Keep map state derived from SQLite after movement so a successful narrated move immediately changes the map's working set.
-- Preserve flat-world compatibility and explicit scope navigation for administrative/read-only map browsing.
-- Include active explicit route chains from the current scope, ordered and grouped by destination range (`short`, `mid`, `long`), with route kind, direction, destination, and chain depth.
-- Keep route-chain entries informational; map nodes and route rows are not UI travel controls.
-
-**Out of scope:**
-
-- Aerthalon-specific names, automatic roads, travel-time simulation, route generation, fast travel, or UI-driven movement.
-- Removing `location_links` or changing the existing movement precondition.
-
-**Verification:** the complete map slice is pushed in `c793cdf`, `c1add38`, `9f29fa1`, and `28685d9`. Fresh isolated HTTP/SQLite verification confirmed a bounded route chain from `Fish Market`: `Quay Road → Harbor Docks` as `short`, depth `1`, and `North Track → The Drowned Gull` as `long`, depth `2`; inactive routes were excluded. Route rows remain informational and travel remains narrator-driven.
-
-**Timeout verification:** the world-start timeout hardening is pushed as `b72fe38`. Start narration now uses a separate bounded `240`-second default (`MUTABLE_REALMS_START_NARRATOR_TIMEOUT`, bounded 5–300 s) distinct from the normal turn relay timeout, timeout logs include world ID, configured timeout, and measured elapsed seconds, and the HTTP layer keeps the player-friendly message. `263` backend tests pass; `npm run lint`, `npm run frontend-build`, and `git diff --check` pass. Note: the running server on port `8790` still has the old 120 s start deadline until the container is restarted.
-
-### Coarse geographic orientation for sibling locations — complete
-
-**Recommendation:** extend the existing explicit direction and distance-band metadata instead of introducing universal coordinates. The first implementation should describe a location relative to its relevant map scope with a cardinal/intercardinal direction and a coarse distance band (`short`, `mid`, or `long`), for example: `Thornmere` is `east` at `mid` range from `Elaris`. This is sufficient for sensible sibling ordering and labels, is legible to narration agents, and does not imply a precision the world model cannot support.
-
-**Goal:** make sibling locations and larger transition geography appear in a spatially sensible order without requiring the player or every location to have a precise point coordinate.
-
-**Scope:**
-
-- Reuse and formalize the existing `direction` + `range_band` metadata as the authoritative coarse orientation for scoped-map siblings, promoted landmarks, boundary geography, and route destinations.
-- Define the reference scope for each orientation relationship explicitly; direction and distance are relative metadata, not values inferred from SVG placement, containment, route order, or names.
-- Use direction for deterministic API ordering and map placement; use range band for radial separation, labels, and route/map grouping. Preserve stable name/id fallback ordering when metadata is absent.
-- Keep `short`, `mid`, and `long` as semantic bands rather than pretending that they are globally comparable measurements. A future slice may add world- or province-scale numeric distance if play demonstrates that bands are insufficient.
-- Keep the player location discrete: the player is located in an authoritative location and has no required personal coordinates. Entering or leaving a location remains a location mutation, not coordinate movement.
-- Do not add coordinates in this slice. Coarse coordinates remain a later, optional large-scale reference-frame extension for provinces or larger regions; they must not be required for city, interior, or other local locations, and must not become a second source of truth for direction/range metadata.
-- Preserve the existing separation between presentation orientation and movement permission. A sibling shown to the east is not necessarily reachable; `location_links` and explicit `world_routes` remain authoritative for travel.
-
-**Out of scope:**
-
-- Universal coordinates for every location or player position.
-- Distance simulation, pathfinding, automatic route generation, travel-time calculation, or inferring geography from coordinates alone.
-- Replacing explicit routes, containment, or movement links with a geometric graph.
-- Redesigning the current map renderer before the metadata contract and fallback behavior are tested.
-
-**Implementation status:** the first slice now reuses `location_metadata.direction` and `range_band`. Scoped-map API results keep the selected scope first, then order annotated locations by range (`short`, `mid`, `long`), direction (north clockwise through northwest), name, and ID; unannotated locations retain stable name/ID fallback ordering. The frontend places annotated nodes at deterministic direction/range positions with collision offsets and keeps the circular fallback for unannotated nodes.
-
-**Verification:** the backend contract test covers an `Elaris` scope with `Northgate` north/short, `Thornmere` east/mid, and `Westmoor` west/mid, confirms deterministic ordering and metadata, confirms unannotated locations retain stable name ordering, and confirms orientation alone creates no movement link. `264` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and `git diff --check` passes.
-
 ### Awaiting next selected slice
 
-The route-chain visualization, world-start timeout, and coarse geographic-orientation slices are complete. No next implementation idea has been selected; do not infer one from the roadmap. The tracker is intentionally holding here until the user chooses the next capability.
+No implementation idea is currently selected. The tracker is restored to its template holding state and is ready to record the next user-selected capability. Do not infer an idea from the roadmap.
+
+**Recently completed note:** the route-chain visualization, separate bounded world-start timeout, and coarse geographic-orientation slices were completed and committed through `347d30f`. Their detailed history remains below and in `docs/maintenance-guide.md`.
 
 ## Recently completed
 
@@ -84,7 +31,7 @@ The route-chain visualization, world-start timeout, and coarse geographic-orient
 | Boundary geography orientation metadata (geography role, direction, range band; migration `0015`) | 2026-08-18 | `9f29fa1` |
 | Explicit route-chain visualization for scoped maps (bounded active route traversal, short/mid/long lanes, informational frontend display) | 2026-08-18 | `28685d9` |
 | Separate bounded world-start narration timeout (distinct 240 s start deadline, measured timeout logging, player-friendly HTTP message preserved) | 2026-08-19 | `b72fe38` |
-| Coarse geographic orientation for sibling locations (direction/range ordering and deterministic map placement) | 2026-08-19 | working tree; commit pending |
+| Coarse geographic orientation for sibling locations (direction/range ordering and deterministic map placement) | 2026-08-19 | `347d30f` |
 
 **Route verification:** `243` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted route creation at revision `0 → 1`, traveled the player from `harbor` to `city` at `1 → 2` without a `location_links` row, and replayed the same travel operation with `already_applied: true` without another revision. SQLite readback confirmed `world_route_set`, `entity_route_traveled`, the route endpoints, and final player placement; port 8795 was stopped and confirmed closed.
 
