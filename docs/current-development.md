@@ -4,35 +4,21 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Lively semantic map shapes and a larger map canvas — in progress
+### Directional sibling edge placement — in progress
 
-**Goal:** make the map communicate the character of the current location instead of representing every place as an identical circle. The map should become twice as high, then use bounded semantic shapes appropriate to the current scale and setting: individual buildings along a street, street clusters within a district, simplified district clusters within a city, and distinct visual motifs for places such as mines and forests.
+**Goal:** move sibling nodes from the centered ring to the map edge in the direction relative to the current location. North is the top edge; south is the bottom; east and west are the sides; diagonals use the corresponding corners. This keeps the child overview central while making available travel directions legible.
 
-**Recommendation:** keep the narrator responsible for choosing **semantic map forms**, but keep SVG geometry deterministic in the frontend. The narrator must never emit raw SVG, arbitrary paths, CSS, scripts, or executable drawing instructions. A validated vocabulary such as `building`, `street`, `district`, `city`, `mine`, `forest`, `water`, and `landmark`, plus bounded presentation hints, gives the narrator creative control while keeping rendering safe, testable, and consistent.
+**Scope:**
 
-**Proposed scope:**
+- Use derived frontend placement only; do not change authoritative locations, links, routes, or direction metadata.
+- Anchor siblings to a compact inset from the rectangular SVG edge, with deterministic offsets for multiple siblings sharing a direction.
+- Use deterministic edge fallback for siblings without direction metadata.
+- Keep labels and direction/range metadata inward from the edge so they are readable and do not clip.
+- Preserve the central child layout, street road visualization, and compact border ring.
 
-- Increase the SVG map canvas height from `320` to `640` while preserving the current width unless layout testing shows that width also needs adjustment.
-- Define a small, extensible semantic visual vocabulary for map locations and clusters. Start with street buildings, street segments, district clusters, simplified city districts, mine entrances/tunnels, forest patches/trees, water/coast, and generic landmarks.
-- Let the narrator select the semantic form from the current opening context and location meaning; validate the value against an allowlist and apply deterministic defaults when omitted.
-- Represent shapes as derived SVG primitives and bounded deterministic geometry—rectangles, polygons, paths from fixed templates, lines, clusters, and symbols—not narrator-authored arbitrary SVG.
-- Use containment and scale to compose forms: a street's direct child buildings form a building row or block; a district's street children form bounded street clusters; a city's district children form a simplified district arrangement. Do not infer new authoritative locations from visual geometry.
-- Keep child/sibling separation from the previous slice: child forms occupy the central layer, sibling forms remain on the perimeter/border layer, and the border remains visually compact.
-- Preserve direction/range metadata for placement and use `kind`, geography role, and semantic form for rendering style. Missing or invalid presentation hints fall back to the generic node without rejecting an otherwise valid world.
-- Keep entity counts, labels, route information, and accessibility text visible even when a location uses a non-circular shape.
-- Keep all geometry bounded, deterministic, collision-aware, and derived from the current map response. The same authoritative state must produce the same rendered map after refresh.
-- Add browser-verifiable data attributes for semantic form, scale/layer, and shape template so frontend tests can assert rendering without relying only on pixels.
+**Implementation status:** sibling nodes now use a rectangular edge projection instead of the centered ring. Cardinal directions anchor to the corresponding map edge, diagonals anchor near corners, and multiple siblings sharing a direction receive deterministic offsets. Missing directions use deterministic edge fallback positions. Labels and direction/range metadata are placed inward from the edge so they remain readable without being clipped.
 
-**Out of scope:**
-
-- Narrator-generated SVG, arbitrary drawing code, unbounded procedural geometry, or user-authored executable map content.
-- New movement rules, automatic roads/routes, coordinate systems, or changes to containment.
-- A full GIS engine, realistic cartography, terrain simulation, animation, zoom/pan system, or 3D rendering.
-- Making the visualization authoritative or requiring every location to have a custom shape.
-
-**Implementation status:** migration `0016_location_map_forms` adds an allowlisted `map_form` presentation hint. Structured narrator starts accept and validate the semantic form, persist it with the location metadata, and the frontend now renders fixed SVG templates for buildings, streets, districts/cities, mines, forests, water, and landmarks. The map canvas is now 640px high. Street scopes—including existing `Main Street` data whose hint predates this field—lay child buildings out in two lines beside a central road with dashed lane markings instead of a circular arrangement. Street child labels and metadata now sit outside each building, on the side away from the road, so text does not cover either the shape or the road visual. Raw SVG remains impossible through the narrator contract.
-
-**Verification:** targeted contract and persistence tests are in progress. Full suite, lint, frontend build, and live/browser verification remain before completion.
+**Verification:** pending full lint, frontend build, regression tests, and live/browser verification.
 
 ## Recently completed
 
@@ -57,7 +43,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 | Separate bounded world-start narration timeout (distinct 240 s start deadline, measured timeout logging, player-friendly HTTP message preserved) | 2026-08-19 | `b72fe38` |
 | Coarse geographic orientation for sibling locations (direction/range ordering and deterministic map placement) | 2026-08-19 | `347d30f` |
 | Separate scoped-map children and sibling neighbors (central child layer, compact perimeter sibling layer, visual border) | 2026-08-19 | `63bc423` |
-| Larger street-level narrator starts (16-location bound, ten Main Street children, atomic persistence) | 2026-08-19 | `70c95d9` |
+| Lively semantic map shapes and street visualization (map forms, larger canvas, two-sided buildings, central road, external labels) | 2026-08-19 | `1d9422b` |
 
 **Route verification:** `243` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted route creation at revision `0 → 1`, traveled the player from `harbor` to `city` at `1 → 2` without a `location_links` row, and replayed the same travel operation with `already_applied: true` without another revision. SQLite readback confirmed `world_route_set`, `entity_route_traveled`, the route endpoints, and final player placement; port 8795 was stopped and confirmed closed.
 

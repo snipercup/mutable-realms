@@ -170,6 +170,61 @@ def test_hermes_narrator_start_parses_allowlisted_map_form(
     ]
 
 
+def test_hermes_narrator_start_accepts_json_code_fence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            "```json\n"
+            '{"start_location_name":"Elaris Street","locations":['
+            '{"name":"Elaris Street","description":"Street.",'
+            '"parent_name":null,"link_to_start":false},'
+            '{"name":"Guild","description":"Guild.",'
+            '"parent_name":"Elaris Street","link_to_start":false},'
+            '{"name":"North Road","description":"Road.","parent_name":null,"link_to_start":false}],'
+            '"narration":"You arrive."}\n'
+            "```"
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    result = HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+    assert result.start_location_name == "Elaris Street"
+
+
+def test_hermes_narrator_start_normalizes_semantic_geography_role_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            '{"start_location_name":"Elaris Street","locations":['
+            '{"name":"Elaris Street","description":"Street.",'
+            '"parent_name":null,"link_to_start":false},'
+            '{"name":"Guild","description":"Guild.",'
+            '"parent_name":"Elaris Street","link_to_start":false,'
+            '"geography_role":"landmark"},'
+            '{"name":"River","description":"Water.","parent_name":null,"link_to_start":false,"geography_role":"water"}],'
+            '"narration":"You arrive."}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    result = HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+    assert [location.geography_role for location in result.locations] == [
+        "local",
+        "local",
+        "local",
+    ]
+
+
 def test_hermes_narrator_start_accepts_ten_main_street_children(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

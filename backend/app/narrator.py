@@ -238,7 +238,8 @@ def build_world_start_prompt(
         "such as another road, plaza, beach, or district; they are not automatic "
         "movement links. For street-level urban openings such as Main Street, "
         "include at least 10 direct child locations beneath the street so the "
-        "local map represents a meaningful block of places; keep the complete "
+        "local map represents a meaningful block of places; count the direct "
+        "children before responding and do not return fewer than 10; keep the complete "
         "layout within the 16-location bound. Other opening scales may use fewer "
         "locations when appropriate. Return ONLY valid JSON with exactly these keys: "
         "start_location_name (non-empty string), locations (array of 3 to 16 "
@@ -267,6 +268,11 @@ def build_world_start_prompt(
 def _parse_start_result(output: str) -> NarratorStartResult:
     """Parse and validate the narrator's JSON start contract."""
     text = clean_narration(output)
+    if text.startswith("```") and text.endswith("```"):
+        lines = text.splitlines()
+        text = "\n".join(lines[1:-1]).strip()
+        if text.lower().startswith("json\n"):
+            text = text[5:].lstrip()
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as error:
@@ -397,6 +403,8 @@ def _parse_start_result(output: str) -> NarratorStartResult:
             direction = raw_location.get("direction")
             range_band = raw_location.get("range_band")
             map_form = raw_location.get("map_form")
+            if geography_role in {"landmark", "water"}:
+                geography_role = "local"
             if not isinstance(name, str) or not name.strip() or len(name.strip()) > 200:
                 raise NarratorError(
                     "narration agent start location name is invalid",
@@ -642,4 +650,15 @@ class HermesNarrator:
         if completed.returncode != 0:
             detail = (completed.stderr or completed.stdout or "").strip()
             raise NarratorError(f"narration agent failed: {detail[:500]}")
-        return _parse_start_result(completed.stdout)
+        try:
+            return _parse_start_result(completed.stdout)
+        except NarratorError as error:
+            LOGGER.warning(
+                "world start narration returned invalid response: world_id=%s "
+                "category=%s detail=%s output_chars=%d",
+                world_id,
+                error.category,
+                str(error),
+                len(completed.stdout or ""),
+            )
+            raise

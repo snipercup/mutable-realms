@@ -683,6 +683,41 @@ function perimeterMapPositions(locations: WorldMapLocation[]): Map<string, [numb
   return positions;
 }
 
+function edgeMapPositions(locations: WorldMapLocation[]): Map<string, [number, number]> {
+  const positions = new Map<string, [number, number]>();
+  const edgeInset = 26;
+  const slots = new Map<string, number>();
+  const fallback = mapPositions(locations.length).map(([x, y]) => [
+    x < MAP_CENTER_X ? edgeInset : MAP_WIDTH - edgeInset,
+    y < MAP_CENTER_Y ? edgeInset : MAP_HEIGHT - edgeInset,
+  ] as [number, number]);
+  locations.forEach((location, index) => {
+    const direction = location.direction;
+    if (direction === null || MAP_DIRECTION_VECTORS[direction] === undefined) {
+      positions.set(location.id, fallback[index]);
+      return;
+    }
+    const slot = slots.get(direction) ?? 0;
+    slots.set(direction, slot + 1);
+    const offset = (slot - 0.5) * 34;
+    const [vx, vy] = MAP_DIRECTION_VECTORS[direction];
+    let x = MAP_CENTER_X;
+    let y = MAP_CENTER_Y;
+    if (vy < 0) y = edgeInset;
+    if (vy > 0) y = MAP_HEIGHT - edgeInset;
+    if (vx < 0) x = edgeInset;
+    if (vx > 0) x = MAP_WIDTH - edgeInset;
+    if (vy === 0) y += offset;
+    else if (vx === 0) x += offset;
+    else {
+      x += vx * offset;
+      y += vy * offset;
+    }
+    positions.set(location.id, [x, y]);
+  });
+  return positions;
+}
+
 function svgElement(
   tag: string,
   attributes: Record<string, string | number>,
@@ -771,7 +806,7 @@ function renderMap(state: WorldState): HTMLElement {
         ...(isStreetScope
           ? streetMapPositions(children)
           : centerMapPositions(children)),
-        ...perimeterMapPositions(siblings),
+        ...edgeMapPositions(siblings),
       ]);
 
   if (state.map.scope_location !== null) {
@@ -835,8 +870,15 @@ function renderMap(state: WorldState): HTMLElement {
     const isSibling = state.map.scope_location !== null && location.is_neighbor;
     const isStreetChild = isStreetScope && !isSibling;
     const labelOnLeft = x < MAP_CENTER_X;
-    const labelX = isStreetChild ? (labelOnLeft ? -28 : 28) : 0;
-    const labelAnchor = isStreetChild ? (labelOnLeft ? "end" : "start") : "middle";
+    const isTopEdge = y < 60;
+    const isBottomEdge = y > MAP_HEIGHT - 60;
+    const labelX = isSibling && !isTopEdge && !isBottomEdge
+      ? (labelOnLeft ? 30 : -30)
+      : isStreetChild ? (labelOnLeft ? -28 : 28) : 0;
+    const labelY = isSibling && isTopEdge ? 28 : isSibling && isBottomEdge ? -28 : isStreetChild ? 4 : isSibling ? 4 : 40;
+    const labelAnchor = isSibling && !isTopEdge && !isBottomEdge
+      ? (labelOnLeft ? "start" : "end")
+      : isStreetChild ? (labelOnLeft ? "end" : "start") : "middle";
     const group = svgElement("g", {
       class: isSibling ? "map-node map-node--neighbor" : "map-node",
       "data-map-layer": isSibling ? "perimeter" : "center",
@@ -846,7 +888,7 @@ function renderMap(state: WorldState): HTMLElement {
       mapShape(location, isSibling),
       svgElement("text", {
         x: labelX,
-        y: isStreetChild ? 4 : isSibling ? 29 : 40,
+        y: labelY,
         class: "map-label",
         "text-anchor": labelAnchor,
       }),
@@ -854,7 +896,7 @@ function renderMap(state: WorldState): HTMLElement {
     if (location.direction !== null || location.range_band !== null) {
       const routeMeta = svgElement("text", {
         x: labelX,
-        y: isStreetChild ? 16 : isSibling ? 42 : 54,
+        y: labelY + (isBottomEdge ? -13 : 13),
         class: "map-route-meta",
         "text-anchor": labelAnchor,
       });
