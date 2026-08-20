@@ -4,13 +4,13 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Let the narrator orient and enter newly expanded locations (map–story alignment) — in progress
+### Cap the visible recent-events list (3 items) so it cannot push the input bar down — in progress
 
-**Goal:** when the narrator creates a new location that the player intends to enter (e.g. an orchard that a quest referenced), the world should line up with the story: the new location appears on the map in the correct direction, and the player actually arrives there. Today the narrator can create the location but cannot orient it (no direction/range metadata on expansion) and cannot move the player into it in the same turn, so it narrates arrival that never persisted.
+**Goal:** the right-column `Recent events` panel renders every fetched event (up to 20), so as the player takes more turns the panel grows and pushes the narration input bar below the fold. Keep at most 3 events visible; let the user scroll within the panel to reach earlier events.
 
-**Implementation status:** `world_expand_location` / `POST /api/worlds/{world_id}/locations/expand` now accept optional `direction` (cardinal/intercardinal), `range_band` (`short`/`mid`/`long`), and `map_form` (allowlisted visual form), persisted into `location_metadata` in the same atomic operation. A new `move_actor_to_location: bool` (with `connect_to_anchor: true` and an `actor_entity_id`) moves the actor into the new location atomically in that same operation — one revision, one event, exact idempotency — so "create the place + arrive there" is a single supported mutation. The event payload records the orientation fields for traceability. The narration profile `SOUL.md` and operation contract now tell the narrator to supply orientation metadata and to move the actor into a newly created place (or narrate honestly that the place lies ahead rather than claiming arrival).
+**Implementation status:** `.event-list` now has `max-height: 228px` (≈3 event items) with `overflow-y: auto` and a thin scrollbar (`scrollbar-width: thin` plus WebKit scrollbar styles). All fetched events remain in the DOM and are reachable by scrolling the list; only the visible height is capped. No backend or state change.
 
-**Verification:** `292` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; `git diff --check` passes. Live verification on a temporary DB (no real narrator): a single `world_expand_location` for the town world created `Orchard Ford` with `connect_to_anchor`, orientation metadata (`direction=east`, `range_band=mid`, `map_form=forest`), and `move_actor_to_location: true` in one operation — world revision `0 → 1`, the sailor's `entity_locations` row moved to `orchard`, `location_metadata` stored `('east', 'mid', 'forest')`, and the `plaza ↔ orchard` link exists. Exact replay with the same request returned `already_applied: true` at revision 1 without moving the actor again. The temporary DB was removed; the live DB was not modified.
+**Verification:** `292` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; `git diff --check` passes. Live headless-Chromium measurement of the Aerthalon page on port 8790 (fresh bundle): the event list is capped at `228px` visible height with `overflow-y: auto`, contains all `9` fetched events (`scrollHeight: 831px`), so earlier events are reachable by scrolling the list instead of stretching the page. The live DB was not modified.
 
 ## Recently completed
 
@@ -20,6 +20,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 | Bound the narrator's turn output to 200 tokens (prompt instruction + SOUL.md rule + deterministic sentence-safe `bound_narration_tokens()` cap; no model-level token cap because Hermes applies `model.max_tokens` to the whole completion including tool calls) | 2026-08-20 | `03b0454` |
 | Persist narration history so the page can reload the last messages (migration `0017_narration_history`, append/read service, `GET /api/worlds/{world_id}/narration`, record start + narrated turns, frontend history reload) | 2026-08-20 | `d2216db` |
 | Feed recent narration history back into the narrator's context (story-so-far prompt block, 32k-token bound, turn route attaches history) | 2026-08-20 | `08e9114` |
+| Let the narrator orient and enter newly expanded locations (map–story alignment: `direction`/`range_band`/`map_form` metadata + atomic `move_actor_to_location` on `world_expand_location`, one revision, exact idempotency) | 2026-08-20 | `76a4e7c` |
 | Scenario authoring and world management (scenario CRUD + elements, world instancing, world update/elements/remove) | 2026-08-08 | on main via `scenario-authoring` · `world-instancing` · `world-management` |
 | World management interface (play ⇄ manage view, scenario/world CRUD UI, instancing, `#manage` deep link) | 2026-08-10 | on main via `world-management-interface` |
 | Player provisioning (create a player + starting location so instanced worlds are playable; play view empty state) | 2026-08-10 | on main via `player-provisioning` |

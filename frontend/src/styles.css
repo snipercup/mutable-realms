@@ -109,7 +109,9 @@ h1, h2, h3, p { margin: 0; }
 .entity-id { display: block; margin-top: 10px; color: var(--muted); font-size: .72rem; }
 .entity-details { margin-top: 8px; color: #c8d1df; font-size: .8rem; text-transform: capitalize; }
 .events-panel { padding: 22px; }
-.event-list { margin: 0; padding: 0; list-style: none; }
+.event-list { margin: 0; padding: 0; list-style: none; max-height: 228px; overflow-y: auto; scrollbar-width: thin; }
+.event-list::-webkit-scrollbar { width: 6px; }
+.event-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 .event-item { border-top: 1px solid var(--border); padding: 14px 0; }
 .event-summary { line-height: 1.4; }
 .event-meta { display: block; margin-top: 6px; color: var(--muted); font-size: .7rem; text-transform: capitalize; }
