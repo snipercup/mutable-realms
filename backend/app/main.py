@@ -28,6 +28,8 @@ from backend.app.read_models import (
     LocationRead,
     LocationScopePromotionMutationResponse,
     LocationScopePromotionRequest,
+    NarrationEntryRead,
+    NarrationHistoryRead,
     PlayerCharacterCreateRequest,
     PlayerCharacterMutationResponse,
     PlayerCharacterRead,
@@ -82,6 +84,7 @@ from backend.world.characters import (
 from backend.world.context import build_world_context
 from backend.world.expansion import ExpansionConflict, ExpansionNotFound, propose_location_expansion
 from backend.world.hierarchy import set_location_hierarchy, set_location_scope_promotion
+from backend.world.narration_history import append_narration, read_narration_history
 from backend.world.queries import (
     EntityNotFound,
     LocationNotFound,
@@ -486,6 +489,30 @@ def create_app(
         except WorldNotFound as error:
             raise HTTPException(status_code=404, detail="world not found") from error
 
+    @application.get("/api/worlds/{world_id}/narration", tags=["world reads"])
+    def narration_history(
+        world_id: str, limit: int = Query(default=20, ge=1, le=100)
+    ) -> NarrationHistoryRead:
+        try:
+            entries = read_narration_history(
+                get_database_path(), world_id=world_id, limit=limit
+            )
+        except WorldNotFound as error:
+            raise HTTPException(status_code=404, detail="world not found") from error
+        return NarrationHistoryRead(
+            world_id=world_id,
+            entries=[
+                NarrationEntryRead(
+                    id=entry["id"],
+                    revision=entry["revision"],
+                    role=entry["role"],
+                    content=entry["content"],
+                    occurred_at=entry["occurred_at"],
+                )
+                for entry in entries
+            ],
+        )
+
     @application.get("/api/player-characters", tags=["player character reads"])
     def player_characters() -> list[PlayerCharacterRead]:
         return [
@@ -785,6 +812,13 @@ def create_app(
                 "revision_before": request.expected_revision,
                 "revision_after": instance["world_revision"],
             }
+            append_narration(
+                database_path,
+                world_id=world_id,
+                revision=instance["world_revision"],
+                role="agent",
+                content=result.narration,
+            )
             return WorldStartResponse.model_validate(response)
         except WorldAdminNotFound as error:
             raise HTTPException(status_code=404, detail="world not found") from error
@@ -845,6 +879,20 @@ def create_app(
         except NarratorError as error:
             raise HTTPException(status_code=502, detail=str(error)) from error
         after_status = read_world_status(database_path, world_id=world_id)
+        append_narration(
+            database_path,
+            world_id=world_id,
+            revision=after_status["world"]["revision"],
+            role="player",
+            content=request.player_action,
+        )
+        append_narration(
+            database_path,
+            world_id=world_id,
+            revision=after_status["world"]["revision"],
+            role="agent",
+            content=narration,
+        )
         return TurnResponse(
             outcome="narrated_turn",
             narration=narration,

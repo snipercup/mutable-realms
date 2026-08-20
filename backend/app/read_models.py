@@ -161,6 +161,19 @@ class HealthRead(StrictReadModel):
     database: str
 
 
+class NarrationEntryRead(StrictReadModel):
+    id: int
+    revision: int
+    role: str
+    content: str
+    occurred_at: str
+
+
+class NarrationHistoryRead(StrictReadModel):
+    world_id: str
+    entries: list[NarrationEntryRead] = Field(default_factory=list)
+
+
 class TurnRequest(StrictReadModel):
     player_id: str
     player_action: str = Field(min_length=1)

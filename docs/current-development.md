@@ -4,33 +4,20 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Bound the narrator's turn output to 200 tokens — in progress
+### Persist narration history so the page can reload the last messages — in progress
 
-**Goal:** keep the player-facing narration the relay returns for story turns short (~200 tokens), without limiting the narrator's tool-calling ability.
+**Goal:** keep a world-scoped transcript of player-facing narration so that after a page refresh the user can read back the last ~20 entries. Today the `#narration-log` is session-local: the turn/start routes return narration but never persist it, so a refresh clears everything.
 
-**Recommendation:** do not set `model.max_tokens`/`max_output_tokens` in the narration profile — Hermes applies that cap to the whole completion, including tool-call JSON and reasoning, so a 200-token cap would break tool use. Instead, steer length at three cooperating layers:
+**Implementation status:** migration `0017_narration_history` adds an append-only world-scoped transcript (`world_id, revision, role player|agent, content, occurred_at`). `backend/world/narration_history.py` provides `append_narration`/`read_narration_history` (last N oldest→newest, WorldNotFound). The start route records the agent's opening narration; the narrated-turn route records the player action and the agent narration. `GET /api/worlds/{world_id}/narration?limit=20` returns the transcript. The frontend fetches history once per world (page load / world switch) into `#narration-log`, then live appends continue on top. History is presentation state: no revisions, events, or operation ledger involvement; rows cascade with world deletion.
 
-1. `build_narration_prompt` — explicit "at most 200 tokens, roughly 2 to 3 short paragraphs or about 150 words" instruction.
-2. Narration profile `SOUL.md` — same standing rule in the profile's narration contract.
-3. `bound_narration_tokens()` in `backend/app/narrator.py` — a deterministic safety net applied after `clean_narration` on the turn path, truncating at the last sentence boundary inside an ~200-token budget (coarse 4 chars/token estimate) so the cap holds even if the model ignores the prompt.
-
-**Scope:**
-
-- Apply to the turn narration path (`HermesNarrator.__call__`) and the prompt/SOUL for turns.
-- Leave world-start narration, structured JSON contracts, and tool-calling behavior unchanged.
-- Keep the cap deterministic and sentence-safe; never cut mid-word when a sentence boundary exists.
-
-**Out of scope:** changing the model, context window, tool set, or any other narrator capability.
-
-**Implementation status:** `backend/app/narrator.py` now instructs the turn prompt to stay within 200 tokens (2–3 short paragraphs, ~150 words) and applies a deterministic `bound_narration_tokens()` cap after `clean_narration` on the turn path, truncating at the last sentence boundary inside an ~800-character budget. The narration profile `SOUL.md` carries the same standing rule. No config-level token cap was added because Hermes applies `model.max_tokens` to the whole completion including tool calls.
-
-**Verification:** pending implementation.
+**Verification:** `283` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; `git diff --check` passes. A temporary server on port 8795 with the seeded ward world served `GET /api/worlds/ward-world/narration` with all three seeded entries in oldest-first order, and a headless Chromium load of the page rendered `agent / player / agent` narration entries into `#narration-log` in order (the page's `GET /narration?limit=20` call appears in the server log). Port 8795 was stopped and confirmed closed; the temporary DB was removed. The live DB was not modified.
 
 ## Recently completed
 
 
 | Idea | Completed | Commit |
 | --- | --- | --- |
+| Bound the narrator's turn output to 200 tokens (prompt instruction + SOUL.md rule + deterministic sentence-safe `bound_narration_tokens()` cap; no model-level token cap because Hermes applies `model.max_tokens` to the whole completion including tool calls) | 2026-08-20 | `03b0454` |
 | Scenario authoring and world management (scenario CRUD + elements, world instancing, world update/elements/remove) | 2026-08-08 | on main via `scenario-authoring` · `world-instancing` · `world-management` |
 | World management interface (play ⇄ manage view, scenario/world CRUD UI, instancing, `#manage` deep link) | 2026-08-10 | on main via `world-management-interface` |
 | Player provisioning (create a player + starting location so instanced worlds are playable; play view empty state) | 2026-08-10 | on main via `player-provisioning` |

@@ -154,6 +154,19 @@ type TurnResponse = {
   mutation: Record<string, unknown> | null;
 };
 
+type NarrationEntry = {
+  id: number;
+  revision: number;
+  role: "player" | "agent";
+  content: string;
+  occurred_at: string;
+};
+
+type NarrationHistory = {
+  world_id: string;
+  entries: NarrationEntry[];
+};
+
 type WorldStartResponse = {
   outcome: string;
   narration: string;
@@ -447,6 +460,7 @@ let editingWorldId: string | null = null;
 let editingWorldRevision = 0;
 let manageBusy = false;
 let lastUpdated: Date | null = null;
+let narrationHistoryWorld: string | null = null;
 
 function requireElement<T extends Element>(selector: string): T {
   const element = root?.querySelector<T>(selector);
@@ -511,6 +525,17 @@ function appendNarration(role: "player" | "agent", text: string): void {
     narrationLog.firstElementChild?.remove();
   }
   narrationLog.scrollTop = narrationLog.scrollHeight;
+}
+
+async function loadNarrationHistory(worldId: string): Promise<void> {
+  const history = await fetchJson<NarrationHistory>(
+    `/api/worlds/${encodeURIComponent(worldId)}/narration?limit=20`,
+  );
+  narrationLog.replaceChildren();
+  for (const entry of history.entries) {
+    appendNarration(entry.role, entry.content);
+  }
+  narrationHistoryWorld = worldId;
 }
 
 async function loadWorlds(): Promise<void> {
@@ -1193,6 +1218,9 @@ async function refresh(forceWorlds = false): Promise<void> {
     currentPlayerId = state.player.id;
     narrationRevision.textContent = `r${state.location.revision}`;
     renderState(state);
+    if (narrationHistoryWorld !== state.world.id) {
+      await loadNarrationHistory(state.world.id);
+    }
     lastUpdated = new Date();
     updateFreshness();
   } catch (error) {
@@ -1965,6 +1993,7 @@ worldSelect.addEventListener("change", () => {
   selectedMapScopeId = null;
   currentPlayerId = null;
   startError = null;
+  narrationHistoryWorld = null;
   narrationLog.replaceChildren();
   narrationRevision.textContent = "";
   const url = new URL(window.location.href);

@@ -652,7 +652,11 @@ def bound_narration_tokens(text: str, max_tokens: int = _NARRATION_MAX_TOKENS) -
     if len(text) <= budget:
         return text
     prefix = text[:budget]
-    sentence_boundaries = [index for index in (prefix.rfind(". "), prefix.rfind("! "), prefix.rfind("? ")) if index >= 0]
+    sentence_boundaries = [
+        index
+        for index in (prefix.rfind(". "), prefix.rfind("! "), prefix.rfind("? "))
+        if index >= 0
+    ]
     if sentence_boundaries:
         cut = max(sentence_boundaries) + 1
     else:

@@ -151,6 +151,7 @@ Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup ap
 | `GET /api/worlds/{world_id}/locations/{location_id}` | One location and its contents. |
 | `GET /api/worlds/{world_id}/entities/{entity_id}` | One entity and optional character state. |
 | `GET /api/worlds/{world_id}/events?limit=20` | Newest-first events (limit 1–100). |
+| `GET /api/worlds/{world_id}/narration?limit=20` | Oldest-first narration transcript entries (limit 1–100): the player actions and agent narrations recorded for the world. World-scoped presentation history that cascades away when the world is deleted; it does not bump revisions or write events. |
 | `GET /api/worlds/{world_id}/capabilities/ward/locations/{location_id}` | Optional ward bed occupancy. |
 
 ### Scoped maps and location hierarchy
