@@ -301,6 +301,37 @@ def test_hermes_narrator_start_repairs_raw_newlines_inside_narration(
     assert "\n\n" in result.narration
 
 
+def test_hermes_narrator_start_ignores_tool_render_noise_before_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            "  ✓ review diff\n"
+            "a//tmp/validate_start.py b//tmp/validate_start.py\n"
+            "@@ -0,0 +1,40 @@\n"
+            "+import json, sys\n"
+            "total_locations=13\n"
+            '{"start_location_name":"Elaris Street","locations":['
+            '{"name":"Elaris Street","description":"Street.",'
+            '"parent_name":null,"link_to_start":false},'
+            '{"name":"Guild","description":"Guild.",'
+            '"parent_name":"Elaris Street","link_to_start":false},'
+            '{"name":"North Road","description":"Road.",'
+            '"parent_name":null,"link_to_start":false}],'
+            '"narration":"You arrive."}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    result = HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+    assert result.start_location_name == "Elaris Street"
+    assert len(result.locations) == 3
+
+
 def test_hermes_narrator_start_rejects_undersized_main_street_layout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

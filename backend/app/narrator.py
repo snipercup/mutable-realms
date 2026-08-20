@@ -302,6 +302,40 @@ def _repair_raw_json_whitespace(text: str) -> str:
     return "".join(out)
 
 
+def _extract_start_payload(text: str) -> dict[str, object]:
+    """Locate and decode the structured start JSON object from narrator output.
+
+    The CLI runs with ``-Q`` (quiet) but still renders tool-call previews
+    (file diffs, terminal echoes) to stdout before the model's final reply.
+    ``json.loads`` therefore fails on the raw subprocess output even though
+    the model's final message is valid JSON. Scan for the first ``{`` position
+    whose slice decodes to a JSON object with the expected top-level keys and
+    nothing but whitespace after it.
+    """
+    decoder = json.JSONDecoder()
+    candidates = [index for index, char in enumerate(text) if char == "{"]
+    for index in (0, *candidates):
+        for candidate_text in (text[index:], _repair_raw_json_whitespace(text[index:])):
+            try:
+                payload, end = decoder.raw_decode(candidate_text)
+            except json.JSONDecodeError:
+                continue
+            if (
+                isinstance(payload, dict)
+                and (
+                    "start_location_name" in payload
+                    or "location_name" in payload
+                    or "locations" in payload
+                )
+                and not candidate_text[end:].strip()
+            ):
+                return payload
+    raise NarratorError(
+        "narration agent returned invalid start JSON",
+        category="invalid_start_response",
+    )
+
+
 def _parse_start_result(output: str) -> NarratorStartResult:
     """Parse and validate the narrator's JSON start contract."""
     text = clean_narration(output)
@@ -310,17 +344,7 @@ def _parse_start_result(output: str) -> NarratorStartResult:
         text = "\n".join(lines[1:-1]).strip()
         if text.lower().startswith("json\n"):
             text = text[5:].lstrip()
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError:
-        repaired = _repair_raw_json_whitespace(text)
-        try:
-            payload = json.loads(repaired)
-        except json.JSONDecodeError as error:
-            raise NarratorError(
-                "narration agent returned invalid start JSON",
-                category="invalid_start_response",
-            ) from error
+    payload = _extract_start_payload(text)
     if not isinstance(payload, dict):
         raise NarratorError(
             "narration agent start result must be a JSON object",
