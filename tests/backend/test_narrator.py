@@ -7,6 +7,7 @@ import pytest
 from backend.app.narrator import (
     HermesNarrator,
     NarratorError,
+    bound_narration_tokens,
     build_narration_prompt,
     build_world_start_prompt,
     clean_narration,
@@ -53,12 +54,49 @@ def test_clean_narration_returns_empty_for_empty_input() -> None:
     assert clean_narration("   \n  ") == ""
 
 
+def test_bound_narration_tokens_passes_short_text_through() -> None:
+    text = "You step onto the wet stones of the harbor. The tide is low."
+    assert bound_narration_tokens(text) == text
+
+
+def test_bound_narration_tokens_truncates_long_text_at_sentence_boundary() -> None:
+    long = (
+        "The morning fog clings to the rooftops as you cross the square. "
+        "You pass a fishwife arguing with a cooper over a barrel of brine. "
+        "The guild doors stand open, and someone inside is singing badly. "
+        "A cart loaded with timber rattles past, spattering mud. "
+        "You pause at the fountain to check your pack. "
+        "The water is cold and clear, and your reflection looks tired. "
+        "Beyond the market, the old bell tower begins to toll. "
+        "Somewhere a dog barks, and a shutter bangs shut in the wind. "
+        "You count your coins again, though you already know the total. "
+        "A courier elbows past with a satchel full of letters. "
+        "The street vendors are folding their stalls for the evening. "
+        "Lamplight begins to bleed from the windows of the tavern. "
+        "You feel the weight of the day settling in your shoulders. "
+        "A gull circles once overhead, then vanishes into the grey. "
+        "You take a long breath and decide where to go next."
+    )
+    bounded = bound_narration_tokens(long)
+    assert len(bounded) < len(long)
+    assert len(bounded) <= 200 * 4
+    assert bounded.endswith((".", "!", "?"))
+
+
+def test_bound_narration_tokens_falls_back_to_word_boundary() -> None:
+    long = "x" * 5000
+    bounded = bound_narration_tokens(long)
+    assert len(bounded) <= 200 * 4
+    assert bounded
+
+
 def test_build_narration_prompt_requires_narration_only_reply() -> None:
     prompt = build_narration_prompt("town-world", "sailor", "I move to the docks.")
     assert "town-world" in prompt
     assert "sailor" in prompt
     assert "I move to the docks." in prompt
     assert "entire reply must be the player-facing narration" in prompt
+    assert "at most 200 tokens" in prompt
     assert "Do not include decision summaries" in prompt
     assert "Never mention persistence" in prompt
     assert "Current world state" not in prompt

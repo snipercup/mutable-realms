@@ -4,30 +4,27 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Directional sibling edge placement without the center ring — in progress
+### Bound the narrator's turn output to 200 tokens — in progress
 
-**Goal:** keep sibling locations out of the child overview by placing them directly against the map element's edge. Their edge position should reflect their direction relative to the current location: north at the top, south at the bottom, east on the right, west on the left, and diagonal directions near the corresponding corners.
+**Goal:** keep the player-facing narration the relay returns for story turns short (~200 tokens), without limiting the narrator's tool-calling ability.
 
-**Recommendation:** remove the obsolete centered dotted ring entirely. Use the rectangular map boundary as the visual separation: children remain in the central/street composition, while siblings hug an inset from the relevant edge. Directional edge placement is clearer than a second interior ring and gives players an immediate sense of where travel or neighboring geography lies.
+**Recommendation:** do not set `model.max_tokens`/`max_output_tokens` in the narration profile — Hermes applies that cap to the whole completion, including tool-call JSON and reasoning, so a 200-token cap would break tool use. Instead, steer length at three cooperating layers:
+
+1. `build_narration_prompt` — explicit "at most 200 tokens, roughly 2 to 3 short paragraphs or about 150 words" instruction.
+2. Narration profile `SOUL.md` — same standing rule in the profile's narration contract.
+3. `bound_narration_tokens()` in `backend/app/narrator.py` — a deterministic safety net applied after `clean_narration` on the turn path, truncating at the last sentence boundary inside an ~200-token budget (coarse 4 chars/token estimate) so the cap holds even if the model ignores the prompt.
 
 **Scope:**
 
-- Use derived frontend placement only; do not change authoritative locations, links, routes, or direction metadata.
-- Place cardinal siblings along the corresponding map edge and diagonal siblings near the corresponding corner.
-- Keep a small inset so sibling shapes and labels remain visible rather than clipped by the SVG viewport.
-- Reserve a 32-pixel strip inside every edge of the rectangular map element and place sibling nodes inside that strip; sibling node shapes and labels shrink to fit the narrower strip.
-- Render the reserved edge strip as a subtle visual (low-opacity band plus a thin inner boundary line) that does not draw attention.
-- Apply deterministic offsets for multiple siblings sharing a direction or edge.
-- Use deterministic edge fallback for siblings without direction metadata.
-- Place sibling labels and direction/range metadata inward from the edge without covering child buildings or the street road.
-- Remove the centered dotted `map-scope-border` ring; the map edge and layer separation provide the visual boundary.
-- Preserve the central child layout, Main Street road visualization, semantic map forms, and flat-map fallback.
+- Apply to the turn narration path (`HermesNarrator.__call__`) and the prompt/SOUL for turns.
+- Leave world-start narration, structured JSON contracts, and tool-calling behavior unchanged.
+- Keep the cap deterministic and sentence-safe; never cut mid-word when a sentence boundary exists.
 
-**Out of scope:** changes to containment, movement links, route semantics, coordinates, authoritative map state, or narrator-generated geometry.
+**Out of scope:** changing the model, context window, tool set, or any other narrator capability.
 
-**Implementation status:** the centered dotted ring and its CSS are removed; the ring radius constants and the old interior-perimeter projection path are deleted. The map canvas is landscape (`800 × 480`, viewBox aspect matching the wide page panel) so the derived map fills the element's rectangle instead of a portrait letterbox. Scoped maps place siblings only through the rectangular edge projection, with cardinal directions on the matching edge, diagonals near corners, deterministic same-edge offsets, and an edge fallback for missing directions. A 32-pixel reserved strip is drawn inside every edge (`map-edge-strip` low-opacity band plus `map-edge-strip-inner` thin boundary line), and sibling nodes (shrunk to radius 10) are centered within that strip so they hug the rectangular map border on all four sides. Sibling labels are placed **above the node** (below only on the top edge, where above would clip off-canvas), and a deterministic per-lane packing pass moves nodes apart along each edge so label boxes never overlap; when an edge is too crowded, the overflowing label is pushed to its own deeper row (staggered per extra node) instead of overlapping a neighbor's text. The street road and central child layouts are unchanged and fit the landscape canvas.
+**Implementation status:** `backend/app/narrator.py` now instructs the turn prompt to stay within 200 tokens (2–3 short paragraphs, ~150 words) and applies a deterministic `bound_narration_tokens()` cap after `clean_narration` on the turn path, truncating at the last sentence boundary inside an ~800-character budget. The narration profile `SOUL.md` carries the same standing rule. No config-level token cap was added because Hermes applies `model.max_tokens` to the whole completion including tool calls.
 
-**Verification:** `272` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and `git diff --check` passes. Live DOM measurement (headless Chromium CDP) against the recreated Aerthalon world on port 8790 confirmed the fresh bundle is served, the SVG renders landscape (`1100 × 660`, aspect `1.667` matching the `800 × 480` viewBox), the strip band sits `22px` inside every edge (equal on left/right/top/bottom), and the two sibling labels (Lantern Plaza south, River Elaris bridge east) render above their nodes with zero text-box overlaps. Stress tests on temporary servers with three long-named siblings on the same edge (north lane and east lane) confirmed the packing moves nodes apart and shoves the overflowing label to a deeper row, with `getBBox`-verified **zero label/meta overlaps** in both cases. No authoritative state was touched.
+**Verification:** pending implementation.
 
 ## Recently completed
 
@@ -53,6 +50,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 | Coarse geographic orientation for sibling locations (direction/range ordering and deterministic map placement) | 2026-08-19 | `347d30f` |
 | Separate scoped-map children and sibling neighbors (central child layer, compact perimeter sibling layer, visual border) | 2026-08-19 | `63bc423` |
 | Lively semantic map shapes and street visualization (map forms, larger canvas, two-sided buildings, central road, external labels) | 2026-08-19 | `1d9422b` |
+| Edge-strip sibling map placement (landscape canvas matching the panel, 32px reserved edge strip, sibling labels above nodes, deterministic no-overlap lane packing) | 2026-08-20 | `389b766` · `2f4a71e` · `3fa1b2b` |
 
 **Route verification:** `243` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and a temporary server on port 8795 accepted route creation at revision `0 → 1`, traveled the player from `harbor` to `city` at `1 → 2` without a `location_links` row, and replayed the same travel operation with `already_applied: true` without another revision. SQLite readback confirmed `world_route_set`, `entity_route_traveled`, the route endpoints, and final player placement; port 8795 was stopped and confirmed closed.
 

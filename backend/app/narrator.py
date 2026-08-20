@@ -87,6 +87,8 @@ _DEFAULT_NARRATOR_TIMEOUT_SECONDS = 120.0
 _DEFAULT_START_NARRATOR_TIMEOUT_SECONDS = 240.0
 _MIN_NARRATOR_TIMEOUT_SECONDS = 5.0
 _MAX_NARRATOR_TIMEOUT_SECONDS = 300.0
+_NARRATION_MAX_TOKENS = 200
+_CHARS_PER_TOKEN = 4
 
 
 def _bounded_timeout(environment_name: str, default: float) -> float:
@@ -215,7 +217,10 @@ def build_narration_prompt(
         "include decision summaries, tool reports, status lines, or any text "
         "outside the narration. Never mention persistence, page refreshes, "
         "world revisions, or whether the world changed. If nothing changed, "
-        "still narrate the moment in-world."
+        "still narrate the moment in-world.\n\n"
+        "Keep the narration concise: at most 200 tokens, roughly 2 to 3 short "
+        "paragraphs or about 150 words. End on a clear note; do not pad the "
+        "reply or repeat context already shown to the player."
     )
     return prompt
 
@@ -633,6 +638,29 @@ def clean_narration(output: str) -> str:
     return text.strip()
 
 
+def bound_narration_tokens(text: str, max_tokens: int = _NARRATION_MAX_TOKENS) -> str:
+    """Deterministically cap narration length at a sentence boundary.
+
+    Uses a coarse character-per-token estimate (``_CHARS_PER_TOKEN``) so the
+    cap is a safety net that does not depend on the model following the prompt.
+    Truncation always happens at the last sentence boundary inside the budget;
+    if no sentence boundary exists the text is cut at a word boundary.
+    """
+    if not text:
+        return text
+    budget = max_tokens * _CHARS_PER_TOKEN
+    if len(text) <= budget:
+        return text
+    prefix = text[:budget]
+    sentence_boundaries = [index for index in (prefix.rfind(". "), prefix.rfind("! "), prefix.rfind("? ")) if index >= 0]
+    if sentence_boundaries:
+        cut = max(sentence_boundaries) + 1
+    else:
+        word_boundary = prefix.rfind(" ")
+        cut = word_boundary if word_boundary > 0 else len(prefix)
+    return text[:cut].strip()
+
+
 class HermesNarrator:
     """Run the bound narration agent through the Hermes CLI."""
 
@@ -682,7 +710,7 @@ class HermesNarrator:
         narration = clean_narration(completed.stdout)
         if not narration:
             raise NarratorError("narration agent returned an empty reply")
-        return narration
+        return bound_narration_tokens(narration)
 
     def start(
         self, world_id: str, world: dict[str, Any], character: dict[str, Any]
