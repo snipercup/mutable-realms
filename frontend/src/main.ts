@@ -881,7 +881,7 @@ function renderMap(state: WorldState): HTMLElement {
         "text-anchor": labelAnchor,
       }),
     );
-    if (location.direction !== null || location.range_band !== null) {
+    if (isSibling && (location.direction !== null || location.range_band !== null)) {
       const routeMeta = svgElement("text", {
         x: labelX,
         y: labelY + (isBottomEdge ? -13 : 13),
