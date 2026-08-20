@@ -579,7 +579,7 @@ const MAP_CENTER_X = MAP_WIDTH / 2;
 const MAP_CENTER_Y = MAP_HEIGHT / 2;
 const MAP_RADIUS = 110;
 const MAP_CHILD_RADIUS = 66;
-const MAP_EDGE_STRIP = 64;
+const MAP_EDGE_STRIP = 32;
 
 const KIND_COLORS: Record<string, string> = {
   character: "#4f8cff",
@@ -706,7 +706,7 @@ function svgElement(
 
 function mapShape(location: WorldMapLocation, isSibling: boolean): SVGElement {
   const form = location.map_form ?? (location.is_neighbor ? "landmark" : "building");
-  const size = isSibling ? 14 : 20;
+  const size = isSibling ? 10 : 20;
   const attributes = { class: "map-node-shape", "data-map-form": form };
   if (form === "building") {
     return svgElement("rect", { ...attributes, x: -size, y: -size * 0.7, width: size * 2, height: size * 1.4, rx: 2 });
@@ -858,12 +858,14 @@ function renderMap(state: WorldState): HTMLElement {
     const labelOnLeft = x < MAP_CENTER_X;
     const isTopEdge = y < 60;
     const isBottomEdge = y > MAP_HEIGHT - 60;
-    const labelX = isSibling && !isTopEdge && !isBottomEdge
-      ? (labelOnLeft ? 30 : -30)
+    const nearLeft = x < 100;
+    const nearRight = x > MAP_WIDTH - 100;
+    const labelX = isSibling
+      ? nearLeft ? 14 : nearRight ? -14 : 0
       : isStreetChild ? (labelOnLeft ? -28 : 28) : 0;
-    const labelY = isSibling && isTopEdge ? 28 : isSibling && isBottomEdge ? -28 : isStreetChild ? 4 : isSibling ? 4 : 40;
-    const labelAnchor = isSibling && !isTopEdge && !isBottomEdge
-      ? (labelOnLeft ? "start" : "end")
+    const labelY = isSibling ? (isBottomEdge ? -26 : 26) : isStreetChild ? 4 : 40;
+    const labelAnchor = isSibling
+      ? nearLeft ? "start" : nearRight ? "end" : "middle"
       : isStreetChild ? (labelOnLeft ? "end" : "start") : "middle";
     const group = svgElement("g", {
       class: isSibling ? "map-node map-node--neighbor" : "map-node",
