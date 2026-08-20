@@ -18,7 +18,9 @@ from backend.world.scenarios import (
     list_scenarios,
     read_scenario,
     remove_scenario,
+    remove_scenario_region,
     set_scenario_element,
+    set_scenario_region,
     update_scenario,
 )
 
@@ -479,3 +481,269 @@ def test_scenario_api_missing_returns_404(tmp_path: Path) -> None:
         _request(app, "DELETE", "/api/scenarios/missing?operation_id=api-remove-2")
     )
     assert status == 404
+
+
+# --- service: regions ------------------------------------------------------
+
+
+def _set_region(
+    database_path: Path,
+    *,
+    region_id: str = "virellea",
+    level: str = "kingdom",
+    title: str = "Virellea",
+    description: str = "The fertile heart of Aerthalon.",
+    parent_region_id: str | None = None,
+    attributes: dict[str, Any] | None = None,
+    operation_id: str = "scenario-region-1",
+    scenario_id: str = "aerthalon",
+) -> dict[str, Any]:
+    return set_scenario_region(
+        database_path,
+        scenario_id=scenario_id,
+        operation_id=operation_id,
+        region_id=region_id,
+        level=level,
+        title=title,
+        description=description,
+        parent_region_id=parent_region_id,
+        attributes=attributes,
+    )
+
+
+def test_set_scenario_region_upserts_and_reads_back(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _create(database_path)
+
+    _set_region(
+        database_path,
+        attributes={
+            "biomes": ["Grassy Plains", "Ancient Forests"],
+            "connected_by_road_to": {"thurnrok": "NW", "velquess": "NE"},
+        },
+    )
+    _set_region(
+        database_path,
+        region_id="virellea-elaris",
+        level="city",
+        title="Elaris",
+        description="Capital of Virellea.",
+        parent_region_id="virellea",
+        operation_id="scenario-region-2",
+    )
+
+    scenario = read_scenario(database_path, "aerthalon")
+    assert [region["region_id"] for region in scenario["regions"]] == [
+        "virellea",
+        "virellea-elaris",
+    ]
+    virellea = next(r for r in scenario["regions"] if r["region_id"] == "virellea")
+    assert virellea["level"] == "kingdom"
+    assert virellea["attributes"]["connected_by_road_to"]["thurnrok"] == "NW"
+    elaris = next(r for r in scenario["regions"] if r["region_id"] == "virellea-elaris")
+    assert elaris["parent_region_id"] == "virellea"
+
+    _set_region(
+        database_path,
+        description="Updated description.",
+        operation_id="scenario-region-3",
+    )
+    scenario = read_scenario(database_path, "aerthalon")
+    virellea = next(r for r in scenario["regions"] if r["region_id"] == "virellea")
+    assert virellea["description"] == "Updated description."
+
+
+def test_set_scenario_region_validates_ids_level_title_description(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _create(database_path)
+
+    with pytest.raises(ScenarioConflict, match="kebab-case"):
+        _set_region(database_path, region_id="Not Kebab!", operation_id="region-bad-1")
+    with pytest.raises(ScenarioConflict, match="level must not be blank"):
+        _set_region(database_path, level="   ", operation_id="region-bad-2")
+    with pytest.raises(ScenarioConflict, match="title must not be blank"):
+        _set_region(database_path, title="  ", operation_id="region-bad-3")
+    with pytest.raises(ScenarioConflict, match="description must not be blank"):
+        _set_region(database_path, description="", operation_id="region-bad-4")
+
+
+def test_set_scenario_region_requires_parent_and_rejects_cycles(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _create(database_path)
+    _set_region(database_path)
+    _set_region(
+        database_path,
+        region_id="virellea-elaris",
+        level="city",
+        title="Elaris",
+        description="Capital.",
+        parent_region_id="virellea",
+        operation_id="scenario-region-2",
+    )
+
+    with pytest.raises(ScenarioConflict, match="parent region not found"):
+        _set_region(
+            database_path,
+            region_id="missing-city",
+            level="city",
+            title="Missing",
+            description="D.",
+            parent_region_id="missing-parent",
+            operation_id="region-bad-5",
+        )
+    with pytest.raises(ScenarioConflict, match="cycle"):
+        _set_region(
+            database_path,
+            region_id="virellea",
+            parent_region_id="virellea-elaris",
+            operation_id="region-bad-6",
+        )
+
+
+def test_set_scenario_region_replays_exactly(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _create(database_path)
+
+    first = _set_region(database_path, operation_id="region-replay-1")
+    second = _set_region(database_path, operation_id="region-replay-1")
+    assert first["already_applied"] is False
+    assert second["already_applied"] is True
+    with pytest.raises(ScenarioConflict, match="already used"):
+        _set_region(
+            database_path,
+            description="Different.",
+            operation_id="region-replay-1",
+        )
+
+
+def test_remove_scenario_region_cascades_children(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _create(database_path)
+    _set_region(database_path)
+    _set_region(
+        database_path,
+        region_id="virellea-elaris",
+        level="city",
+        title="Elaris",
+        description="Capital.",
+        parent_region_id="virellea",
+        operation_id="scenario-region-2",
+    )
+
+    result = remove_scenario_region(
+        database_path,
+        scenario_id="aerthalon",
+        operation_id="scenario-region-remove-1",
+        region_id="virellea",
+    )
+    assert result["removed"] is True
+    scenario = read_scenario(database_path, "aerthalon")
+    assert scenario["regions"] == []
+
+
+def test_remove_scenario_region_missing_raises_not_found(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _create(database_path)
+
+    with pytest.raises(ScenarioNotFound, match="region not found"):
+        remove_scenario_region(
+            database_path,
+            scenario_id="aerthalon",
+            operation_id="scenario-region-remove-2",
+            region_id="missing",
+        )
+
+
+def test_region_api_crud_round_trip(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    app = create_app(database_path)
+    assert (
+        asyncio.run(
+            _request(
+                app,
+                "POST",
+                "/api/scenarios",
+                json={
+                    "scenario_id": "aerthalon",
+                    "title": "Aerthalon",
+                    "operation_id": "api-region-create-1",
+                },
+            )
+        )[0]
+        == 201
+    )
+
+    status, _ = asyncio.run(
+        _request(
+            app,
+            "PUT",
+            "/api/scenarios/aerthalon/regions/virellea",
+            json={
+                "level": "kingdom",
+                "title": "Virellea",
+                "description": "The fertile heart of Aerthalon.",
+                "attributes": {"biomes": ["Grassy Plains"]},
+                "operation_id": "api-region-1",
+            },
+        )
+    )
+    assert status == 200
+
+    status, _ = asyncio.run(
+        _request(
+            app,
+            "PUT",
+            "/api/scenarios/aerthalon/regions/virellea-elaris",
+            json={
+                "level": "city",
+                "title": "Elaris",
+                "description": "Capital of Virellea.",
+                "parent_region_id": "virellea",
+                "operation_id": "api-region-2",
+            },
+        )
+    )
+    assert status == 200
+
+    status, body = asyncio.run(_request(app, "GET", "/api/scenarios/aerthalon"))
+    assert status == 200
+    assert [region["region_id"] for region in body["regions"]] == [
+        "virellea",
+        "virellea-elaris",
+    ]
+
+    status, _ = asyncio.run(
+        _request(
+            app,
+            "DELETE",
+            "/api/scenarios/aerthalon/regions/virellea?operation_id=api-region-remove-1",
+        )
+    )
+    assert status == 200
+    status, body = asyncio.run(_request(app, "GET", "/api/scenarios/aerthalon"))
+    assert body["regions"] == []
+
+    # Missing region delete is a 404; unknown parent on set is a 409.
+    status, _ = asyncio.run(
+        _request(
+            app,
+            "DELETE",
+            "/api/scenarios/aerthalon/regions/missing?operation_id=api-region-remove-2",
+        )
+    )
+    assert status == 404
+    status, _ = asyncio.run(
+        _request(
+            app,
+            "PUT",
+            "/api/scenarios/aerthalon/regions/x",
+            json={
+                "level": "city",
+                "title": "X",
+                "description": "D.",
+                "parent_region_id": "missing",
+                "operation_id": "api-region-3",
+            },
+        )
+    )
+    assert status == 409

@@ -205,9 +205,11 @@ Admin endpoints for reusable authoring templates (see the CLI section for elemen
 | `POST /api/scenarios` | Create — body `{scenario_id, title, description?, operation_id}`. |
 | `PATCH /api/scenarios/{scenario_id}` | Update title/description — body `{title?, description?, operation_id}`. |
 | `PUT /api/scenarios/{scenario_id}/elements/{element_type}` | Upsert one element — body `{content, operation_id}`. |
+| `PUT /api/scenarios/{scenario_id}/regions/{region_id}` | Upsert one framework region — body `{level, title, description, parent_region_id?, attributes?, operation_id}`. `level` is free-form (kingdom/province/city, planet, school grounds…). Parents must exist and must not create a cycle. |
+| `DELETE /api/scenarios/{scenario_id}/regions/{region_id}?operation_id=…` | Remove a region and its descendants (destructive). |
 | `DELETE /api/scenarios/{scenario_id}?operation_id=…` | Remove a scenario (destructive). |
 
-Errors: `404` unknown scenario · `409` duplicate id or operation-ID reuse.
+Errors: `404` unknown scenario or region · `409` duplicate id, operation-ID reuse, unknown/cyclic parent, or invalid field.
 
 ### Player turns
 

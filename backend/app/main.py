@@ -41,6 +41,7 @@ from backend.app.read_models import (
     ScenarioElementRequest,
     ScenarioMutationResponse,
     ScenarioRead,
+    ScenarioRegionRequest,
     ScenarioUpdateRequest,
     TurnRequest,
     TurnResponse,
@@ -107,7 +108,9 @@ from backend.world.scenarios import (
     list_scenarios,
     read_scenario,
     remove_scenario,
+    remove_scenario_region,
     set_scenario_element,
+    set_scenario_region,
     update_scenario,
 )
 from backend.world.turns import TurnDecision, run_turn
@@ -701,6 +704,57 @@ def create_app(
                 get_database_path(),
                 scenario_id=scenario_id,
                 operation_id=operation_id,
+            )
+        except ScenarioNotFound as error:
+            raise HTTPException(status_code=404, detail="scenario not found") from error
+        except ScenarioConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return ScenarioMutationResponse(
+            already_applied=result["already_applied"],
+            scenario_id=result["scenario_id"],
+        )
+
+    @application.put(
+        "/api/scenarios/{scenario_id}/regions/{region_id}",
+        tags=["scenario mutations"],
+    )
+    def set_scenario_region_route(
+        scenario_id: str, region_id: str, request: ScenarioRegionRequest
+    ) -> ScenarioMutationResponse:
+        try:
+            result = set_scenario_region(
+                get_database_path(),
+                scenario_id=scenario_id,
+                operation_id=request.operation_id,
+                region_id=region_id,
+                level=request.level,
+                title=request.title,
+                description=request.description,
+                parent_region_id=request.parent_region_id,
+                attributes=request.attributes,
+            )
+        except ScenarioNotFound as error:
+            raise HTTPException(status_code=404, detail="scenario not found") from error
+        except ScenarioConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return ScenarioMutationResponse(
+            already_applied=result["already_applied"],
+            scenario_id=result["scenario_id"],
+        )
+
+    @application.delete(
+        "/api/scenarios/{scenario_id}/regions/{region_id}",
+        tags=["scenario mutations"],
+    )
+    def remove_scenario_region_route(
+        scenario_id: str, region_id: str, operation_id: str = Query(...)
+    ) -> ScenarioMutationResponse:
+        try:
+            result = remove_scenario_region(
+                get_database_path(),
+                scenario_id=scenario_id,
+                operation_id=operation_id,
+                region_id=region_id,
             )
         except ScenarioNotFound as error:
             raise HTTPException(status_code=404, detail="scenario not found") from error

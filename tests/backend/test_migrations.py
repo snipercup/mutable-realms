@@ -16,7 +16,7 @@ def test_migrate_creates_versioned_schema_and_is_idempotent(tmp_path: Path) -> N
     first = migrate_database(database_path)
     second = migrate_database(database_path)
 
-    assert first == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+    assert first == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
     assert second == []
 
     with connect_database(database_path) as connection:
@@ -49,6 +49,7 @@ def test_migrate_creates_versioned_schema_and_is_idempotent(tmp_path: Path) -> N
         (16, "location_map_forms"),
         (17, "narration_history"),
         (18, "location_memories"),
+        (19, "scenario_regions"),
     ]
     assert {
         "worlds",
@@ -67,6 +68,7 @@ def test_migrate_creates_versioned_schema_and_is_idempotent(tmp_path: Path) -> N
         "world_expansion_proposals",
         "narration_history",
         "location_memories",
+        "scenario_regions",
         "schema_migrations",
     } <= tables
 
@@ -83,7 +85,7 @@ def test_generalization_migration_preserves_existing_ward_data(tmp_path: Path) -
     seed_ward_world(database_path)
 
     assert migrate_database(database_path) == [
-        2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+        2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
     ]
 
     with connect_database(database_path) as connection:

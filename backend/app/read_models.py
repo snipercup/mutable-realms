@@ -203,12 +203,23 @@ class ScenarioElementRead(StrictReadModel):
     updated_at: str
 
 
+class ScenarioRegionRead(StrictReadModel):
+    region_id: str
+    parent_region_id: str | None
+    level: str
+    title: str
+    description: str
+    attributes: dict[str, Any] = Field(default_factory=dict)
+    updated_at: str
+
+
 class ScenarioRead(StrictReadModel):
     id: str
     title: str
     description: str | None
     created_at: str
     elements: list[ScenarioElementRead] = Field(default_factory=list)
+    regions: list[ScenarioRegionRead] = Field(default_factory=list)
 
 
 class ScenarioCreateRequest(StrictReadModel):
@@ -226,6 +237,15 @@ class ScenarioUpdateRequest(StrictReadModel):
 
 class ScenarioElementRequest(StrictReadModel):
     content: str = Field(min_length=1)
+    operation_id: str
+
+
+class ScenarioRegionRequest(StrictReadModel):
+    level: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    parent_region_id: str | None = None
+    attributes: dict[str, Any] | None = None
     operation_id: str
 
 
