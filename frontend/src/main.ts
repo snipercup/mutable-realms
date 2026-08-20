@@ -693,6 +693,136 @@ function edgeMapPositions(locations: WorldMapLocation[]): Map<string, [number, n
   return positions;
 }
 
+type SiblingLane = "top" | "bottom" | "left" | "right";
+
+type SiblingLabelSpec = {
+  x: number;
+  y: number;
+  anchor: "middle" | "start" | "end";
+  metaY: number;
+};
+
+const SIBLING_CHAR_WIDTH = 5.8;
+const SIBLING_META_CHAR_WIDTH = 4.6;
+const SIBLING_LABEL_GAP = 14;
+const SIBLING_LABEL_BLOCK_H = 40;
+
+function siblingRouteMetaText(location: WorldMapLocation): string {
+  return [location.direction, location.range_band]
+    .filter((value): value is string => value !== null)
+    .join(" · ");
+}
+
+function siblingLane(location: WorldMapLocation, x: number, y: number): SiblingLane {
+  const direction = location.direction;
+  if (direction === "north" || direction === "northeast" || direction === "northwest") return "top";
+  if (direction === "south" || direction === "southeast" || direction === "southwest") return "bottom";
+  if (direction === "east") return "right";
+  if (direction === "west") return "left";
+  if (y <= MAP_EDGE_STRIP) return "top";
+  if (y >= MAP_HEIGHT - MAP_EDGE_STRIP) return "bottom";
+  if (x <= MAP_EDGE_STRIP) return "left";
+  return "right";
+}
+
+function siblingLabelHalfWidth(location: WorldMapLocation): number {
+  const nameWidth = location.name.length * SIBLING_CHAR_WIDTH;
+  const metaWidth = siblingRouteMetaText(location).length * SIBLING_META_CHAR_WIDTH;
+  return Math.max(nameWidth, metaWidth) / 2 + SIBLING_LABEL_GAP / 2;
+}
+
+function resolveSiblingLabelLayout(
+  siblings: WorldMapLocation[],
+  positions: Map<string, [number, number]>,
+): Map<string, SiblingLabelSpec> {
+  const specs = new Map<string, SiblingLabelSpec>();
+  type LaneItem = {
+    location: WorldMapLocation;
+    lane: SiblingLane;
+    along: number;
+    half: number;
+    pos: [number, number];
+  };
+  const laneItems: LaneItem[] = [];
+  for (const location of siblings) {
+    const pos = positions.get(location.id);
+    if (pos === undefined) continue;
+    const [x, y] = pos;
+    const lane = siblingLane(location, x, y);
+    const horizontal = lane === "top" || lane === "bottom";
+    const half = horizontal ? siblingLabelHalfWidth(location) : SIBLING_LABEL_BLOCK_H / 2;
+    laneItems.push({ location, lane, along: horizontal ? x : y, half, pos });
+  }
+
+  const laneNames: SiblingLane[] = ["top", "bottom", "left", "right"];
+  for (const laneName of laneNames) {
+    const items = laneItems
+      .filter((item) => item.lane === laneName)
+      .sort((a, b) => a.along - b.along);
+    const horizontal = laneName === "top" || laneName === "bottom";
+    const minPos = horizontal ? MAP_EDGE_STRIP / 2 + 6 : MAP_EDGE_STRIP / 2 + 6;
+    const maxPos = horizontal
+      ? MAP_WIDTH - MAP_EDGE_STRIP / 2 - 6
+      : MAP_HEIGHT - MAP_EDGE_STRIP / 2 - 6;
+    let previousEnd = -Infinity;
+    const shovedIds = new Set<string>();
+    const shovedOrder: string[] = [];
+    for (const item of items) {
+      const desired = item.along;
+      const required = previousEnd + item.half + SIBLING_LABEL_GAP;
+      let along = Math.max(desired, required);
+      let isShoved = false;
+      if (along > maxPos) {
+        // The lane is full for near-row labels: keep the node at its
+        // direction slot and give this label its own deeper row instead.
+        along = desired;
+        isShoved = true;
+        shovedIds.add(item.location.id);
+        shovedOrder.push(item.location.id);
+      }
+      along = Math.max(along, minPos + item.half);
+      if (horizontal) {
+        item.pos[0] = along;
+      } else {
+        item.pos[1] = along;
+      }
+      if (!isShoved) {
+        previousEnd = along + item.half;
+      }
+    }
+
+    const shovedIndexById = new Map<string, number>();
+    shovedOrder.forEach((id, index) => shovedIndexById.set(id, index + 1));
+    for (const item of items) {
+      const [x, y] = item.pos;
+      const isShoved = shovedIds.has(item.location.id);
+      const depth = (shovedIndexById.get(item.location.id) ?? 0) * 14;
+      let spec: SiblingLabelSpec;
+      if (laneName === "top") {
+        // Labels on the top edge cannot be placed above the node (off-canvas);
+        // the natural shove puts the text below the node.
+        spec = isShoved
+          ? { x: x < MAP_CENTER_X ? 12 : -12, y: 55 + depth, anchor: x < MAP_CENTER_X ? "start" : "end", metaY: 71 + depth }
+          : { x: 0, y: 26, anchor: "middle", metaY: 39 };
+      } else if (laneName === "bottom") {
+        spec = isShoved
+          ? { x: x < MAP_CENTER_X ? 12 : -12, y: -45 - depth, anchor: x < MAP_CENTER_X ? "start" : "end", metaY: -29 - depth }
+          : { x: 0, y: -30, anchor: "middle", metaY: -18 };
+      } else if (laneName === "left") {
+        spec = isShoved
+          ? { x: 14, y: 8 + depth, anchor: "start", metaY: 21 + depth }
+          : { x: 0, y: -30, anchor: "middle", metaY: -18 };
+      } else {
+        spec = isShoved
+          ? { x: -14, y: 8 + depth, anchor: "end", metaY: 21 + depth }
+          : { x: 0, y: -30, anchor: "middle", metaY: -18 };
+      }
+      specs.set(item.location.id, spec);
+    }
+  }
+  return specs;
+}
+
 function svgElement(
   tag: string,
   attributes: Record<string, string | number>,
@@ -783,6 +913,9 @@ function renderMap(state: WorldState): HTMLElement {
           : centerMapPositions(children)),
         ...edgeMapPositions(siblings),
       ]);
+  const siblingLabels = state.map.scope_location === null
+    ? new Map<string, SiblingLabelSpec>()
+    : resolveSiblingLabelLayout(siblings, positions);
 
   if (state.map.scope_location !== null) {
     svg.append(
@@ -856,16 +989,15 @@ function renderMap(state: WorldState): HTMLElement {
     const isSibling = state.map.scope_location !== null && location.is_neighbor;
     const isStreetChild = isStreetScope && !isSibling;
     const labelOnLeft = x < MAP_CENTER_X;
-    const isTopEdge = y < 60;
-    const isBottomEdge = y > MAP_HEIGHT - 60;
-    const nearLeft = x < 100;
-    const nearRight = x > MAP_WIDTH - 100;
-    const labelX = isSibling
-      ? nearLeft ? 14 : nearRight ? -14 : 0
+    const siblingSpec = isSibling ? siblingLabels.get(location.id) : undefined;
+    const labelX = siblingSpec !== undefined
+      ? siblingSpec.x
       : isStreetChild ? (labelOnLeft ? -28 : 28) : 0;
-    const labelY = isSibling ? (isBottomEdge ? -26 : 26) : isStreetChild ? 4 : 40;
-    const labelAnchor = isSibling
-      ? nearLeft ? "start" : nearRight ? "end" : "middle"
+    const labelY = siblingSpec !== undefined
+      ? siblingSpec.y
+      : isStreetChild ? 4 : 40;
+    const labelAnchor = siblingSpec !== undefined
+      ? siblingSpec.anchor
       : isStreetChild ? (labelOnLeft ? "end" : "start") : "middle";
     const group = svgElement("g", {
       class: isSibling ? "map-node map-node--neighbor" : "map-node",
@@ -884,7 +1016,7 @@ function renderMap(state: WorldState): HTMLElement {
     if (isSibling && (location.direction !== null || location.range_band !== null)) {
       const routeMeta = svgElement("text", {
         x: labelX,
-        y: labelY + (isBottomEdge ? -13 : 13),
+        y: siblingSpec !== undefined ? siblingSpec.metaY : labelY + 13,
         class: "map-route-meta",
         "text-anchor": labelAnchor,
       });
