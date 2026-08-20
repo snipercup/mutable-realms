@@ -13,6 +13,31 @@ _DEFAULT_MAX_LOCATIONS = 100
 _MAX_ID_LENGTH = 100
 _MAX_NAME_LENGTH = 200
 _MAX_DESCRIPTION_LENGTH = 2000
+_ALLOWED_DIRECTIONS = frozenset(
+    {
+        "north",
+        "northeast",
+        "east",
+        "southeast",
+        "south",
+        "southwest",
+        "west",
+        "northwest",
+    }
+)
+_ALLOWED_RANGE_BANDS = frozenset({"short", "mid", "long"})
+_ALLOWED_MAP_FORMS = frozenset(
+    {
+        "building",
+        "street",
+        "district",
+        "city",
+        "mine",
+        "forest",
+        "water",
+        "landmark",
+    }
+)
 
 
 class ExpansionError(RuntimeError):
@@ -71,8 +96,20 @@ def propose_location_expansion(
     parent_location_id: str | None = None,
     connect_to_anchor: bool = False,
     actor_entity_id: str | None = None,
+    direction: str | None = None,
+    range_band: str | None = None,
+    map_form: str | None = None,
+    move_actor_to_location: bool = False,
 ) -> dict[str, Any]:
-    """Atomically accept one bounded narrator expansion proposal."""
+    """Atomically accept one bounded narrator expansion proposal.
+
+    ``direction``, ``range_band``, and ``map_form`` are optional orientation
+    metadata persisted into ``location_metadata`` so the map can place the new
+    location correctly. When ``move_actor_to_location`` is true the actor is
+    moved into the new location in the same atomic operation (one revision,
+    exact idempotency), so \"create the place + arrive there\" is a single
+    supported operation.
+    """
     world_id = _clean(world_id, "world ID")
     operation_id = _clean(operation_id, "operation ID")
     proposal_id = _clean(proposal_id, "proposal ID")
@@ -86,16 +123,30 @@ def propose_location_expansion(
         )
     if parent_location_id is not None:
         parent_location_id = _clean(parent_location_id, "parent location ID")
+    if direction is not None and direction not in _ALLOWED_DIRECTIONS:
+        raise ExpansionConflict(f"invalid direction: {direction}")
+    if range_band is not None and range_band not in _ALLOWED_RANGE_BANDS:
+        raise ExpansionConflict(f"invalid range band: {range_band}")
+    if map_form is not None and map_form not in _ALLOWED_MAP_FORMS:
+        raise ExpansionConflict(f"invalid map form: {map_form}")
+    if move_actor_to_location and actor_entity_id is None:
+        raise ExpansionConflict(
+            "actor_entity_id is required when move_actor_to_location is true"
+        )
     request = {
         "actor_entity_id": actor_entity_id,
         "anchor_location_id": anchor_location_id,
         "connect_to_anchor": connect_to_anchor,
         "description": description,
+        "direction": direction,
         "expected_revision": expected_revision,
         "location_id": location_id,
+        "map_form": map_form,
+        "move_actor_to_location": move_actor_to_location,
         "name": name,
         "parent_location_id": parent_location_id,
         "proposal_id": proposal_id,
+        "range_band": range_band,
     }
     request_json = _json(request)
 
@@ -194,6 +245,13 @@ def propose_location_expansion(
                 "INSERT INTO locations(id, world_id, name, description) VALUES (?, ?, ?, ?)",
                 (location_id, world_id, name, description),
             )
+            if direction is not None or range_band is not None or map_form is not None:
+                connection.execute(
+                    "INSERT INTO location_metadata("
+                    "world_id, location_id, geography_role, direction, range_band, map_form) "
+                    "VALUES (?, ?, 'local', ?, ?, ?)",
+                    (world_id, location_id, direction, range_band, map_form),
+                )
             connection.execute(
                 "INSERT INTO world_expansion_proposals("
                 "world_id, proposal_id, operation_id, location_id, anchor_location_id) "
@@ -212,6 +270,36 @@ def propose_location_expansion(
                 connection.execute(
                     "INSERT INTO location_links(world_id, location_a, location_b) VALUES (?, ?, ?)",
                     (world_id, location_a, location_b),
+                )
+            if move_actor_to_location:
+                if not connect_to_anchor:
+                    raise ExpansionConflict(
+                        "move_actor_to_location requires connect_to_anchor so the "
+                        "actor can enter the new location"
+                    )
+                actor = connection.execute(
+                    """
+                    SELECT e.kind, c.entity_id AS character_id, el.location_id
+                    FROM entities e
+                    LEFT JOIN characters c ON c.entity_id = e.id
+                    LEFT JOIN entity_locations el ON el.entity_id = e.id
+                    WHERE e.id = ? AND e.world_id = ?
+                    """,
+                    (actor_entity_id, world_id),
+                ).fetchone()
+                if actor is None:
+                    raise ExpansionNotFound(f"actor not found: {actor_entity_id}")
+                if actor["character_id"] is None:
+                    raise ExpansionConflict(
+                        f"actor is missing character state: {actor_entity_id}"
+                    )
+                if actor["location_id"] != anchor_location_id:
+                    raise ExpansionConflict(
+                        f"actor is not at the anchor location: {anchor_location_id}"
+                    )
+                connection.execute(
+                    "UPDATE entity_locations SET location_id = ? WHERE entity_id = ?",
+                    (location_id, actor_entity_id),
                 )
             connection.execute(
                 "UPDATE worlds SET revision = ? WHERE id = ? AND revision = ?",
@@ -232,9 +320,13 @@ def propose_location_expansion(
                         {
                             "anchor_location_id": anchor_location_id,
                             "connect_to_anchor": connect_to_anchor,
+                            "direction": direction,
                             "location_id": location_id,
+                            "map_form": map_form,
+                            "move_actor_to_location": move_actor_to_location,
                             "parent_location_id": parent_location_id,
                             "proposal_id": proposal_id,
+                            "range_band": range_band,
                         }
                     ),
                     next_revision,

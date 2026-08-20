@@ -159,6 +159,10 @@ def expand_world_location(
     parent_location_id: str | None = None,
     connect_to_anchor: bool = False,
     actor_entity_id: str | None = None,
+    direction: str | None = None,
+    range_band: str | None = None,
+    map_form: str | None = None,
+    move_actor_to_location: bool = False,
 ) -> dict[str, Any]:
     return propose_location_expansion(
         database_path,
@@ -173,6 +177,10 @@ def expand_world_location(
         parent_location_id=parent_location_id,
         connect_to_anchor=connect_to_anchor,
         actor_entity_id=actor_entity_id,
+        direction=direction,
+        range_band=range_band,
+        map_form=map_form,
+        move_actor_to_location=move_actor_to_location,
     )
 
 

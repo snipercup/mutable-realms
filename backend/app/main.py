@@ -389,6 +389,10 @@ def create_app(
                 parent_location_id=request.parent_location_id,
                 connect_to_anchor=request.connect_to_anchor,
                 actor_entity_id=request.actor_entity_id,
+                direction=request.direction,
+                range_band=request.range_band,
+                map_form=request.map_form,
+                move_actor_to_location=request.move_actor_to_location,
             )
         except ExpansionNotFound as error:
             raise HTTPException(status_code=404, detail=str(error)) from error

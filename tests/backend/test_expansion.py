@@ -30,6 +30,24 @@ def _world(tmp_path: Path) -> Path:
     return path
 
 
+def _world_with_actor_at_harbor(tmp_path: Path) -> Path:
+    path = _world(tmp_path)
+    with connect_database(path) as connection:
+        connection.execute(
+            "INSERT INTO entities(id, world_id, kind, name) "
+            "VALUES ('sailor', 'world-a', 'character', 'Sailor')"
+        )
+        connection.execute(
+            "INSERT INTO characters(entity_id, role, disposition) "
+            "VALUES ('sailor', 'player', 'active')"
+        )
+        connection.execute(
+            "INSERT INTO entity_locations(entity_id, location_id) VALUES ('sailor', 'harbor')"
+        )
+        connection.commit()
+    return path
+
+
 async def _request(app: Any, payload: dict[str, object]) -> tuple[int, dict[str, object]]:
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
@@ -55,6 +73,35 @@ def test_http_expansion_contract_is_revision_aware(tmp_path: Path) -> None:
     )
     assert status == 200
     assert body["world_revision"] == 1
+
+
+def test_http_expansion_accepts_orientation_metadata(tmp_path: Path) -> None:
+    path = _world(tmp_path)
+    status, body = asyncio.run(
+        _request(
+            create_app(path),
+            {
+                "proposal_id": "http-proposal-orient",
+                "location_id": "orchard",
+                "anchor_location_id": "harbor",
+                "name": "Orchard Ford",
+                "connect_to_anchor": True,
+                "direction": "east",
+                "range_band": "mid",
+                "map_form": "forest",
+                "operation_id": "http-expand-orient",
+                "expected_revision": 0,
+            },
+        )
+    )
+    assert status == 200
+    assert body["world_revision"] == 1
+    with connect_database(path) as connection:
+        row = connection.execute(
+            "SELECT direction, range_band, map_form "
+            "FROM location_metadata WHERE location_id = 'orchard'"
+        ).fetchone()
+    assert tuple(row) == ("east", "mid", "forest")
 
 
 def test_expansion_creates_one_location_with_containment_and_link(tmp_path: Path) -> None:
@@ -170,3 +217,103 @@ def test_expansion_rejects_duplicate_name_and_exhausts_budget(tmp_path: Path) ->
             anchor_location_id="harbor",
             name="Market",
         )
+
+
+def test_expansion_persists_orientation_metadata(tmp_path: Path) -> None:
+    path = _world(tmp_path)
+
+    result = propose_location_expansion(
+        path,
+        world_id="world-a",
+        operation_id="expand-orient-1",
+        expected_revision=0,
+        proposal_id="orient-proposal-1",
+        location_id="orchard",
+        anchor_location_id="harbor",
+        name="Orchard Ford",
+        connect_to_anchor=True,
+        direction="east",
+        range_band="mid",
+        map_form="forest",
+    )
+
+    assert result["world_revision"] == 1
+    with connect_database(path) as connection:
+        row = connection.execute(
+            "SELECT geography_role, direction, range_band, map_form "
+            "FROM location_metadata WHERE location_id = 'orchard'"
+        ).fetchone()
+    assert tuple(row) == ("local", "east", "mid", "forest")
+
+
+def test_expansion_rejects_invalid_orientation_metadata(tmp_path: Path) -> None:
+    path = _world(tmp_path)
+    base = {
+        "world_id": "world-a",
+        "operation_id": "expand-bad-1",
+        "expected_revision": 0,
+        "proposal_id": "bad-proposal-1",
+        "location_id": "market",
+        "anchor_location_id": "harbor",
+        "name": "Market",
+    }
+    with pytest.raises(ExpansionConflict, match="direction"):
+        propose_location_expansion(path, **{**base, "direction": "up"})
+    with pytest.raises(ExpansionConflict, match="range band"):
+        propose_location_expansion(path, **{**base, "range_band": "far"})
+    with pytest.raises(ExpansionConflict, match="map form"):
+        propose_location_expansion(path, **{**base, "map_form": "castle"})
+
+
+def test_expansion_moves_actor_into_new_location_atomically(tmp_path: Path) -> None:
+    path = _world_with_actor_at_harbor(tmp_path)
+
+    result = propose_location_expansion(
+        path,
+        world_id="world-a",
+        operation_id="expand-move-1",
+        expected_revision=0,
+        proposal_id="move-proposal-1",
+        location_id="orchard",
+        anchor_location_id="harbor",
+        name="Orchard Ford",
+        connect_to_anchor=True,
+        actor_entity_id="sailor",
+        direction="east",
+        move_actor_to_location=True,
+    )
+
+    assert result["world_revision"] == 1
+    with connect_database(path) as connection:
+        location_id = connection.execute(
+            "SELECT location_id FROM entity_locations WHERE entity_id = 'sailor'"
+        ).fetchone()[0]
+        assert location_id == "orchard"
+
+
+def test_expansion_move_requires_connect_and_anchor_presence(tmp_path: Path) -> None:
+    path = _world_with_actor_at_harbor(tmp_path)
+    base = {
+        "world_id": "world-a",
+        "operation_id": "expand-move-2",
+        "expected_revision": 0,
+        "proposal_id": "move-proposal-2",
+        "location_id": "orchard",
+        "anchor_location_id": "harbor",
+        "name": "Orchard Ford",
+        "actor_entity_id": "sailor",
+        "move_actor_to_location": True,
+    }
+    with pytest.raises(ExpansionConflict, match="connect_to_anchor"):
+        propose_location_expansion(path, **base)
+    with pytest.raises(ExpansionConflict, match="actor_entity_id"):
+        propose_location_expansion(
+            path, **{**base, "connect_to_anchor": True, "actor_entity_id": None}
+        )
+    with pytest.raises(ExpansionConflict, match="not at the anchor"):
+        with connect_database(path) as connection:
+            connection.execute(
+                "UPDATE entity_locations SET location_id = 'city' WHERE entity_id = 'sailor'"
+            )
+            connection.commit()
+        propose_location_expansion(path, **{**base, "connect_to_anchor": True})

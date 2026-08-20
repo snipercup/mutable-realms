@@ -281,6 +281,10 @@ class ExpansionRequest(StrictReadModel):
     parent_location_id: str | None = None
     connect_to_anchor: bool = False
     actor_entity_id: str | None = None
+    direction: str | None = None
+    range_band: str | None = None
+    map_form: str | None = None
+    move_actor_to_location: bool = False
     operation_id: str
     expected_revision: int = Field(ge=0)
 

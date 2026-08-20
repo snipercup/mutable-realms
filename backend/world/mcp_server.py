@@ -180,8 +180,19 @@ def world_expand_location(
     parent_location_id: str | None = None,
     connect_to_anchor: bool = False,
     actor_entity_id: str | None = None,
+    direction: str | None = None,
+    range_band: str | None = None,
+    map_form: str | None = None,
+    move_actor_to_location: bool = False,
 ) -> dict[str, Any]:
-    """Accept one bounded structured proposal for a new ordinary location."""
+    """Accept one bounded structured proposal for a new ordinary location.
+
+    Optional ``direction`` (cardinal/intercardinal), ``range_band``
+    (short/mid/long), and ``map_form`` (allowlisted visual form) are persisted
+    as orientation metadata so the map can place the new location correctly.
+    When ``move_actor_to_location`` is true and ``connect_to_anchor`` is true,
+    the actor is moved into the new location atomically in the same operation.
+    """
     return expand_world_location(
         get_database_path(),
         world_id=resolve_world_id(world_id),
@@ -195,6 +206,10 @@ def world_expand_location(
         parent_location_id=parent_location_id,
         connect_to_anchor=connect_to_anchor,
         actor_entity_id=resolve_actor_entity_id(actor_entity_id),
+        direction=direction,
+        range_band=range_band,
+        map_form=map_form,
+        move_actor_to_location=move_actor_to_location,
     )
 
 
