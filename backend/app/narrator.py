@@ -88,6 +88,7 @@ _DEFAULT_START_NARRATOR_TIMEOUT_SECONDS = 240.0
 _MIN_NARRATOR_TIMEOUT_SECONDS = 5.0
 _MAX_NARRATOR_TIMEOUT_SECONDS = 300.0
 _NARRATION_MAX_TOKENS = 200
+_NARRATION_CONTEXT_MAX_TOKENS = 32000
 _CHARS_PER_TOKEN = 4
 
 
@@ -133,6 +134,29 @@ class NarratorError(RuntimeError):
     def __init__(self, message: str, *, category: str = "narrator_error") -> None:
         super().__init__(message)
         self.category = category
+
+
+def _format_narration_history(entries: list[dict[str, Any]]) -> str:
+    """Render recent narration entries as a compact story-so-far block.
+
+    Entries arrive oldest-to-newest; each becomes a labeled line
+    (``You: ...`` / ``Narrator: ...``). The whole block is bounded by
+    ``_NARRATION_CONTEXT_MAX_TOKENS`` (coarse 4 chars/token estimate), so a
+    very long history can never blow the narrator's context budget.
+    """
+    lines: list[str] = []
+    budget = _NARRATION_CONTEXT_MAX_TOKENS * _CHARS_PER_TOKEN
+    for entry in reversed(entries):
+        role = entry.get("role")
+        content = (entry.get("content") or "").strip()
+        if not content:
+            continue
+        prefix = "You: " if role == "player" else "Narrator: "
+        line = f"{prefix}{content}"
+        if sum(len(line) for line in lines) + len(line) > budget:
+            break
+        lines.append(line)
+    return "\n".join(reversed(lines))
 
 
 def _format_context_block(context: dict[str, Any]) -> str:
@@ -190,7 +214,10 @@ def build_narration_prompt(
 
     When ``context`` is provided it is embedded as an authoritative snapshot of
     the selected world, so the agent narrates that world even if its profile is
-    configured for another one.
+    configured for another one. When the context also carries
+    ``recent_narration`` (oldest-to-newest entries from the world's narration
+    history), those entries are included as story-so-far context so the agent
+    can continue the story where it left off.
     """
     prompt = (
         "You are the Mutable Realms narration agent, reached through the direct "
@@ -202,6 +229,15 @@ def build_narration_prompt(
         prompt += "Current world state (authoritative snapshot for this turn):\n"
         prompt += _format_context_block(context)
         prompt += "\n\n"
+        recent_narration = context.get("recent_narration")
+        if isinstance(recent_narration, list) and recent_narration:
+            story_so_far = _format_narration_history(recent_narration)
+            if story_so_far:
+                prompt += (
+                    "Recent narration (the story so far, oldest first). This is "
+                    "history, not authoritative state:\n"
+                    f"{story_so_far}\n\n"
+                )
     prompt += (
         "The player's action is:\n"
         f"{player_action}\n\n"

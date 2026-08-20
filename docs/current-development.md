@@ -4,13 +4,13 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Persist narration history so the page can reload the last messages — in progress
+### Feed recent narration history back into the narrator's context — in progress
 
-**Goal:** keep a world-scoped transcript of player-facing narration so that after a page refresh the user can read back the last ~20 entries. Today the `#narration-log` is session-local: the turn/start routes return narration but never persist it, so a refresh clears everything.
+**Goal:** when the narrator starts a new turn, it should see the recent story so far — both the player's messages and its own responses — so it can continue where it left off. Today each turn is a fresh CLI session with only the authoritative world snapshot; the previous prose is never included.
 
-**Implementation status:** migration `0017_narration_history` adds an append-only world-scoped transcript (`world_id, revision, role player|agent, content, occurred_at`). `backend/world/narration_history.py` provides `append_narration`/`read_narration_history` (last N oldest→newest, WorldNotFound). The start route records the agent's opening narration; the narrated-turn route records the player action and the agent narration. `GET /api/worlds/{world_id}/narration?limit=20` returns the transcript. The frontend fetches history once per world (page load / world switch) into `#narration-log`, then live appends continue on top. History is presentation state: no revisions, events, or operation ledger involvement; rows cascade with world deletion.
+**Implementation status:** `build_narration_prompt` now renders a "Recent narration (the story so far, oldest first)" block from the world's narration history when the context carries `recent_narration`. `_format_narration_history` labels each entry (`You:`/`Narrator:`) oldest → newest and bounds the whole block at 32,000 tokens (coarse 4 chars/token estimate). The narrated-turn route reads up to 100 history entries via `read_narration_history` and attaches them to the context before invoking the narrator, so the second turn sees the first turn's player action and agent response. The authoritative snapshot is unchanged; narration history remains presentation/context state.
 
-**Verification:** `283` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; `git diff --check` passes. A temporary server on port 8795 with the seeded ward world served `GET /api/worlds/ward-world/narration` with all three seeded entries in oldest-first order, and a headless Chromium load of the page rendered `agent / player / agent` narration entries into `#narration-log` in order (the page's `GET /narration?limit=20` call appears in the server log). Port 8795 was stopped and confirmed closed; the temporary DB was removed. The live DB was not modified.
+**Verification:** `287` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; `git diff --check` passes. Live prompt verification on a temporary DB (no real narrator): the ward world with two seeded history entries produced a prompt whose story-so-far section renders `Narrator: Welcome to the ward.` then `You: I wait quietly.` in order, under the token budget; the temporary DB was removed. The live DB was not modified.
 
 ## Recently completed
 
@@ -18,6 +18,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 | Idea | Completed | Commit |
 | --- | --- | --- |
 | Bound the narrator's turn output to 200 tokens (prompt instruction + SOUL.md rule + deterministic sentence-safe `bound_narration_tokens()` cap; no model-level token cap because Hermes applies `model.max_tokens` to the whole completion including tool calls) | 2026-08-20 | `03b0454` |
+| Persist narration history so the page can reload the last messages (migration `0017_narration_history`, append/read service, `GET /api/worlds/{world_id}/narration`, record start + narrated turns, frontend history reload) | 2026-08-20 | `d2216db` |
 | Scenario authoring and world management (scenario CRUD + elements, world instancing, world update/elements/remove) | 2026-08-08 | on main via `scenario-authoring` · `world-instancing` · `world-management` |
 | World management interface (play ⇄ manage view, scenario/world CRUD UI, instancing, `#manage` deep link) | 2026-08-10 | on main via `world-management-interface` |
 | Player provisioning (create a player + starting location so instanced worlds are playable; play view empty state) | 2026-08-10 | on main via `player-provisioning` |

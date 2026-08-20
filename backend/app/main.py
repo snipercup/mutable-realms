@@ -874,6 +874,10 @@ def create_app(
             context = build_world_context(database_path, world_id=world_id).model_dump()
         except PlayerNotFound:
             context = None
+        if context is not None:
+            context["recent_narration"] = read_narration_history(
+                database_path, world_id=world_id, limit=100
+            )
         try:
             narration = narrator(world_id, request.player_id, request.player_action, context)
         except NarratorError as error:

@@ -174,6 +174,45 @@ def test_narrated_turn_records_player_and_agent_entries(tmp_path: Path) -> None:
     assert entries[1]["content"] == "The ward is still."
 
 
+def test_narrated_turn_passes_recent_narration_into_context(tmp_path: Path) -> None:
+    database_path = _ward_db(tmp_path)
+    received_contexts: list[dict[str, Any]] = []
+
+    def narrator(
+        world_id: str,
+        player_id: str,
+        player_action: str,
+        context: dict[str, Any] | None = None,
+    ) -> str:
+        received_contexts.append(dict(context) if context else {})
+        return "The ward is still."
+
+    app = create_app(database_path, narrator=narrator)
+
+    asyncio.run(
+        _post(
+            app,
+            "/api/worlds/ward-world/turns",
+            {"player_id": "player", "player_action": "I inspect the ward."},
+        )
+    )
+    assert received_contexts[0]["recent_narration"] == []
+    assert "player" in received_contexts[0]
+
+    asyncio.run(
+        _post(
+            app,
+            "/api/worlds/ward-world/turns",
+            {"player_id": "player", "player_action": "I open the door."},
+        )
+    )
+    # The second turn sees both the player's first action and the agent reply.
+    assert [entry["content"] for entry in received_contexts[1]["recent_narration"]] == [
+        "I inspect the ward.",
+        "The ward is still.",
+    ]
+
+
 async def _post(app: Any, path: str, body: dict[str, Any]) -> tuple[int, Any]:
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)

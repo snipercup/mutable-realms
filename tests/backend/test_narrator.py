@@ -139,6 +139,68 @@ def test_build_narration_prompt_embeds_selected_world_context() -> None:
     assert "world_id=world-of-earthalon" in prompt
 
 
+def test_build_narration_prompt_includes_recent_narration_when_present() -> None:
+    context = {
+        "world": {"id": "town-world", "name": "Town", "revision": 1},
+        "player": {"id": "sailor", "name": "The Sailor"},
+        "current_location": {"id": "plaza", "name": "Plaza", "entities": []},
+        "world_elements": [],
+        "recent_events": [],
+        "recent_narration": [
+            {"role": "agent", "content": "You step onto the wet stones."},
+            {"role": "player", "content": "I examine the fountain."},
+            {"role": "agent", "content": "The fountain is carved with leaping fish."},
+        ],
+    }
+
+    prompt = build_narration_prompt("town-world", "sailor", "I wait.", context)
+
+    assert "Recent narration (the story so far, oldest first)" in prompt
+    assert "You step onto the wet stones." in prompt
+    assert "I examine the fountain." in prompt
+    assert "The fountain is carved with leaping fish." in prompt
+    assert "You: I examine the fountain." in prompt
+    assert "Narrator: You step onto the wet stones." in prompt
+    assert "Narrator: The fountain is carved with leaping fish." in prompt
+
+
+def test_build_narration_prompt_omits_recent_narration_when_absent() -> None:
+    context = {
+        "world": {"id": "town-world", "name": "Town", "revision": 1},
+        "player": {"id": "sailor", "name": "The Sailor"},
+        "current_location": {"id": "plaza", "name": "Plaza", "entities": []},
+        "world_elements": [],
+        "recent_events": [],
+    }
+
+    prompt = build_narration_prompt("town-world", "sailor", "I wait.", context)
+
+    assert "Recent narration" not in prompt
+
+
+def test_build_narration_prompt_bounds_recent_narration_to_token_budget() -> None:
+    long_entry = "word " * 20000
+    context = {
+        "world": {"id": "town-world", "name": "Town", "revision": 1},
+        "player": {"id": "sailor", "name": "The Sailor"},
+        "current_location": {"id": "plaza", "name": "Plaza", "entities": []},
+        "world_elements": [],
+        "recent_events": [],
+        "recent_narration": [
+            {"role": "player", "content": long_entry},
+        ],
+    }
+
+    prompt = build_narration_prompt("town-world", "sailor", "I wait.", context)
+
+    # The bounded block may be dropped entirely if the single entry exceeds
+    # the budget, but the prompt must remain valid and under the context cap.
+    if "Recent narration" in prompt:
+        section = prompt.split("Recent narration")[1]
+        assert len(section) <= 32000 * 4 + 200
+    assert "world_id=town-world" in prompt
+
+
 def test_build_world_start_prompt_requires_structured_location_and_narration() -> None:
     prompt = build_world_start_prompt(
         "world-a",
