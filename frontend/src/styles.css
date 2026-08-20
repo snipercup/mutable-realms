@@ -230,6 +230,10 @@ h1, h2, h3, p { margin: 0; }
 .manage-button--ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
 .manage-button--danger { background: #7f2d2d; color: #f3d9d9; }
 .manage-card .manage-button { margin-top: 10px; }
+.manage-region-heading { display: flex; align-items: baseline; gap: 4px; }
+.manage-region-indent { color: var(--muted); font-size: .8rem; letter-spacing: -2px; }
+.region-editor { border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-top: 12px; background: var(--surface-raised); }
+.region-editor .manage-field { display: block; margin-top: 10px; }
 .scenario-editor {
   border: 1px solid var(--border);
   border-radius: 12px;

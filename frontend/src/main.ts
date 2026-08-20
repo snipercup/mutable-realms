@@ -21,8 +21,19 @@ type ScenarioElement = {
   updated_at: string;
 };
 
+type ScenarioRegion = {
+  region_id: string;
+  parent_region_id: string | null;
+  level: string;
+  title: string;
+  description: string;
+  attributes: Record<string, unknown>;
+  updated_at: string;
+};
+
 type ScenarioDetail = Scenario & {
   elements: ScenarioElement[];
+  regions: ScenarioRegion[];
 };
 
 type PlayerCharacter = {
@@ -314,6 +325,52 @@ root.innerHTML = `
             <button class="manage-button" data-element-save="opening_scene" type="button">Save</button>
           </label>
         </div>
+        <div class="scenario-elements">
+          <span class="eyebrow">Region framework</span>
+          <p class="manage-description">
+            The scenario's geography hierarchy (kingdoms → provinces → cities, or whatever levels this
+            scenario uses). Regions are knowledge — the narrator materializes them as locations in play.
+          </p>
+          <div class="manage-grid" id="scenario-region-list"></div>
+          <button class="manage-button" id="scenario-region-add" type="button">Add region</button>
+          <div class="region-editor" id="scenario-region-editor" hidden>
+            <div class="scenario-editor-heading">
+              <h4 class="section-title" id="scenario-region-editor-name">Region</h4>
+              <button class="manage-button manage-button--ghost" id="scenario-region-editor-close" type="button">Close</button>
+            </div>
+            <label class="manage-field">
+              Region id
+              <input class="manage-input" id="scenario-region-edit-id" placeholder="kebab-case (e.g. virellea-elaris)" aria-label="Region id" />
+            </label>
+            <label class="manage-field">
+              Level
+              <input class="manage-input" id="scenario-region-edit-level" placeholder="kingdom / province / city / planet / …" aria-label="Region level" />
+            </label>
+            <label class="manage-field">
+              Parent region
+              <select class="manage-input" id="scenario-region-edit-parent" aria-label="Parent region"></select>
+            </label>
+            <label class="manage-field">
+              Title
+              <input class="manage-input" id="scenario-region-edit-title" aria-label="Region title" />
+            </label>
+            <label class="manage-field">
+              Description
+              <textarea class="manage-textarea" id="scenario-region-edit-description" aria-label="Region description"></textarea>
+            </label>
+            <label class="manage-field">
+              Attributes (JSON — biomes, species, connections)
+              <textarea
+                class="manage-textarea"
+                id="scenario-region-edit-attributes"
+                aria-label="Region attributes"
+                placeholder='{"biomes": ["Grassy Plains"], "present_species": ["Elves"], "connected_by_road_to": {"thurnrok": "NW"}}'
+              ></textarea>
+            </label>
+            <button class="manage-button" id="scenario-region-save" type="button">Save region</button>
+            <button class="manage-button manage-button--danger" id="scenario-region-delete" type="button">Delete region</button>
+          </div>
+        </div>
         <button class="manage-button manage-button--danger" id="scenario-delete" type="button">Delete scenario</button>
       </div>
       <h2 class="section-title">Worlds</h2>
@@ -428,6 +485,19 @@ const scenarioEditDescription = requireElement<HTMLTextAreaElement>("#scenario-e
 const scenarioEditSave = requireElement<HTMLButtonElement>("#scenario-edit-save");
 const scenarioEditorClose = requireElement<HTMLButtonElement>("#scenario-editor-close");
 const scenarioDelete = requireElement<HTMLButtonElement>("#scenario-delete");
+const scenarioRegionList = requireElement<HTMLDivElement>("#scenario-region-list");
+const scenarioRegionAdd = requireElement<HTMLButtonElement>("#scenario-region-add");
+const scenarioRegionEditor = requireElement<HTMLDivElement>("#scenario-region-editor");
+const scenarioRegionEditorName = requireElement<HTMLElement>("#scenario-region-editor-name");
+const scenarioRegionEditorClose = requireElement<HTMLButtonElement>("#scenario-region-editor-close");
+const scenarioRegionEditId = requireElement<HTMLInputElement>("#scenario-region-edit-id");
+const scenarioRegionEditLevel = requireElement<HTMLInputElement>("#scenario-region-edit-level");
+const scenarioRegionEditParent = requireElement<HTMLSelectElement>("#scenario-region-edit-parent");
+const scenarioRegionEditTitle = requireElement<HTMLInputElement>("#scenario-region-edit-title");
+const scenarioRegionEditDescription = requireElement<HTMLTextAreaElement>("#scenario-region-edit-description");
+const scenarioRegionEditAttributes = requireElement<HTMLTextAreaElement>("#scenario-region-edit-attributes");
+const scenarioRegionSave = requireElement<HTMLButtonElement>("#scenario-region-save");
+const scenarioRegionDelete = requireElement<HTMLButtonElement>("#scenario-region-delete");
 const worldCreateForm = requireElement<HTMLFormElement>("#world-create-form");
 const worldCreateScenario = requireElement<HTMLSelectElement>("#world-create-scenario");
 const worldCreateId = requireElement<HTMLInputElement>("#world-create-id");
@@ -456,6 +526,8 @@ let startPending = false;
 let startError: string | null = null;
 let manageLoading = false;
 let editingScenarioId: string | null = null;
+let editingRegionId: string | null = null;
+let scenarioRegions: ScenarioRegion[] = [];
 let editingWorldId: string | null = null;
 let editingWorldRevision = 0;
 let manageBusy = false;
@@ -1643,6 +1715,8 @@ async function loadScenarioDetail(scenarioId: string): Promise<void> {
     for (const elementType of ["author_note", "plot_essentials", "opening_scene"]) {
       elementTextarea(elementType).value = byType.get(elementType) ?? "";
     }
+    scenarioRegions = detail.regions;
+    renderScenarioRegions();
   } catch (error) {
     setError(error instanceof Error ? error.message : "Unable to load scenario");
   }
@@ -1692,7 +1766,157 @@ async function saveScenarioElement(elementType: string): Promise<void> {
 
 function closeScenarioEditor(): void {
   editingScenarioId = null;
+  editingRegionId = null;
   scenarioEditor.hidden = true;
+}
+
+function regionDepth(regionId: string, visited: Set<string> = new Set()): number {
+  if (visited.has(regionId)) return 0;
+  visited.add(regionId);
+  const region = scenarioRegions.find((candidate) => candidate.region_id === regionId);
+  if (region === undefined || region.parent_region_id === null) return 0;
+  return 1 + regionDepth(region.parent_region_id, visited);
+}
+
+function renderScenarioRegions(): void {
+  scenarioRegionList.replaceChildren();
+  const ordered = [...scenarioRegions].sort((a, b) => a.region_id.localeCompare(b.region_id));
+  if (ordered.length === 0) {
+    scenarioRegionList.append(
+      element(
+        "p",
+        "empty-state",
+        "No regions yet. Add kingdoms, provinces, cities (or whatever levels this scenario uses).",
+      ),
+    );
+    return;
+  }
+  for (const region of ordered) {
+    const card = element("article", "manage-card");
+    const depth = regionDepth(region.region_id);
+    const heading = element("div", "manage-region-heading");
+    if (depth > 0) {
+      heading.append(element("span", "manage-region-indent", "└ ".repeat(depth)));
+    }
+    heading.append(element("h3", "manage-name", region.title));
+    card.append(heading);
+    card.append(element("code", "manage-id", region.region_id));
+    card.append(
+      element("span", "manage-meta", `${region.level}${region.parent_region_id !== null ? ` · child of ${region.parent_region_id}` : ""}`),
+    );
+    if (region.description !== "") {
+      card.append(element("p", "manage-description", region.description));
+    }
+    const editButton = element("button", "manage-button", "Edit");
+    editButton.type = "button";
+    editButton.addEventListener("click", () => openRegionEditor(region.region_id));
+    card.append(editButton);
+    scenarioRegionList.append(card);
+  }
+}
+
+function populateRegionParentSelect(excludeId: string | null): void {
+  scenarioRegionEditParent.replaceChildren();
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = "— none (top level) —";
+  scenarioRegionEditParent.append(none);
+  const ordered = [...scenarioRegions].sort((a, b) => a.region_id.localeCompare(b.region_id));
+  for (const region of ordered) {
+    if (region.region_id === excludeId) continue;
+    const option = document.createElement("option");
+    option.value = region.region_id;
+    option.textContent = `${region.title} (${region.region_id})`;
+    scenarioRegionEditParent.append(option);
+  }
+}
+
+function openRegionEditor(regionId: string | null): void {
+  editingRegionId = regionId;
+  scenarioRegionEditor.hidden = false;
+  const region = regionId === null ? undefined : scenarioRegions.find((candidate) => candidate.region_id === regionId);
+  scenarioRegionEditorName.textContent = regionId === null ? "New region" : regionId;
+  scenarioRegionEditId.value = region?.region_id ?? "";
+  scenarioRegionEditLevel.value = region?.level ?? "";
+  scenarioRegionEditTitle.value = region?.title ?? "";
+  scenarioRegionEditDescription.value = region?.description ?? "";
+  scenarioRegionEditAttributes.value =
+    regionId === null ? "" : JSON.stringify(region?.attributes ?? {}, null, 2);
+  scenarioRegionEditId.disabled = regionId !== null;
+  populateRegionParentSelect(regionId);
+  scenarioRegionEditParent.value = region?.parent_region_id ?? "";
+  setError(null);
+}
+
+function closeRegionEditor(): void {
+  editingRegionId = null;
+  scenarioRegionEditor.hidden = true;
+}
+
+async function saveScenarioRegion(): Promise<void> {
+  if (editingScenarioId === null || manageBusy) return;
+  const regionId = scenarioRegionEditId.value.trim();
+  const level = scenarioRegionEditLevel.value.trim();
+  const title = scenarioRegionEditTitle.value.trim();
+  const description = scenarioRegionEditDescription.value.trim();
+  if (regionId === "" || level === "" || title === "" || description === "") {
+    setError("Region id, level, title, and description are required");
+    return;
+  }
+  let attributes: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(scenarioRegionEditAttributes.value.trim() || "{}");
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new Error("attributes must be a JSON object");
+    }
+    attributes = parsed as Record<string, unknown>;
+  } catch (error) {
+    setError(error instanceof Error ? `Invalid attributes JSON: ${error.message}` : "Invalid attributes JSON");
+    return;
+  }
+  setError(null);
+  manageBusy = true;
+  try {
+    await requestJson(
+      "PUT",
+      `/api/scenarios/${encodeURIComponent(editingScenarioId)}/regions/${encodeURIComponent(regionId)}`,
+      {
+        level,
+        title,
+        description,
+        parent_region_id: scenarioRegionEditParent.value || null,
+        attributes,
+        operation_id: crypto.randomUUID(),
+      },
+    );
+    await Promise.all([loadManage(), loadScenarioDetail(editingScenarioId)]);
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to save region");
+  } finally {
+    manageBusy = false;
+  }
+}
+
+async function deleteScenarioRegion(): Promise<void> {
+  if (editingScenarioId === null || editingRegionId === null || manageBusy) return;
+  const regionId = editingRegionId;
+  if (!window.confirm(`Delete region "${regionId}"? Its descendant regions will be deleted too.`)) {
+    return;
+  }
+  setError(null);
+  manageBusy = true;
+  try {
+    await requestJson(
+      "DELETE",
+      `/api/scenarios/${encodeURIComponent(editingScenarioId)}/regions/${encodeURIComponent(regionId)}?operation_id=${crypto.randomUUID()}`,
+    );
+    closeRegionEditor();
+    await Promise.all([loadManage(), loadScenarioDetail(editingScenarioId)]);
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to delete region");
+  } finally {
+    manageBusy = false;
+  }
 }
 
 async function deleteScenario(): Promise<void> {
@@ -1753,6 +1977,10 @@ scenarioCreateForm.addEventListener("submit", (event) => {
 scenarioEditSave.addEventListener("click", () => void saveScenarioDetails());
 scenarioEditorClose.addEventListener("click", closeScenarioEditor);
 scenarioDelete.addEventListener("click", () => void deleteScenario());
+scenarioRegionAdd.addEventListener("click", () => openRegionEditor(null));
+scenarioRegionEditorClose.addEventListener("click", closeRegionEditor);
+scenarioRegionSave.addEventListener("click", () => void saveScenarioRegion());
+scenarioRegionDelete.addEventListener("click", () => void deleteScenarioRegion());
 for (const button of root?.querySelectorAll<HTMLButtonElement>("[data-element-save]") ?? []) {
   const elementType = button.dataset.elementSave;
   if (elementType !== undefined) {
