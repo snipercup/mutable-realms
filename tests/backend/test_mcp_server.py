@@ -33,6 +33,8 @@ def test_mcp_exposes_only_controlled_world_tools_without_database_arguments() ->
         "world_expand_location",
         "world_treat_and_discharge_patient",
         "world_record_social_interaction",
+        "world_record_location_memory",
+        "world_consolidate_location_memories",
         "world_transfer_resource",
         "world_update_location",
         "world_validate",

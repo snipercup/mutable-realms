@@ -8,11 +8,13 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from backend.world.agent_tools import (
+    consolidate_world_location_memories,
     expand_world_location,
     inspect_entity,
     list_events,
     move_world_entity,
     read_world_status,
+    record_world_location_memory,
     record_world_social_interaction,
     transfer_world_resource,
     travel_world_route,
@@ -261,6 +263,63 @@ def world_record_social_interaction(
         relationship_category=relationship_category,
         relationship_delta=relationship_delta,
         memory=memory,
+    )
+
+
+@mcp.tool()
+def world_record_location_memory(
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    location_id: str,
+    memory_key: Annotated[str, Field(min_length=1, max_length=100)],
+    content: Annotated[str, Field(min_length=1, max_length=300)],
+    actor_entity_id: str | None = None,
+) -> dict[str, Any]:
+    """Atomically record one narrative memory about a location.
+
+    The ``memory_key`` identifies the fact for deduplication: recording the
+    same key again increments its occurrence count instead of duplicating it.
+    Use for story-beats (\"Fate fixed a cart at the farmstead\"); use
+    ``world_update_location`` properties for exact counts and mechanical facts.
+    """
+    return record_world_location_memory(
+        get_database_path(),
+        world_id=resolve_world_id(world_id),
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        location_id=location_id,
+        memory_key=memory_key,
+        content=content,
+        actor_entity_id=resolve_actor_entity_id(actor_entity_id),
+    )
+
+
+@mcp.tool()
+def world_consolidate_location_memories(
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    location_id: str,
+    memory_keys: list[Annotated[str, Field(min_length=1, max_length=100)]],
+    content: Annotated[str, Field(min_length=1, max_length=300)],
+    actor_entity_id: str | None = None,
+) -> dict[str, Any]:
+    """Atomically merge several location memories into one condensed row.
+
+    Replaces the listed memory keys with a single row whose content is
+    ``content`` and whose occurrence count is the sum of the merged rows.
+    Use when the context shows older memories were dropped from the budget.
+    """
+    return consolidate_world_location_memories(
+        get_database_path(),
+        world_id=resolve_world_id(world_id),
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        location_id=location_id,
+        memory_keys=memory_keys,
+        content=content,
+        actor_entity_id=resolve_actor_entity_id(actor_entity_id),
     )
 
 

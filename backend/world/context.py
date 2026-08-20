@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from backend.persistence.database import connect_readonly_database
 from backend.world.hierarchy import read_location_ancestors
 from backend.world.links import read_linked_locations
+from backend.world.location_memories import read_location_memories
 from backend.world.locations import read_location_properties
 from backend.world.queries import (
     LocationNotFound,
@@ -61,6 +62,7 @@ class ContextLocation(ContextModel):
     revision: int = Field(ge=0)
     entities: list[ContextEntity]
     properties: list[dict[str, Any]]
+    memories: list[dict[str, Any]] = Field(default_factory=list)
     linked_locations: list[dict[str, Any]]
 
 
@@ -133,6 +135,12 @@ def build_world_context(
             location_ids=[location_id],
             _connection=connection,
         )["properties"]
+        location["memories"] = read_location_memories(
+            database_path,
+            world_id=world_id,
+            location_ids=[location_id],
+            _connection=connection,
+        )
         location["linked_locations"] = read_linked_locations(
             database_path,
             world_id=world_id,

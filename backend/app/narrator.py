@@ -191,6 +191,16 @@ def _format_context_block(context: dict[str, Any]) -> str:
                 f"{entity.get('name', '?')} ({entity.get('id', '?')})" for entity in entities
             )
             lines.append(f"Here: {here}")
+        memories = location.get("memories", [])
+        if memories:
+            lines.append("Location memories (what is remembered about this place):")
+            for memory in memories:
+                content = memory.get("content", "")
+                count = memory.get("occurrence_count", 1)
+                if count > 1:
+                    lines.append(f"  - {content} (x{count})")
+                else:
+                    lines.append(f"  - {content}")
     elements = context.get("world_elements", [])
     if elements:
         lines.append("Story elements:")

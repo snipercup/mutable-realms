@@ -7,6 +7,10 @@ from typing import Any
 from backend.persistence.database import connect_readonly_database
 from backend.scenarios.ward.mutations import treat_and_discharge_patient
 from backend.world.expansion import propose_location_expansion
+from backend.world.location_memories import (
+    consolidate_location_memories,
+    record_location_memory,
+)
 from backend.world.locations import update_location
 from backend.world.mutations import move_entity
 from backend.world.queries import WorldNotFound, get_entity, list_recent_events
@@ -79,6 +83,8 @@ def read_world_status(database_path: str | Path, *, world_id: str) -> dict[str, 
     if has_locations:
         mutations.append("world_update_location")
         mutations.append("world_expand_location")
+        mutations.append("world_record_location_memory")
+        mutations.append("world_consolidate_location_memories")
     if has_routes:
         mutations.append("world_travel_route")
     return {"world": dict(world), "available_mutations": mutations}
@@ -287,6 +293,54 @@ def update_world_location(
         display_name=display_name,
         property=property,
         value=value,
+    )
+
+
+def record_world_location_memory(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    location_id: str,
+    memory_key: str,
+    content: str,
+    actor_entity_id: str | None = None,
+) -> dict[str, Any]:
+    """Apply the atomic, idempotent location memory record operation."""
+    return record_location_memory(
+        database_path,
+        world_id=world_id,
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        location_id=location_id,
+        memory_key=memory_key,
+        content=content,
+        actor_entity_id=actor_entity_id,
+    )
+
+
+def consolidate_world_location_memories(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    location_id: str,
+    memory_keys: list[str],
+    content: str,
+    actor_entity_id: str | None = None,
+) -> dict[str, Any]:
+    """Apply the atomic, idempotent location memory consolidation operation."""
+    return consolidate_location_memories(
+        database_path,
+        world_id=world_id,
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        location_id=location_id,
+        memory_keys=memory_keys,
+        content=content,
+        actor_entity_id=actor_entity_id,
     )
 
 

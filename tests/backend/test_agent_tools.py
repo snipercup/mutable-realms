@@ -41,6 +41,8 @@ def test_status_reports_revision_and_only_supported_mutations(tmp_path: Path) ->
             "world_transfer_resource",
             "world_update_location",
             "world_expand_location",
+            "world_record_location_memory",
+            "world_consolidate_location_memories",
         ],
     }
     assert ward == {
@@ -52,6 +54,8 @@ def test_status_reports_revision_and_only_supported_mutations(tmp_path: Path) ->
             "world_transfer_resource",
             "world_update_location",
             "world_expand_location",
+            "world_record_location_memory",
+            "world_consolidate_location_memories",
         ],
     }
 

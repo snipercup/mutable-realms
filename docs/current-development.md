@@ -4,13 +4,20 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Cap the visible recent-events list (3 items) so it cannot push the input bar down — in progress
+### Location memories — narrator-maintained narrative facts for places — in progress
 
-**Goal:** the right-column `Recent events` panel renders every fetched event (up to 20), so as the player takes more turns the panel grows and pushes the narration input bar below the fold. Keep at most 3 events visible; let the user scroll within the panel to reach earlier events.
+**Goal:** give the narrator a place to persist *narrative* facts about a location ("Fate fixed a cart at the farmstead") that are distinct from the quantified `location_properties` ledger (counts, ward patients, visits). Memories are core to the project, so the budget is generous: up to **1000 tokens of memories** can go into the narrator's context, but only for the **player's current location** — never children, siblings, or breadcrumbs.
 
-**Implementation status:** `.event-list` now has `max-height: 228px` (≈3 event items) with `overflow-y: auto` and a thin scrollbar (`scrollbar-width: thin` plus WebKit scrollbar styles). All fetched events remain in the DOM and are reachable by scrolling the list; only the visible height is capped. No backend or state change.
+**Design:**
+- Migration `0018_location_memories`: `location_memories(world_id, location_id, memory_key, content, occurrence_count, updated_event_id)`, PK `(world_id, location_id, memory_key)`. Dedup by normalized `memory_key`: recording the same key again **increments `occurrence_count`** instead of inserting a duplicate (renders as `×2`, etc.). Content ≤ 300 chars.
+- Service `backend/world/location_memories.py`: `record_location_memory` (atomic, revision-checked, exactly idempotent operation + event) and `consolidate_location_memories` (merge listed keys into one condensed row with summed counts — the deterministic "narrator summarizes" step).
+- Stored budget per location is large (200 memories); render budget is **1000 tokens ≈ 4000 chars** in `world_context` for the current location only, newest first, with an ellipsis line (`...and N older memories`) when the budget is exceeded — which is the trigger for the narrator to consolidate.
+- MCP tools `world_record_location_memory` / `world_consolidate_location_memories`, advertised by `world_status` when the world has locations.
+- Narrator guidance (SOUL + prompt): counts/mechanical facts → `location_properties`; story-beats → `location_memories`; on seeing `...and N older memories`, consolidate.
 
-**Verification:** `292` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; `git diff --check` passes. Live headless-Chromium measurement of the Aerthalon page on port 8790 (fresh bundle): the event list is capped at `228px` visible height with `overflow-y: auto`, contains all `9` fetched events (`scrollHeight: 831px`), so earlier events are reachable by scrolling the list instead of stretching the page. The live DB was not modified.
+**Out of scope:** rendering memories in the player UI; entity-scoped `memories` table changes; auto-summarization by the backend (the narrator decides).
+
+**Verification:** `302` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; `git diff --check` passes. Live verification on a temporary DB (no real narrator): recording the same memory key twice produced `occurrence_count` 1 then 2 (single row), a third distinct memory read back newest-first, `build_world_context` exposed only the current location's memories, and `build_narration_prompt` rendered `Location memories` with `(x2)` counts. `world_consolidate_location_memories` merged two keys into one row with summed count 3, all revision-checked and idempotent. The temporary DB was removed; the live DB was not modified.
 
 ## Recently completed
 
@@ -21,6 +28,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 | Persist narration history so the page can reload the last messages (migration `0017_narration_history`, append/read service, `GET /api/worlds/{world_id}/narration`, record start + narrated turns, frontend history reload) | 2026-08-20 | `d2216db` |
 | Feed recent narration history back into the narrator's context (story-so-far prompt block, 32k-token bound, turn route attaches history) | 2026-08-20 | `08e9114` |
 | Let the narrator orient and enter newly expanded locations (map–story alignment: `direction`/`range_band`/`map_form` metadata + atomic `move_actor_to_location` on `world_expand_location`, one revision, exact idempotency) | 2026-08-20 | `76a4e7c` |
+| Cap the visible recent-events list (3 items) so it cannot push the input bar down (CSS-only: `max-height: 228px` + `overflow-y: auto` on `.event-list`) | 2026-08-20 | `b0a0a28` |
 | Scenario authoring and world management (scenario CRUD + elements, world instancing, world update/elements/remove) | 2026-08-08 | on main via `scenario-authoring` · `world-instancing` · `world-management` |
 | World management interface (play ⇄ manage view, scenario/world CRUD UI, instancing, `#manage` deep link) | 2026-08-10 | on main via `world-management-interface` |
 | Player provisioning (create a player + starting location so instanced worlds are playable; play view empty state) | 2026-08-10 | on main via `player-provisioning` |

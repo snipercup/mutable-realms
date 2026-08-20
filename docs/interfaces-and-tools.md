@@ -232,6 +232,8 @@ The MCP server (`python -m backend.world.mcp_server`) exposes controlled applica
 | `world_move_entity` | Revision-checked, idempotent move; destination must be linked. |
 | `world_treat_and_discharge_patient` | Ward compound operation (recover + discharge + free bed). |
 | `world_record_social_interaction` | Relationship upsert + memory insert. |
+| `world_record_location_memory` | Atomically record one narrative memory about a location; the same normalized `memory_key` increments `occurrence_count` instead of duplicating. |
+| `world_consolidate_location_memories` | Merge several location memories into one condensed row with summed counts (the narrator's summarize step). |
 | `world_transfer_resource` | Grant from the world or transfer between characters. |
 | `world_update_location` | Rename a location and/or set one property value. |
 | `world_validate` | Whole-world administration diagnostic; **refused when a session binding is configured**. |
