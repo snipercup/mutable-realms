@@ -239,6 +239,12 @@ def create_world_from_scenario(
                 "WHERE scenario_id = ? ORDER BY element_type",
                 (scenario_id,),
             ).fetchall()
+            regions = connection.execute(
+                "SELECT region_id, parent_region_id, level, title, description, "
+                "attributes_json FROM scenario_regions "
+                "WHERE scenario_id = ? ORDER BY region_id",
+                (scenario_id,),
+            ).fetchall()
 
             connection.execute(
                 "INSERT INTO worlds (id, name, description, source_scenario_id, revision) "
@@ -252,6 +258,7 @@ def create_world_from_scenario(
                 "world_revision": 1,
                 "source_scenario_id": scenario_id,
                 "copied_elements": [element["element_type"] for element in elements],
+                "copied_regions": [region["region_id"] for region in regions],
             }
             result_json = json.dumps(result, sort_keys=True, separators=(",", ":"))
             connection.execute(
@@ -294,6 +301,21 @@ def create_world_from_scenario(
                     "(world_id, element_type, content, updated_event_id) "
                     "VALUES (?, ?, ?, ?)",
                     (world_id, element["element_type"], element["content"], event_identifier),
+                )
+            for region in regions:
+                connection.execute(
+                    "INSERT INTO world_regions "
+                    "(world_id, region_id, parent_region_id, level, title, "
+                    "description, attributes_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        world_id,
+                        region["region_id"],
+                        region["parent_region_id"],
+                        region["level"],
+                        region["title"],
+                        region["description"],
+                        region["attributes_json"],
+                    ),
                 )
             connection.commit()
             return result

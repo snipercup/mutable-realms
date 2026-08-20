@@ -19,6 +19,7 @@ from backend.world.scenarios import (
     read_scenario,
     remove_scenario,
     set_scenario_element,
+    set_scenario_region,
 )
 from backend.world.validation import validate_worlds
 from backend.world.worlds import (
@@ -56,6 +57,33 @@ def _scenario(database_path: Path, scenario_id: str = "aerthalon") -> None:
             element_type=element_type,
             content=f"{element_type} content.",
         )
+
+
+def _scenario_with_regions(database_path: Path, scenario_id: str = "aerthalon") -> None:
+    _scenario(database_path, scenario_id=scenario_id)
+    set_scenario_region(
+        database_path,
+        scenario_id=scenario_id,
+        operation_id="scenario-region-1",
+        region_id="virellea",
+        level="kingdom",
+        title="Virellea",
+        description="The fertile heart of Aerthalon.",
+        attributes={
+            "biomes": ["Grassy Plains"],
+            "connected_by_road_to": {"thurnrok": "NW"},
+        },
+    )
+    set_scenario_region(
+        database_path,
+        scenario_id=scenario_id,
+        operation_id="scenario-region-2",
+        region_id="virellea-elaris",
+        level="city",
+        title="Elaris",
+        description="Capital of Virellea.",
+        parent_region_id="virellea",
+    )
 
 
 def _world_row(database_path: Path, world_id: str) -> dict[str, Any] | None:
@@ -131,6 +159,7 @@ def test_instancing_copies_title_description_and_elements(tmp_path: Path) -> Non
         "world_revision": 1,
         "source_scenario_id": "aerthalon",
         "copied_elements": ["author_note", "opening_scene", "plot_essentials"],
+        "copied_regions": [],
     }
     world = _world_row(database_path, "aerthalon-campaign")
     assert world is not None
@@ -143,6 +172,28 @@ def test_instancing_copies_title_description_and_elements(tmp_path: Path) -> Non
         {"element_type": "opening_scene", "content": "opening_scene content."},
         {"element_type": "plot_essentials", "content": "plot_essentials content."},
     ]
+
+
+def test_instancing_copies_scenario_regions_into_world(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    _scenario_with_regions(database_path)
+
+    result = _instance(database_path)
+
+    assert result["copied_regions"] == ["virellea", "virellea-elaris"]
+    world = read_world(database_path, "aerthalon-campaign")
+    assert [region["region_id"] for region in world["regions"]] == [
+        "virellea",
+        "virellea-elaris",
+    ]
+    virellea = next(r for r in world["regions"] if r["region_id"] == "virellea")
+    assert virellea["level"] == "kingdom"
+    assert virellea["parent_region_id"] is None
+    assert virellea["location_id"] is None
+    assert virellea["attributes"]["connected_by_road_to"] == {"thurnrok": "NW"}
+    elaris = next(r for r in world["regions"] if r["region_id"] == "virellea-elaris")
+    assert elaris["parent_region_id"] == "virellea"
+    assert elaris["location_id"] is None
 
 
 def test_instancing_records_world_created_event(tmp_path: Path) -> None:

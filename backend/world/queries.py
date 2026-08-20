@@ -58,6 +58,12 @@ def read_world(database_path: str | Path, world_id: str) -> dict[str, Any]:
             "WHERE we.world_id = ? ORDER BY we.element_type",
             (world_id,),
         ).fetchall()
+        regions = connection.execute(
+            "SELECT region_id, parent_region_id, level, title, description, "
+            "attributes_json, location_id, updated_at FROM world_regions "
+            "WHERE world_id = ? ORDER BY region_id",
+            (world_id,),
+        ).fetchall()
         player = connection.execute(
             "SELECT e.id, e.name, pci.basic_info, pci.character_definition_id, "
             "el.location_id, loc.name AS location_name "
@@ -72,6 +78,19 @@ def read_world(database_path: str | Path, world_id: str) -> dict[str, Any]:
     return {
         **dict(world),
         "elements": [dict(row) for row in elements],
+        "regions": [
+            {
+                "region_id": region["region_id"],
+                "parent_region_id": region["parent_region_id"],
+                "level": region["level"],
+                "title": region["title"],
+                "description": region["description"],
+                "attributes": json.loads(region["attributes_json"]),
+                "location_id": region["location_id"],
+                "updated_at": region["updated_at"],
+            }
+            for region in regions
+        ],
         "player": dict(player) if player is not None else None,
     }
 

@@ -39,8 +39,20 @@ class PlayerCharacterRead(StrictReadModel):
     created_at: str
 
 
+class WorldRegionRead(StrictReadModel):
+    region_id: str
+    parent_region_id: str | None
+    level: str
+    title: str
+    description: str
+    attributes: dict[str, Any] = Field(default_factory=dict)
+    location_id: str | None = None
+    updated_at: str
+
+
 class WorldDetailRead(WorldRead):
     elements: list[WorldElementRead] = Field(default_factory=list)
+    regions: list[WorldRegionRead] = Field(default_factory=list)
     player: PlayerSummaryRead | None = None
 
 

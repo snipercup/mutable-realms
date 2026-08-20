@@ -143,7 +143,7 @@ Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup ap
 | Route | Purpose |
 | --- | --- |
 | `GET /api/worlds` | List worlds (including description and source scenario). |
-| `GET /api/worlds/{world_id}` | One world with its owned story elements and player summary. |
+| `GET /api/worlds/{world_id}` | One world with its owned story elements, instanced region framework (`regions`, copied from the source scenario at world creation, `location_id` null until a region is materialized as a location), and player summary. |
 | `GET /api/worlds/{world_id}/player` | Current player and placement. |
 | `POST /api/worlds/{world_id}/player` | Provision a player + starting location (body `{player_name, location_name, operation_id, expected_revision}`). |
 | `GET /api/worlds/{world_id}/map` | Derived map. Optional `scope_location_id` selects an administrative/read-only scope and `limit` bounds the visible graph to 1–100 direct children plus bounded sibling neighbors. Without an explicit scope, a world with a player uses the player's current location as the scope on every read; the response includes that anchor, direct children, sibling neighbors marked `is_neighbor`, exact/player-visible location IDs, `boundary_links` for exits beyond the visible set, and `route_chain` for active directed routes reachable from the scope, ordered by destination `short`, `mid`, then `long` range metadata. Route entries are informational and do not create UI travel controls. |
