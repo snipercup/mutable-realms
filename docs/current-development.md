@@ -4,21 +4,28 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Directional sibling edge placement — in progress
+### Directional sibling edge placement without the center ring — in progress
 
-**Goal:** move sibling nodes from the centered ring to the map edge in the direction relative to the current location. North is the top edge; south is the bottom; east and west are the sides; diagonals use the corresponding corners. This keeps the child overview central while making available travel directions legible.
+**Goal:** keep sibling locations out of the child overview by placing them directly against the map element's edge. Their edge position should reflect their direction relative to the current location: north at the top, south at the bottom, east on the right, west on the left, and diagonal directions near the corresponding corners.
+
+**Recommendation:** remove the obsolete centered dotted ring entirely. Use the rectangular map boundary as the visual separation: children remain in the central/street composition, while siblings hug an inset from the relevant edge. Directional edge placement is clearer than a second interior ring and gives players an immediate sense of where travel or neighboring geography lies.
 
 **Scope:**
 
 - Use derived frontend placement only; do not change authoritative locations, links, routes, or direction metadata.
-- Anchor siblings to a compact inset from the rectangular SVG edge, with deterministic offsets for multiple siblings sharing a direction.
+- Place cardinal siblings along the corresponding map edge and diagonal siblings near the corresponding corner.
+- Keep a small inset so sibling shapes and labels remain visible rather than clipped by the SVG viewport.
+- Apply deterministic offsets for multiple siblings sharing a direction or edge.
 - Use deterministic edge fallback for siblings without direction metadata.
-- Keep labels and direction/range metadata inward from the edge so they are readable and do not clip.
-- Preserve the central child layout, street road visualization, and compact border ring.
+- Place sibling labels and direction/range metadata inward from the edge without covering child buildings or the street road.
+- Remove the centered dotted `map-scope-border` ring; the map edge and layer separation provide the visual boundary.
+- Preserve the central child layout, Main Street road visualization, semantic map forms, and flat-map fallback.
 
-**Implementation status:** sibling nodes now use a rectangular edge projection instead of the centered ring. Cardinal directions anchor to the corresponding map edge, diagonals anchor near corners, and multiple siblings sharing a direction receive deterministic offsets. Missing directions use deterministic edge fallback positions. Labels and direction/range metadata are placed inward from the edge so they remain readable without being clipped.
+**Out of scope:** changes to containment, movement links, route semantics, coordinates, authoritative map state, or narrator-generated geometry.
 
-**Verification:** pending full lint, frontend build, regression tests, and live/browser verification.
+**Implementation status:** the centered dotted ring and its CSS are removed; the ring radius constants and the old interior-perimeter projection path are deleted. Scoped maps now place siblings only through the rectangular edge projection, with cardinal directions on the matching edge, diagonals near corners, deterministic same-edge offsets, and an edge fallback for missing directions. The street road and central child layouts are unchanged.
+
+**Verification:** `270` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and `git diff --check` passes. Live DOM verification on a temporary server (port 8795, temp DB with a Main Street scope, ten children, and north/east siblings) confirmed `map-scope-border` is absent, sibling nodes render at the rectangular top and right edges, and the ten child buildings remain on the central street layout. No authoritative state was touched.
 
 ## Recently completed
 

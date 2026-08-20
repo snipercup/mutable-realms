@@ -579,8 +579,6 @@ const MAP_CENTER_X = MAP_WIDTH / 2;
 const MAP_CENTER_Y = MAP_HEIGHT / 2;
 const MAP_RADIUS = 110;
 const MAP_CHILD_RADIUS = 66;
-const MAP_BORDER_RADIUS = 140;
-const MAP_BORDER_NODE_RADIUS = 14;
 
 const KIND_COLORS: Record<string, string> = {
   character: "#4f8cff",
@@ -653,32 +651,6 @@ function streetMapPositions(locations: WorldMapLocation[]): Map<string, [number,
     const side = index % 2 === 0 ? -1 : 1;
     const y = startY + Math.floor(index / 2) * rowGap;
     positions.set(location.id, [MAP_CENTER_X + side * 72, y]);
-  });
-  return positions;
-}
-
-function perimeterMapPositions(locations: WorldMapLocation[]): Map<string, [number, number]> {
-  const positions = new Map<string, [number, number]>();
-  const fallback = mapPositions(locations.length).map(([x, y]) => [
-    MAP_CENTER_X + ((x - MAP_CENTER_X) * MAP_BORDER_RADIUS) / MAP_RADIUS,
-    MAP_CENTER_Y + ((y - MAP_CENTER_Y) * MAP_BORDER_RADIUS) / MAP_RADIUS,
-  ] as [number, number]);
-  const directional = new Map<string, number>();
-  locations.forEach((location, index) => {
-    const direction = location.direction;
-    const vector = direction === null ? undefined : MAP_DIRECTION_VECTORS[direction];
-    if (direction === null || vector === undefined) {
-      positions.set(location.id, fallback[index]);
-      return;
-    }
-    const collisionIndex = directional.get(direction) ?? 0;
-    directional.set(direction, collisionIndex + 1);
-    const perpendicular: [number, number] = [-vector[1], vector[0]];
-    const offset = (collisionIndex - 0.5) * 26;
-    positions.set(location.id, [
-      MAP_CENTER_X + vector[0] * MAP_BORDER_RADIUS + perpendicular[0] * offset,
-      MAP_CENTER_Y + vector[1] * MAP_BORDER_RADIUS + perpendicular[1] * offset,
-    ]);
   });
   return positions;
 }
@@ -831,15 +803,6 @@ function renderMap(state: WorldState): HTMLElement {
         }),
       );
     }
-    svg.append(
-      svgElement("circle", {
-        cx: MAP_CENTER_X,
-        cy: MAP_CENTER_Y,
-        r: MAP_BORDER_RADIUS - MAP_BORDER_NODE_RADIUS,
-        class: "map-scope-border",
-        "data-map-layer": "border",
-      }),
-    );
   }
 
   if (state.map.scope_location === null) {

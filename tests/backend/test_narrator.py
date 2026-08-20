@@ -275,6 +275,32 @@ def test_hermes_narrator_start_accepts_ten_main_street_children(
     assert sum(location.parent_name == "Main Street" for location in result.locations) == 10
 
 
+def test_hermes_narrator_start_repairs_raw_newlines_inside_narration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            '{"start_location_name":"Elaris Street","locations":['
+            '{"name":"Elaris Street","description":"Street.",'
+            '"parent_name":null,"link_to_start":false},'
+            '{"name":"Guild","description":"Guild.",'
+            '"parent_name":"Elaris Street","link_to_start":false},'
+            '{"name":"North Road","description":"Road.",'
+            '"parent_name":null,"link_to_start":false}],'
+            '"narration":"You arrive.\n\nIt is midday and the street is busy."}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    result = HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+    assert result.start_location_name == "Elaris Street"
+    assert "\n\n" in result.narration
+
+
 def test_hermes_narrator_start_rejects_undersized_main_street_layout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

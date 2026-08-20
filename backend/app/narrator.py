@@ -265,6 +265,43 @@ def build_world_start_prompt(
     )
 
 
+def _repair_raw_json_whitespace(text: str) -> str:
+    """Escape literal newlines/tabs that models put inside JSON string values.
+
+    JSON forbids raw control characters inside strings. Models occasionally
+    write multi-paragraph prose (notably the narration field) with literal
+    newlines instead of the escaped ``\\n`` sequence. This bounded repair
+    walks the text once, tracks whether it is inside a string, and converts
+    literal newline/tab characters into escaped forms while leaving valid
+    ``\\n``/``\\t`` escapes untouched.
+    """
+    out: list[str] = []
+    in_string = False
+    escaped = False
+    for char in text:
+        if in_string:
+            if escaped:
+                out.append(char)
+                escaped = False
+            elif char == "\\":
+                out.append(char)
+                escaped = True
+            elif char == '"':
+                out.append(char)
+                in_string = False
+            elif char == "\n":
+                out.append("\\n")
+            elif char == "\t":
+                out.append("\\t")
+            else:
+                out.append(char)
+        else:
+            if char == '"':
+                in_string = True
+            out.append(char)
+    return "".join(out)
+
+
 def _parse_start_result(output: str) -> NarratorStartResult:
     """Parse and validate the narrator's JSON start contract."""
     text = clean_narration(output)
@@ -275,11 +312,15 @@ def _parse_start_result(output: str) -> NarratorStartResult:
             text = text[5:].lstrip()
     try:
         payload = json.loads(text)
-    except json.JSONDecodeError as error:
-        raise NarratorError(
-            "narration agent returned invalid start JSON",
-            category="invalid_start_response",
-        ) from error
+    except json.JSONDecodeError:
+        repaired = _repair_raw_json_whitespace(text)
+        try:
+            payload = json.loads(repaired)
+        except json.JSONDecodeError as error:
+            raise NarratorError(
+                "narration agent returned invalid start JSON",
+                category="invalid_start_response",
+            ) from error
     if not isinstance(payload, dict):
         raise NarratorError(
             "narration agent start result must be a JSON object",

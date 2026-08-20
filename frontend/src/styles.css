@@ -138,7 +138,6 @@ h1, h2, h3, p { margin: 0; }
 .map-node-shape[data-map-form="water"] { fill: none; stroke: #5ca9c8; stroke-linecap: round; }
 .map-node--neighbor .map-node-circle { stroke-dasharray: 5 3; }
 .map-node--neighbor .map-node-shape { stroke-dasharray: 5 3; stroke-width: 1.5; }
-.map-scope-border { fill: none; stroke: #405579; stroke-width: 1; stroke-dasharray: 4 5; opacity: .72; }
 .map-node--neighbor .map-node-circle { fill: #172238; stroke-width: 1.5; }
 .map-node--neighbor .map-label { font-size: 10px; }
 .map-node--neighbor .map-count { font-size: 8px; }
