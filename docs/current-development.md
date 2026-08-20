@@ -15,6 +15,8 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 - Use derived frontend placement only; do not change authoritative locations, links, routes, or direction metadata.
 - Place cardinal siblings along the corresponding map edge and diagonal siblings near the corresponding corner.
 - Keep a small inset so sibling shapes and labels remain visible rather than clipped by the SVG viewport.
+- Reserve a 64-pixel strip inside every edge of the rectangular map element and place sibling nodes inside that strip.
+- Render the reserved edge strip as a subtle visual (low-opacity band plus a thin inner boundary line) that does not draw attention.
 - Apply deterministic offsets for multiple siblings sharing a direction or edge.
 - Use deterministic edge fallback for siblings without direction metadata.
 - Place sibling labels and direction/range metadata inward from the edge without covering child buildings or the street road.
@@ -23,9 +25,9 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 **Out of scope:** changes to containment, movement links, route semantics, coordinates, authoritative map state, or narrator-generated geometry.
 
-**Implementation status:** the centered dotted ring and its CSS are removed; the ring radius constants and the old interior-perimeter projection path are deleted. Scoped maps now place siblings only through the rectangular edge projection, with cardinal directions on the matching edge, diagonals near corners, deterministic same-edge offsets, and an edge fallback for missing directions. The street road and central child layouts are unchanged.
+**Implementation status:** the centered dotted ring and its CSS are removed; the ring radius constants and the old interior-perimeter projection path are deleted. The map canvas is landscape (`800 × 480`, viewBox aspect matching the wide page panel) so the derived map fills the element's rectangle instead of a portrait letterbox. Scoped maps place siblings only through the rectangular edge projection, with cardinal directions on the matching edge, diagonals near corners, deterministic same-edge offsets, and an edge fallback for missing directions. A 64-pixel reserved strip is drawn inside every edge (`map-edge-strip` low-opacity band plus `map-edge-strip-inner` thin boundary line), and sibling nodes are centered within that strip so they hug the rectangular map border on all four sides. The street road and central child layouts are unchanged and fit the landscape canvas.
 
-**Verification:** `270` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and `git diff --check` passes. Live DOM verification on a temporary server (port 8795, temp DB with a Main Street scope, ten children, and north/east siblings) confirmed `map-scope-border` is absent, sibling nodes render at the rectangular top and right edges, and the ten child buildings remain on the central street layout. No authoritative state was touched.
+**Verification:** `272` backend tests pass; `npm run lint` passes Ruff and TypeScript; `npm run frontend-build` passes; and `git diff --check` passes. Live DOM measurement against the recreated Aerthalon world on port 8790 confirmed the fresh bundle is served, the SVG renders landscape (`1100 × 660`, aspect `1.667` matching the `800 × 480` viewBox), the strip band sits `44px` inside every edge (equal on left/right/top/bottom), the south sibling (Lantern Plaza) sits at `y=448` (32 units from the bottom edge) and the east sibling (River Elaris bridge) at `x=768` (32 units from the right edge), and the ten child buildings remain in two rows clear of the strip. No authoritative state was touched.
 
 ## Recently completed
 

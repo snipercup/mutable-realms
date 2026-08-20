@@ -572,13 +572,14 @@ function renderEntity(entityState: EntitySummary, playerId: string): HTMLElement
   return card;
 }
 
-const MAP_WIDTH = 480;
-const MAP_HEIGHT = 640;
+const MAP_WIDTH = 800;
+const MAP_HEIGHT = 480;
 const MAP_RENDER_LIMIT = 30;
 const MAP_CENTER_X = MAP_WIDTH / 2;
 const MAP_CENTER_Y = MAP_HEIGHT / 2;
 const MAP_RADIUS = 110;
 const MAP_CHILD_RADIUS = 66;
+const MAP_EDGE_STRIP = 64;
 
 const KIND_COLORS: Record<string, string> = {
   character: "#4f8cff",
@@ -645,8 +646,10 @@ function centerMapPositions(locations: WorldMapLocation[]): Map<string, [number,
 
 function streetMapPositions(locations: WorldMapLocation[]): Map<string, [number, number]> {
   const positions = new Map<string, [number, number]>();
-  const rowGap = Math.max(42, Math.min(58, 480 / Math.max(locations.length, 1)));
-  const startY = MAP_CENTER_Y - ((locations.length - 1) * rowGap) / 2;
+  const rows = Math.ceil(locations.length / 2);
+  const available = MAP_HEIGHT - MAP_EDGE_STRIP * 2 - 24;
+  const rowGap = Math.max(42, Math.min(64, available / Math.max(rows, 1)));
+  const startY = MAP_CENTER_Y - ((rows - 1) * rowGap) / 2;
   locations.forEach((location, index) => {
     const side = index % 2 === 0 ? -1 : 1;
     const y = startY + Math.floor(index / 2) * rowGap;
@@ -657,7 +660,7 @@ function streetMapPositions(locations: WorldMapLocation[]): Map<string, [number,
 
 function edgeMapPositions(locations: WorldMapLocation[]): Map<string, [number, number]> {
   const positions = new Map<string, [number, number]>();
-  const edgeInset = 26;
+  const edgeInset = MAP_EDGE_STRIP / 2;
   const slots = new Map<string, number>();
   const fallback = mapPositions(locations.length).map(([x, y]) => [
     x < MAP_CENTER_X ? edgeInset : MAP_WIDTH - edgeInset,
@@ -782,22 +785,42 @@ function renderMap(state: WorldState): HTMLElement {
       ]);
 
   if (state.map.scope_location !== null) {
+    svg.append(
+      svgElement("rect", {
+        x: MAP_EDGE_STRIP / 2,
+        y: MAP_EDGE_STRIP / 2,
+        width: MAP_WIDTH - MAP_EDGE_STRIP,
+        height: MAP_HEIGHT - MAP_EDGE_STRIP,
+        class: "map-edge-strip",
+        "data-map-layer": "edge-strip",
+      }),
+      svgElement("rect", {
+        x: MAP_EDGE_STRIP,
+        y: MAP_EDGE_STRIP,
+        width: MAP_WIDTH - MAP_EDGE_STRIP * 2,
+        height: MAP_HEIGHT - MAP_EDGE_STRIP * 2,
+        class: "map-edge-strip-inner",
+        "data-map-layer": "edge-strip-inner",
+      }),
+    );
     if (isStreetScope) {
+      const roadY = MAP_EDGE_STRIP + 8;
+      const roadHeight = MAP_HEIGHT - MAP_EDGE_STRIP * 2 - 16;
       svg.append(
         svgElement("rect", {
           x: MAP_CENTER_X - 22,
-          y: MAP_CENTER_Y - 250,
+          y: roadY,
           width: 44,
-          height: 500,
+          height: roadHeight,
           rx: 10,
           class: "map-street-road",
           "data-map-layer": "road",
         }),
         svgElement("line", {
           x1: MAP_CENTER_X,
-          y1: MAP_CENTER_Y - 250,
+          y1: roadY,
           x2: MAP_CENTER_X,
-          y2: MAP_CENTER_Y + 250,
+          y2: roadY + roadHeight,
           class: "map-street-road-marking",
           "data-map-layer": "road-marking",
         }),
