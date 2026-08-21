@@ -87,7 +87,7 @@ _DEFAULT_NARRATOR_TIMEOUT_SECONDS = 120.0
 _DEFAULT_START_NARRATOR_TIMEOUT_SECONDS = 240.0
 _MIN_NARRATOR_TIMEOUT_SECONDS = 5.0
 _MAX_NARRATOR_TIMEOUT_SECONDS = 300.0
-_NARRATION_MAX_TOKENS = 200
+_NARRATION_MAX_TOKENS = 150
 _NARRATION_CONTEXT_MAX_TOKENS = 32000
 _CHARS_PER_TOKEN = 4
 
@@ -289,8 +289,8 @@ def build_narration_prompt(
         "outside the narration. Never mention persistence, page refreshes, "
         "world revisions, or whether the world changed. If nothing changed, "
         "still narrate the moment in-world.\n\n"
-        "Keep the narration concise: at most 200 tokens, roughly 2 to 3 short "
-        "paragraphs or about 150 words. End on a clear note; do not pad the "
+        "Keep the narration concise: at most 150 tokens, roughly 1 to 2 short "
+        "paragraphs or about 110 words. End on a clear note; do not pad the "
         "reply or repeat context already shown to the player."
     )
     return prompt

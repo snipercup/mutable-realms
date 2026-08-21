@@ -79,14 +79,14 @@ def test_bound_narration_tokens_truncates_long_text_at_sentence_boundary() -> No
     )
     bounded = bound_narration_tokens(long)
     assert len(bounded) < len(long)
-    assert len(bounded) <= 200 * 4
+    assert len(bounded) <= 150 * 4
     assert bounded.endswith((".", "!", "?"))
 
 
 def test_bound_narration_tokens_falls_back_to_word_boundary() -> None:
     long = "x" * 5000
     bounded = bound_narration_tokens(long)
-    assert len(bounded) <= 200 * 4
+    assert len(bounded) <= 150 * 4
     assert bounded
 
 
@@ -96,7 +96,7 @@ def test_build_narration_prompt_requires_narration_only_reply() -> None:
     assert "sailor" in prompt
     assert "I move to the docks." in prompt
     assert "entire reply must be the player-facing narration" in prompt
-    assert "at most 200 tokens" in prompt
+    assert "at most 150 tokens" in prompt
     assert "Do not include decision summaries" in prompt
     assert "Never mention persistence" in prompt
     assert "Current world state" not in prompt

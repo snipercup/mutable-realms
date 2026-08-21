@@ -52,7 +52,7 @@ Each player message is one atomic turn. The narration agent must:
 9. If the mutation reports a stale revision, discard the old decision, call `world_context` again, and re-evaluate once. Do not blindly replay the stale request.
 10. Call `world_context` again after every attempted mutation, including rejected mutations.
 11. Narrate only facts supported by the mutation result and post-turn context.
-12. Keep narration concise: at most 200 tokens, roughly 2–3 short paragraphs or about 150 words; end on a clear note; do not pad the reply or repeat context already shown to the player. (This is enforced by the prompt instruction and SOUL rule, and deterministically truncated by the backend; never set a model-level token cap — Hermes applies `model.max_tokens` to the whole completion including tool-call JSON, which breaks tool use.)
+12. Keep narration concise: at most 150 tokens, roughly 1–2 short paragraphs or about 110 words; end on a clear note; do not pad the reply or repeat context already shown to the player. (This is enforced by the prompt instruction and SOUL rule, and deterministically truncated by the backend; never set a model-level token cap — Hermes applies `model.max_tokens` to the whole completion including tool-call JSON, which breaks tool use.)
 
 The supported mutation vocabulary is the set advertised by `world_status`, which always includes:
 
