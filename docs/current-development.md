@@ -4,21 +4,22 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Sibling node labels: centered on the node and visible at map edges — in progress
+### Show the copied region framework in the world editor (Manage view) — in progress
 
-**Problem:** sibling-node labels used fixed per-lane offsets (e.g. `y: -30` above the node for left/right/bottom lanes, `x: 0` centered on the node). Sibling nodes hug the map border (node center at `edgeInset = 16`), so for left/right-edge nodes half the label text was clipped outside the map canvas and invisible.
+**Problem:** after instancing a world from a scenario, the world editor showed no sign that the region framework (e.g. Aerthalon's 7 kingdoms) was copied over, so it was hard to tell what the world is about. The API (`GET /api/worlds/{world_id}`) already returned `regions`; the frontend simply didn't type or render them.
 
-**Fix (frontend-only):** non-shoved sibling labels are now neatly centered **on** the node (same x, y as the node) with `text-anchor: middle`, and the label position is **clamped into the map bounds** — `labelX ∈ [halfW, MAP_WIDTH - halfW]`, `labelY ∈ [halfH, MAP_HEIGHT - halfH]`, meta line clamped to the bottom edge. The shoved-row fallback (lane full) is unchanged.
+**Fix (frontend-only):** the world editor now has a **Region framework** section: a source line ("Copied from scenario … at world creation. The narrator materializes these regions as real locations during play; until then they are knowledge only."), and one card per region (title, kebab-case id, level + parent, description, and materialization status — "materialized as location …" vs "not yet materialized (knowledge only)") with `└` indentation from the parent chain. Worlds not instanced from a scenario show "no region framework" instead.
 
-**Verification:** `322` backend tests pass; `npm run lint` passes Ruff + TypeScript; `npm run frontend-build` passes; `git diff --check` passes. Live headless-Chromium measurement on a temporary world with siblings at all four edges + corners: every label `visible: true` and every meta `metaVisible: true` (West Harbor clamped inward to x=38.9, East Bridge to x=761.1, Southeast Cavern to x=746.6; interior-edge labels exactly on the node). Collision stress case (3 north siblings + one each other edge + 2 corners = 8 siblings): **zero label overlaps**, **zero invisible labels** (north lane packed labels along the edge without collision). Port 8795 stopped and confirmed closed; temp DB removed; live DB untouched.
+**Verification:** `322` backend tests pass; `npm run lint` passes Ruff + TypeScript; `npm run frontend-build` passes; `git diff --check` passes. Live headless-Chromium check on a copy of the live DB (temp server, port 8795): opening the `world of Aerthalon` editor rendered the source line + **all 7 kingdom cards** (Caldrith, Draevenholt, Namaris, Serevar, Thurnrok, Vel'Quess, Virellea), each `kingdom · not yet materialized (knowledge only)`; opening `Harbor Town` (no scenario) rendered "This world is not instanced from a scenario, so it has no region framework." with zero cards. Port 8795 stopped and confirmed closed; temp DB removed; live DB untouched.
 
-Suggested commit message: `Center sibling labels on nodes and keep them inside the map`.
+Suggested commit message: `Show copied region framework in the world editor`.
 
 ## Recently completed
 
 
 | Idea | Completed | Commit |
 | --- | --- | --- |
+| Center sibling node labels on the node (same x, y) and clamp them inside the map so edge labels stay fully visible (frontend-only label layout) | 2026-08-21 | `7453b51` |
 | World-region framework — scenario-authored region hierarchy instanced per world (migrations `0019_scenario_regions` + `0020_world_regions` + `0021_backfill`, scenario region CRUD + Manage-view editor, world instancing copy, context `region_framework` chain resolution + prompt rendering, expansion `region_id` binding, framework-validated `world_create_route`, SOUL guidance) | 2026-08-20 | `9fef60a` · `4c1fac6` · `5ede07a` · `2fa919e` |
 | Bound the narrator's turn output to 200 tokens (prompt instruction + SOUL.md rule + deterministic sentence-safe `bound_narration_tokens()` cap; no model-level token cap because Hermes applies `model.max_tokens` to the whole completion including tool calls) | 2026-08-20 | `03b0454` |
 | Persist narration history so the page can reload the last messages (migration `0017_narration_history`, append/read service, `GET /api/worlds/{world_id}/narration`, record start + narrated turns, frontend history reload) | 2026-08-20 | `d2216db` |

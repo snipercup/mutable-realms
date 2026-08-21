@@ -36,6 +36,17 @@ type ScenarioDetail = Scenario & {
   regions: ScenarioRegion[];
 };
 
+type WorldRegion = {
+  region_id: string;
+  parent_region_id: string | null;
+  level: string;
+  title: string;
+  description: string;
+  attributes: Record<string, unknown>;
+  location_id: string | null;
+  updated_at: string;
+};
+
 type PlayerCharacter = {
   id: string;
   name: string;
@@ -45,6 +56,7 @@ type PlayerCharacter = {
 
 type WorldDetail = World & {
   elements: ScenarioElement[];
+  regions: WorldRegion[];
   player: PlayerSummary | null;
 };
 
@@ -424,6 +436,11 @@ root.innerHTML = `
           </label>
         </div>
         <div class="scenario-elements">
+          <span class="eyebrow">Region framework</span>
+          <p class="manage-description" id="world-region-source"></p>
+          <div class="manage-grid" id="world-region-list"></div>
+        </div>
+        <div class="scenario-elements">
           <span class="eyebrow">Player</span>
           <div id="world-player-info"></div>
           <form class="manage-form" id="world-player-form">
@@ -514,6 +531,8 @@ const worldPlayerInfo = requireElement<HTMLDivElement>("#world-player-info");
 const worldPlayerForm = requireElement<HTMLFormElement>("#world-player-form");
 const worldPlayerCharacter = requireElement<HTMLSelectElement>("#world-player-character");
 const worldPlayerLocation = requireElement<HTMLInputElement>("#world-player-location");
+const worldRegionSource = requireElement<HTMLElement>("#world-region-source");
+const worldRegionList = requireElement<HTMLDivElement>("#world-region-list");
 
 let worlds: World[] = [];
 let playerCharacters: PlayerCharacter[] = [];
@@ -2028,9 +2047,70 @@ async function loadWorldDetail(worldId: string): Promise<void> {
     for (const elementType of ["author_note", "plot_essentials", "opening_scene"]) {
       worldElementTextarea(elementType).value = byType.get(elementType) ?? "";
     }
+    renderWorldRegions(detail);
     renderWorldPlayer(detail);
   } catch (error) {
     setError(error instanceof Error ? error.message : "Unable to load world");
+  }
+}
+
+function worldRegionDepth(
+  regionId: string,
+  regions: WorldRegion[],
+  visited: Set<string> = new Set(),
+): number {
+  if (visited.has(regionId)) return 0;
+  visited.add(regionId);
+  const region = regions.find((candidate) => candidate.region_id === regionId);
+  if (region === undefined || region.parent_region_id === null) return 0;
+  return 1 + worldRegionDepth(region.parent_region_id, regions, visited);
+}
+
+function renderWorldRegions(detail: WorldDetail): void {
+  worldRegionList.replaceChildren();
+  if (detail.source_scenario_id === null) {
+    worldRegionSource.textContent = "This world is not instanced from a scenario, so it has no region framework.";
+    return;
+  }
+  const ordered = [...detail.regions].sort((a, b) => a.region_id.localeCompare(b.region_id));
+  if (ordered.length === 0) {
+    worldRegionSource.textContent =
+      `Instanced from scenario ${detail.source_scenario_id}; no regions were copied over.`;
+    return;
+  }
+  worldRegionSource.textContent =
+    `Copied from scenario ${detail.source_scenario_id} at world creation. ` +
+    "The narrator materializes these regions as real locations during play; until then they are knowledge only.";
+  for (const region of ordered) {
+    const card = element("article", "manage-card");
+    const depth = worldRegionDepth(region.region_id, ordered);
+    const heading = element("div", "manage-region-heading");
+    if (depth > 0) {
+      heading.append(element("span", "manage-region-indent", "└ ".repeat(depth)));
+    }
+    heading.append(element("h3", "manage-name", region.title));
+    card.append(heading);
+    card.append(element("code", "manage-id", region.region_id));
+    card.append(
+      element(
+        "span",
+        "manage-meta",
+        `${region.level}${region.parent_region_id !== null ? ` · child of ${region.parent_region_id}` : ""}`,
+      ),
+    );
+    if (region.description !== "") {
+      card.append(element("p", "manage-description", region.description));
+    }
+    card.append(
+      element(
+        "span",
+        "manage-meta",
+        region.location_id !== null
+          ? `materialized as location ${region.location_id}`
+          : "not yet materialized (knowledge only)",
+      ),
+    );
+    worldRegionList.append(card);
   }
 }
 
