@@ -895,24 +895,27 @@ function resolveSiblingLabelLayout(
       const isShoved = shovedIds.has(item.location.id);
       const depth = (shovedIndexById.get(item.location.id) ?? 0) * 14;
       let spec: SiblingLabelSpec;
-      if (laneName === "top") {
-        // Labels on the top edge cannot be placed above the node (off-canvas);
-        // the natural shove puts the text below the node.
-        spec = isShoved
-          ? { x: x < MAP_CENTER_X ? 12 : -12, y: 55 + depth, anchor: x < MAP_CENTER_X ? "start" : "end", metaY: 71 + depth }
-          : { x: 0, y: 26, anchor: "middle", metaY: 39 };
-      } else if (laneName === "bottom") {
-        spec = isShoved
-          ? { x: x < MAP_CENTER_X ? 12 : -12, y: -45 - depth, anchor: x < MAP_CENTER_X ? "start" : "end", metaY: -29 - depth }
-          : { x: 0, y: -30, anchor: "middle", metaY: -18 };
-      } else if (laneName === "left") {
-        spec = isShoved
-          ? { x: 14, y: 8 + depth, anchor: "start", metaY: 21 + depth }
-          : { x: 0, y: -30, anchor: "middle", metaY: -18 };
+      if (isShoved) {
+        // The lane is full: this label keeps its own deeper row toward the
+        // map interior so it stays readable instead of overlapping.
+        if (laneName === "top") {
+          spec = { x: x < MAP_CENTER_X ? 12 : -12, y: 55 + depth, anchor: x < MAP_CENTER_X ? "start" : "end", metaY: 71 + depth };
+        } else if (laneName === "bottom") {
+          spec = { x: x < MAP_CENTER_X ? 12 : -12, y: -45 - depth, anchor: x < MAP_CENTER_X ? "start" : "end", metaY: -29 - depth };
+        } else if (laneName === "left") {
+          spec = { x: 14, y: 8 + depth, anchor: "start", metaY: 21 + depth };
+        } else {
+          spec = { x: -14, y: 8 + depth, anchor: "end", metaY: 21 + depth };
+        }
       } else {
-        spec = isShoved
-          ? { x: -14, y: 8 + depth, anchor: "end", metaY: 21 + depth }
-          : { x: 0, y: -30, anchor: "middle", metaY: -18 };
+        // Neatly centered on the sibling node (same x, y). Clamp the text so
+        // it stays fully inside the map even when the node hugs an edge.
+        const halfW = siblingLabelHalfWidth(item.location);
+        const halfH = 8;
+        const labelX = Math.min(Math.max(x, halfW), MAP_WIDTH - halfW);
+        const labelY = Math.min(Math.max(y, halfH), MAP_HEIGHT - halfH);
+        const metaY = Math.min(labelY + 13, MAP_HEIGHT - 6);
+        spec = { x: labelX - x, y: labelY - y, anchor: "middle", metaY: metaY - y };
       }
       specs.set(item.location.id, spec);
     }

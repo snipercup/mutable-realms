@@ -4,7 +4,15 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-No active idea is selected right now. The world-region framework slice is complete; the next slice is not yet chosen. Awaiting the user to pick the next idea (or leave this holding state until they do).
+### Sibling node labels: centered on the node and visible at map edges — in progress
+
+**Problem:** sibling-node labels used fixed per-lane offsets (e.g. `y: -30` above the node for left/right/bottom lanes, `x: 0` centered on the node). Sibling nodes hug the map border (node center at `edgeInset = 16`), so for left/right-edge nodes half the label text was clipped outside the map canvas and invisible.
+
+**Fix (frontend-only):** non-shoved sibling labels are now neatly centered **on** the node (same x, y as the node) with `text-anchor: middle`, and the label position is **clamped into the map bounds** — `labelX ∈ [halfW, MAP_WIDTH - halfW]`, `labelY ∈ [halfH, MAP_HEIGHT - halfH]`, meta line clamped to the bottom edge. The shoved-row fallback (lane full) is unchanged.
+
+**Verification:** `322` backend tests pass; `npm run lint` passes Ruff + TypeScript; `npm run frontend-build` passes; `git diff --check` passes. Live headless-Chromium measurement on a temporary world with siblings at all four edges + corners: every label `visible: true` and every meta `metaVisible: true` (West Harbor clamped inward to x=38.9, East Bridge to x=761.1, Southeast Cavern to x=746.6; interior-edge labels exactly on the node). Collision stress case (3 north siblings + one each other edge + 2 corners = 8 siblings): **zero label overlaps**, **zero invisible labels** (north lane packed labels along the edge without collision). Port 8795 stopped and confirmed closed; temp DB removed; live DB untouched.
+
+Suggested commit message: `Center sibling labels on nodes and keep them inside the map`.
 
 ## Recently completed
 
