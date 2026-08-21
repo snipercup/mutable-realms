@@ -201,6 +201,31 @@ def _format_context_block(context: dict[str, Any]) -> str:
                     lines.append(f"  - {content} (x{count})")
                 else:
                     lines.append(f"  - {content}")
+    regions = context.get("region_framework", [])
+    if regions:
+        lines.append("Region framework (authoritative world knowledge):")
+        for region in reversed(regions):
+            attributes = region.get("attributes", {})
+            bits = [region.get("title", "?"), f"({region.get('level', '?')})"]
+            if region.get("description"):
+                bits.append(region["description"])
+            if attributes.get("biomes"):
+                bits.append(f"Biomes: {', '.join(attributes['biomes'])}")
+            if attributes.get("present_species"):
+                bits.append(
+                    "Present species: " + ", ".join(attributes["present_species"])
+                )
+            if attributes.get("absent_species"):
+                bits.append(
+                    "Absent: " + ", ".join(attributes["absent_species"])
+                )
+            if attributes.get("connected_by_road_to"):
+                roads = ", ".join(
+                    f"{target} ({direction})"
+                    for target, direction in attributes["connected_by_road_to"].items()
+                )
+                bits.append(f"Connected by road to: {roads}")
+            lines.append("  " + " — ".join(bits))
     elements = context.get("world_elements", [])
     if elements:
         lines.append("Story elements:")

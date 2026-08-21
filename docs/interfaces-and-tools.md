@@ -228,10 +228,13 @@ The MCP server (`python -m backend.world.mcp_server`) exposes controlled applica
 | Tool | Purpose |
 | --- | --- |
 | `world_status` | World identity, revision, and currently supported mutation tools (`available_mutations`). |
-| `world_context` | Bounded context snapshot (player, location, entities, relationships, resources, properties, events). |
+| `world_context` | Bounded context snapshot (player, location, entities, relationships, resources, properties, events, region framework). |
 | `world_inspect_entity` | One entity and optional character state. |
 | `world_events` | Newest-first event window. |
 | `world_move_entity` | Revision-checked, idempotent move; destination must be linked. |
+| `world_travel_route` | Travel along one active explicit `world_routes` row. |
+| `world_expand_location` | One bounded structured proposal for a new ordinary location (duplicate/budget checks); optional orientation metadata (`direction`, `range_band`, `map_form`), atomic `move_actor_to_location`, and optional `region_id` to bind the new location to the world's region framework. |
+| `world_create_route` | One explicit directed route between two locations; validated against the region framework when the world has one — endpoints must resolve to regions that share an ancestor or are declared adjacent via `connected_by_road_to`. |
 | `world_treat_and_discharge_patient` | Ward compound operation (recover + discharge + free bed). |
 | `world_record_social_interaction` | Relationship upsert + memory insert. |
 | `world_record_location_memory` | Atomically record one narrative memory about a location; the same normalized `memory_key` increments `occurrence_count` instead of duplicating. |

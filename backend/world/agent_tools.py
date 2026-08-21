@@ -15,7 +15,7 @@ from backend.world.locations import update_location
 from backend.world.mutations import move_entity
 from backend.world.queries import WorldNotFound, get_entity, list_recent_events
 from backend.world.resources import transfer_resource
-from backend.world.routes import travel_entity_route
+from backend.world.routes import create_route, travel_entity_route
 from backend.world.social import record_social_interaction
 from backend.world.validation import validate_worlds
 
@@ -87,6 +87,8 @@ def read_world_status(database_path: str | Path, *, world_id: str) -> dict[str, 
         mutations.append("world_consolidate_location_memories")
     if has_routes:
         mutations.append("world_travel_route")
+    if has_locations:
+        mutations.append("world_create_route")
     return {"world": dict(world), "available_mutations": mutations}
 
 
@@ -151,6 +153,35 @@ def travel_world_route(
     )
 
 
+def create_world_route(
+    database_path: str | Path,
+    *,
+    world_id: str,
+    route_id: str,
+    operation_id: str,
+    expected_revision: int,
+    origin_location_id: str,
+    destination_location_id: str,
+    name: str,
+    description: str | None = None,
+    route_kind: str = "route",
+    is_active: bool = True,
+) -> dict[str, Any]:
+    return create_route(
+        database_path,
+        world_id=world_id,
+        route_id=route_id,
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        origin_location_id=origin_location_id,
+        destination_location_id=destination_location_id,
+        name=name,
+        description=description,
+        route_kind=route_kind,
+        is_active=is_active,
+    )
+
+
 def expand_world_location(
     database_path: str | Path,
     *,
@@ -169,6 +200,7 @@ def expand_world_location(
     range_band: str | None = None,
     map_form: str | None = None,
     move_actor_to_location: bool = False,
+    region_id: str | None = None,
 ) -> dict[str, Any]:
     return propose_location_expansion(
         database_path,
@@ -187,6 +219,7 @@ def expand_world_location(
         range_band=range_band,
         map_form=map_form,
         move_actor_to_location=move_actor_to_location,
+        region_id=region_id,
     )
 
 

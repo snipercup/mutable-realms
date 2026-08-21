@@ -18,6 +18,7 @@ from backend.world.queries import (
     get_player,
     list_recent_events,
 )
+from backend.world.regions import resolve_region_chain
 from backend.world.resources import read_resources
 from backend.world.social import read_social_context
 
@@ -92,6 +93,7 @@ class WorldContext(ContextModel):
     current_location: ContextLocation
     location_breadcrumbs: list[ContextLocationReference] = Field(default_factory=list)
     map_scope: ContextLocationReference | None = None
+    region_framework: list[dict[str, Any]] = Field(default_factory=list)
     recent_events: list[ContextEvent]
     relationships: list[dict[str, Any]]
     memories: list[dict[str, Any]]
@@ -185,6 +187,12 @@ def build_world_context(
             limit=recent_event_limit,
             _connection=connection,
         )
+        region_framework = resolve_region_chain(
+            database_path,
+            world_id=world_id,
+            location_id=location_id,
+            _connection=connection,
+        )
         social = read_social_context(
             database_path,
             world_id=world_id,
@@ -212,6 +220,7 @@ def build_world_context(
                 for ancestor in ancestors
             ],
             "map_scope": map_scope,
+            "region_framework": region_framework,
             "recent_events": events,
             "world_elements": [dict(element) for element in world_elements],
             **social,

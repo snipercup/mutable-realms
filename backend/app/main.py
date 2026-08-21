@@ -396,6 +396,7 @@ def create_app(
                 range_band=request.range_band,
                 map_form=request.map_form,
                 move_actor_to_location=request.move_actor_to_location,
+                region_id=request.region_id,
             )
         except ExpansionNotFound as error:
             raise HTTPException(status_code=404, detail=str(error)) from error

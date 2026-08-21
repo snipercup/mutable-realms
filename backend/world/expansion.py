@@ -100,6 +100,7 @@ def propose_location_expansion(
     range_band: str | None = None,
     map_form: str | None = None,
     move_actor_to_location: bool = False,
+    region_id: str | None = None,
 ) -> dict[str, Any]:
     """Atomically accept one bounded narrator expansion proposal.
 
@@ -108,7 +109,9 @@ def propose_location_expansion(
     location correctly. When ``move_actor_to_location`` is true the actor is
     moved into the new location in the same atomic operation (one revision,
     exact idempotency), so \"create the place + arrive there\" is a single
-    supported operation.
+    supported operation. When ``region_id`` is given the new location is bound
+    to the world's region framework (``world_regions.location_id``) so the
+    narrator can materialize a kingdom/province/city as a real location.
     """
     world_id = _clean(world_id, "world ID")
     operation_id = _clean(operation_id, "operation ID")
@@ -123,6 +126,8 @@ def propose_location_expansion(
         )
     if parent_location_id is not None:
         parent_location_id = _clean(parent_location_id, "parent location ID")
+    if region_id is not None:
+        region_id = _clean(region_id, "region ID")
     if direction is not None and direction not in _ALLOWED_DIRECTIONS:
         raise ExpansionConflict(f"invalid direction: {direction}")
     if range_band is not None and range_band not in _ALLOWED_RANGE_BANDS:
@@ -147,6 +152,7 @@ def propose_location_expansion(
         "parent_location_id": parent_location_id,
         "proposal_id": proposal_id,
         "range_band": range_band,
+        "region_id": region_id,
     }
     request_json = _json(request)
 
@@ -207,6 +213,14 @@ def propose_location_expansion(
                 is None
             ):
                 raise ExpansionNotFound(f"parent location not found: {parent_location_id}")
+            if region_id is not None:
+                region = connection.execute(
+                    "SELECT region_id FROM world_regions "
+                    "WHERE world_id = ? AND region_id = ?",
+                    (world_id, region_id),
+                ).fetchone()
+                if region is None:
+                    raise ExpansionNotFound(f"region not found: {region_id}")
             limit_row = connection.execute(
                 "SELECT max_locations FROM world_expansion_limits WHERE world_id = ?",
                 (world_id,),
@@ -245,6 +259,12 @@ def propose_location_expansion(
                 "INSERT INTO locations(id, world_id, name, description) VALUES (?, ?, ?, ?)",
                 (location_id, world_id, name, description),
             )
+            if region_id is not None:
+                connection.execute(
+                    "UPDATE world_regions SET location_id = ? "
+                    "WHERE world_id = ? AND region_id = ?",
+                    (location_id, world_id, region_id),
+                )
             if direction is not None or range_band is not None or map_form is not None:
                 connection.execute(
                     "INSERT INTO location_metadata("

@@ -317,6 +317,7 @@ class ExpansionRequest(StrictReadModel):
     range_band: str | None = None
     map_form: str | None = None
     move_actor_to_location: bool = False
+    region_id: str | None = None
     operation_id: str
     expected_revision: int = Field(ge=0)
 

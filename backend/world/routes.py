@@ -7,6 +7,7 @@ from typing import Any
 
 from backend.persistence.database import connect_database
 from backend.world.mutations import event_id
+from backend.world.regions import resolve_region_chain
 
 _ROUTE_SET_EVENT = "world_route_set"
 _ROUTE_TRAVEL_EVENT = "entity_route_traveled"
@@ -60,6 +61,61 @@ def _require_revision(connection: sqlite3.Connection, world_id: str, expected_re
     return expected_revision + 1
 
 
+def _validate_route_against_framework(
+    database_path: str | Path,
+    connection: sqlite3.Connection,
+    world_id: str,
+    origin_location_id: str,
+    destination_location_id: str,
+) -> None:
+    """Reject routes whose endpoints violate the world's region framework.
+
+    When the world has no region framework rows the check is skipped (the
+    framework is optional). When it does, both endpoints must resolve to a
+    bound region chain, and the chains must either share a region (same
+    kingdom/province/city) or be declared adjacent via
+    ``connected_by_road_to`` in either direction.
+    """
+    has_regions = connection.execute(
+        "SELECT 1 FROM world_regions WHERE world_id = ? LIMIT 1", (world_id,)
+    ).fetchone()
+    if has_regions is None:
+        return
+    origin_chain = resolve_region_chain(
+        database_path,
+        world_id=world_id,
+        location_id=origin_location_id,
+        _connection=connection,
+    )
+    destination_chain = resolve_region_chain(
+        database_path,
+        world_id=world_id,
+        location_id=destination_location_id,
+        _connection=connection,
+    )
+    if not origin_chain or not destination_chain:
+        raise RouteConflict(
+            "route endpoints must be inside a region framework node; "
+            "materialize and bind the locations to regions first"
+        )
+    origin_ids = {region["region_id"] for region in origin_chain}
+    destination_ids = {region["region_id"] for region in destination_chain}
+    if origin_ids & destination_ids:
+        return
+    for origin in origin_chain:
+        declared = origin["attributes"].get("connected_by_road_to", {})
+        if destination_ids & set(declared):
+            return
+    for destination in destination_chain:
+        declared = destination["attributes"].get("connected_by_road_to", {})
+        if origin_ids & set(declared):
+            return
+    raise RouteConflict(
+        "route endpoints belong to regions that are not declared adjacent "
+        "in the world's region framework"
+    )
+
+
 def create_route(
     database_path: str | Path,
     *,
@@ -111,6 +167,13 @@ def create_route(
                     is None
                 ):
                     raise RouteNotFound(f"location not found: {location_id}")
+            _validate_route_against_framework(
+                database_path,
+                connection,
+                world_id,
+                origin_location_id,
+                destination_location_id,
+            )
             connection.execute(
                 """INSERT INTO world_routes(
                     world_id, route_id, origin_location_id, destination_location_id,

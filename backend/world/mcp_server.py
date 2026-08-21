@@ -9,6 +9,7 @@ from pydantic import Field
 
 from backend.world.agent_tools import (
     consolidate_world_location_memories,
+    create_world_route,
     expand_world_location,
     inspect_entity,
     list_events,
@@ -170,6 +171,42 @@ def world_travel_route(
 
 
 @mcp.tool()
+def world_create_route(
+    world_id: str,
+    operation_id: str,
+    expected_revision: int,
+    route_id: str,
+    origin_location_id: str,
+    destination_location_id: str,
+    name: Annotated[str, Field(min_length=1, max_length=200)],
+    description: Annotated[str, Field(max_length=2000)] | None = None,
+    route_kind: str = "route",
+    is_active: bool = True,
+) -> dict[str, Any]:
+    """Create one explicit directed route between two locations.
+
+    When the world has a region framework the route must respect it: both
+    endpoints must be inside regions that are declared adjacent (via
+    ``connected_by_road_to``) or that share an ancestor region. Use this to
+    materialize the declared connections of the world's framework (e.g. the
+    road from Virellea to Thurnrok).
+    """
+    return create_world_route(
+        get_database_path(),
+        world_id=resolve_world_id(world_id),
+        route_id=route_id,
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        origin_location_id=origin_location_id,
+        destination_location_id=destination_location_id,
+        name=name,
+        description=description,
+        route_kind=route_kind,
+        is_active=is_active,
+    )
+
+
+@mcp.tool()
 def world_expand_location(
     world_id: str,
     operation_id: str,
@@ -186,6 +223,7 @@ def world_expand_location(
     range_band: str | None = None,
     map_form: str | None = None,
     move_actor_to_location: bool = False,
+    region_id: str | None = None,
 ) -> dict[str, Any]:
     """Accept one bounded structured proposal for a new ordinary location.
 
@@ -194,6 +232,8 @@ def world_expand_location(
     as orientation metadata so the map can place the new location correctly.
     When ``move_actor_to_location`` is true and ``connect_to_anchor`` is true,
     the actor is moved into the new location atomically in the same operation.
+    When ``region_id`` is given the new location is bound to the world's
+    region framework, materializing that kingdom/province/city as a location.
     """
     return expand_world_location(
         get_database_path(),
@@ -212,6 +252,7 @@ def world_expand_location(
         range_band=range_band,
         map_form=map_form,
         move_actor_to_location=move_actor_to_location,
+        region_id=region_id,
     )
 
 

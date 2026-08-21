@@ -77,6 +77,7 @@ def test_builds_scenario_neutral_context_for_current_location(tmp_path: Path) ->
         },
         "location_breadcrumbs": [],
         "map_scope": None,
+        "region_framework": [],
         "recent_events": [],
         "relationships": [],
         "memories": [],
