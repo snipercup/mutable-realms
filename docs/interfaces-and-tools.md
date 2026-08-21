@@ -34,10 +34,14 @@ The live database lives outside Git in a bind-mounted state directory; backups a
 | `npm run update-scenario -- …` | Update a scenario's title and/or description. |
 | `npm run set-scenario-element -- …` | Upsert one scenario story element. |
 | `npm run remove-scenario -- …` | Remove a scenario and its elements (destructive). |
-| `npm run create-world-from-scenario -- …` | Instance a new world from a scenario (copies title/description/elements). |
+| `npm run create-world-from-scenario -- …` | Instance a new world from a scenario (copies title/description/elements/region framework). |
 | `npm run update-world -- …` | Update a world's title and/or description (revision-checked). |
 | `npm run set-world-element -- …` | Upsert one world-owned story element (revision-checked). |
 | `npm run remove-world -- …` | Remove a world and all of its state (destructive, revision-checked). |
+| `npm run create-player-character -- …` | Create a reusable player character definition. |
+| `npm run update-player-character -- …` | Update a reusable character definition. |
+| `npm run remove-player-character -- …` | Remove a reusable character definition. |
+| `npm run provision-player -- …` | Provision a player + starting location (compatibility path; the management UI uses `POST /api/worlds/{world_id}/character-instance` instead). |
 | `npm run world-tools` | Run the MCP tool server over stdio. |
 
 ## CLI commands
@@ -71,7 +75,7 @@ npm run move-entity -- --world-id "$WORLD_ID" --operation-id "$OP" \
 
 ### Scenario authoring
 
-Scenarios are reusable authoring templates (title, description, and story elements) from which worlds are instanced later. They are administrative data — never exposed through the turn policy or the narration agent.
+Scenarios are reusable authoring templates (title, description, story elements, and an optional region framework) from which worlds are instanced later. They are administrative data — never exposed through the turn policy or the narration agent. Regions are authored over HTTP (`PUT`/`DELETE /api/scenarios/{scenario_id}/regions/{region_id}`) or the Manage view; there is no region CLI wrapper.
 
 ```sh
 npm run create-scenario -- --scenario-id aerthalon --operation-id op-1 \
@@ -86,7 +90,7 @@ Element types: `author_note`, `plot_essentials`, `opening_scene` (content 1–20
 
 ### World instancing
 
-Instancing copies the scenario's title, description, and story elements into a fresh world (revision 0 → 1 with a `world_created` event) and records `source_scenario_id`. The scenario is never modified; the world owns its copies, so the two diverge independently. Deleting a scenario leaves its instanced worlds intact (`source_scenario_id` becomes NULL).
+Instancing copies the scenario's title, description, story elements, and region framework into a fresh world (revision 0 → 1 with a `world_created` event) and records `source_scenario_id`. The scenario is never modified; the world owns its copies, so the two diverge independently. Deleting a scenario leaves its instanced worlds intact (`source_scenario_id` becomes NULL).
 
 ```sh
 npm run create-world-from-scenario -- --world-id aerthalon-campaign \
@@ -169,7 +173,7 @@ Interactive docs: `GET /docs`; generated schema: `GET /openapi.json`. Startup ap
 
 The narrator context includes only the current location's containment breadcrumb and preferred map scope. It continues to expose exact movement neighbors rather than injecting an entire scoped map.
 
-The expansion service is the controlled narrator-facing creation seam. `world_expand_location` accepts one structured proposal: a stable `proposal_id`, new `location_id`, existing `anchor_location_id`, bounded `name`/`description`, optional same-world `parent_location_id`, and optional explicit physical link to the anchor. It also accepts optional orientation metadata — `direction` (cardinal/intercardinal), `range_band` (`short`/`mid`/`long`), and `map_form` (the allowlisted visual form set) — persisted into `location_metadata` so a newly created place appears on the map in the intended direction. When `move_actor_to_location` is true (with `connect_to_anchor: true` and an `actor_entity_id`), the actor is moved into the new location atomically in the same operation, so "create the place + arrive there" is one revision-checked mutation. It accepts at most one location per operation, records the proposal, rejects duplicate IDs/names/proposals, and enforces a default budget of 100 accepted expansions per world (overrideable by the administrative `world_expansion_limits` row). It creates the location, optional containment, optional `location_links` row, operation, event, and revision atomically. It does not generate routes, entities, or additional geography.
+The expansion service is the controlled narrator-facing creation seam. `world_expand_location` accepts one structured proposal: a stable `proposal_id`, new `location_id`, existing `anchor_location_id`, bounded `name`/`description`, optional same-world `parent_location_id`, and optional explicit physical link to the anchor. It also accepts optional orientation metadata — `direction` (cardinal/intercardinal), `range_band` (`short`/`mid`/`long`), and `map_form` (the allowlisted visual form set) — persisted into `location_metadata` so a newly created place appears on the map in the intended direction. When `move_actor_to_location` is true (with `connect_to_anchor: true` and an `actor_entity_id`), the actor is moved into the new location atomically in the same operation, so "create the place + arrive there" is one revision-checked mutation. An optional `region_id` binds the new location to the world's region framework (`world_regions.location_id`), materializing that kingdom/province/city as a real location. It accepts at most one location per operation, records the proposal, rejects duplicate IDs/names/proposals, and enforces a default budget of 100 accepted expansions per world (overrideable by the administrative `world_expansion_limits` row). It creates the location, optional containment, optional `location_links` row, optional region binding, operation, event, and revision atomically. It does not generate routes, entities, or additional geography.
 
 The active structured start contract creates 3–16 locations and may mark a parentless sibling as `geography_role: boundary` with a direction and range band. Street-level urban starts should contain at least 10 direct children beneath the selected start; other opening scales may use fewer locations within the bound. A generic road beyond a gate, a sea route, or train track endpoint can therefore be named and oriented without being confused with a static child landmark. Route records remain the authoritative directed travel chain; future map work can render short/mid/long route destinations from those records rather than inferring routes from sibling placement.
 
@@ -188,8 +192,8 @@ The active structured start contract creates 3–16 locations and may mark a par
 | `DELETE /api/worlds/{world_id}?operation_id=…&expected_revision=…` | Remove a world and all of its state (destructive). |
 | `PUT /api/worlds/{world_id}/locations/{location_id}/hierarchy` | Set one location's parent and descriptive map metadata — body `{operation_id, expected_revision, parent_location_id?, kind?, is_map_scope, is_default_scope}`. The operation is revision-aware and exactly idempotent. |
 | `PUT /api/worlds/{world_id}/locations/{location_id}/scope-promotion` | Add or remove one explicit presentation promotion — body `{scope_location_id, is_promoted?, operation_id, expected_revision}`. The scope and landmark must belong to the same world; the scope must be map-capable. Exact replay is supported. |
-| `POST /api/worlds/{world_id}/locations/expand` | Accept one bounded structured location proposal — body `{proposal_id, location_id, anchor_location_id, name, description?, parent_location_id?, connect_to_anchor?, actor_entity_id?, direction?, range_band?, map_form?, move_actor_to_location?, operation_id, expected_revision}`. Orientation metadata is persisted to `location_metadata`; `move_actor_to_location: true` (with `connect_to_anchor: true`) moves the actor into the new location atomically in the same operation. |
-| `PUT /api/worlds/{world_id}/routes/{route_id}` | Create or replace one directed route definition — body `{route_id, origin_location_id, destination_location_id, name, description?, route_kind?, is_active?, operation_id, expected_revision}`. |
+| `POST /api/worlds/{world_id}/locations/expand` | Accept one bounded structured location proposal — body `{proposal_id, location_id, anchor_location_id, name, description?, parent_location_id?, connect_to_anchor?, actor_entity_id?, direction?, range_band?, map_form?, move_actor_to_location?, region_id?, operation_id, expected_revision}`. Orientation metadata is persisted to `location_metadata`; `move_actor_to_location: true` (with `connect_to_anchor: true`) moves the actor into the new location atomically in the same operation; `region_id` binds the new location to the world's region framework (`world_regions.location_id`). |
+| `PUT /api/worlds/{world_id}/routes/{route_id}` | Create or replace one directed route definition — body `{route_id, origin_location_id, destination_location_id, name, description?, route_kind?, is_active?, operation_id, expected_revision}`. When the world has a region framework, endpoints must resolve to regions that share an ancestor or are declared adjacent via `connected_by_road_to` (409 otherwise). |
 | `POST /api/worlds/{world_id}/route-travel` | Apply one active route to a character at its exact origin — body `{route_id, entity_id, actor_entity_id?, operation_id, expected_revision}`. |
 
 Errors: `404` unknown scenario or world · `409` duplicate id, operation-ID reuse, or stale revision.
@@ -216,10 +220,10 @@ Errors: `404` unknown scenario or region · `409` duplicate id, operation-ID reu
 `POST /api/worlds/{world_id}/turns` — body `{player_id, player_action, decision_json?}`.
 
 - **With `decision_json`**: the deterministic seam over HTTP (same `run_turn` path as `world-turn`); tests and scripted play drive exact decisions. Returns `{outcome, message, revision_before, revision_after, attempts, mutation}`.
-- **Without it**: builds the selected world's authoritative context (world, player, location, story elements, recent events) and relays the action to the narration agent (`hermes --profile mutable-realms-narration chat`) with that context embedded in the prompt, so the agent narrates the world the page chose. The agent performs at most one supported mutation, then returns player-facing narration. Returns `{outcome: "narrated_turn", narration, revision_before, revision_after}`. The relay runs the CLI in quiet mode and strips rendered reasoning and meta-commentary so `narration` is the immersive prose only (the narration profile also sets `display.show_reasoning: false`).
+- **Without it**: builds the selected world's authoritative context (world, player, location, story elements, recent events, location memories, region framework, recent narration history) and relays the action to the narration agent (`hermes --profile mutable-realms-narration chat`) with that context embedded in the prompt, so the agent narrates the world the page chose. The agent performs at most one supported mutation, then returns player-facing narration. Returns `{outcome: "narrated_turn", narration, revision_before, revision_after}`. The relay runs the CLI in quiet mode and strips rendered reasoning and meta-commentary so `narration` is the immersive prose only (the narration profile also sets `display.show_reasoning: false`).
 - Errors: `404` unknown world · `409` player does not match the world's player · `422` invalid decision or blank action · `502` narration agent unavailable.
 
-Narration is presentation-only and never persisted. The narration profile's MCP env provides a default world+player, but the relayed turn tells the agent which world is authoritative and the tools accept that world explicitly. The relay is injectable for tests (`create_app(..., narrator=...)`).
+Narration prose is presentation-only and never authoritative, but it **is** recorded: the start route stores the opening narration and every narrated turn stores the player action and the agent's narration in the world-scoped `narration_history` (readable via `GET /api/worlds/{world_id}/narration`). History entries never bump revisions or write events, and they cascade away with the world. The turn relay also embeds up to 100 recent entries into the prompt as an explicitly non-authoritative "story so far" block so the narrator stays consistent across the fresh CLI session each turn. The narration profile's MCP env provides a default world+player, but the relayed turn tells the agent which world is authoritative and the tools accept that world explicitly. The relay is injectable for tests (`create_app(..., narrator=...)`).
 
 ## MCP tools (Hermes)
 

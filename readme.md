@@ -122,9 +122,9 @@ The initial prototype is complete. The ideas below were deliberately deferred wh
 | Backup and export | One-command restore · world export/import · snapshot rotation and retention · remote or encrypted backups |
 | Goals | A minimal completed-goal ledger to prevent double rewards |
 | Locations | Population and prosperity simulation · wider property taxonomies · a dedicated location-history table · adding and removing entities |
-| Travel | Weighted or directed edges · travel time and cost · conditional travel (locked doors) · multi-hop pathfinding · NPC movement |
+| Travel | Weighted edges · travel time and cost · conditional travel (locked doors) · multi-hop pathfinding · NPC movement |
 | Visualization | Tooltips · clickable objects · character and inventory panels · scene transitions and animations · goal/reward UI for worlds that track goals as state |
-| Direct interface | Multi-world agent rebinding · streaming responses · server-side turn history · undo and replay · quick actions |
+| Direct interface | Multi-world agent rebinding · streaming responses · undo and replay · quick actions |
 | Social | Factions · disposition taxonomies · multi-party interactions · memory relevance ranking · NPC-owned memories · social visualization |
 | Capability requests | When the agent meets play the world cannot yet persist, it emits a structured request and the capability is built deliberately — no autonomous schema changes |
 
