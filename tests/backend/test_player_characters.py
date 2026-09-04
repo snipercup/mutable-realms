@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -19,7 +20,11 @@ from backend.world.characters import (
 )
 from backend.world.queries import get_world_map, read_world
 from backend.world.scenarios import create_scenario
-from backend.world.worlds import create_world_from_scenario, instance_player_character
+from backend.world.worlds import (
+    WorldAdminConflict,
+    create_world_from_scenario,
+    instance_player_character,
+)
 
 
 def _database(tmp_path: Path) -> Path:
@@ -507,4 +512,201 @@ def test_narrator_world_start_failure_leaves_world_playerless(tmp_path: Path) ->
     )
     assert status == 502
     assert body["detail"] == "narration agent returned an invalid start response"
+
+
+def test_instance_binds_start_location_to_region_framework(tmp_path: Path) -> None:
+    path = _database(tmp_path)
+    _world(path, "world-a")
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "INSERT INTO world_regions("
+            "world_id, region_id, parent_region_id, level, title, description, "
+            "attributes_json, location_id) "
+            "VALUES ('world-a', 'virellea', NULL, 'kingdom', 'Virellea', "
+            "'Fertile heart.', '{}', NULL)"
+        )
+    create_player_character(path, character_id="fate", operation_id="create-1", name="Fate")
+    layout = [
+        {
+            "name": "Main Street",
+            "description": "A broad street in Elaris.",
+            "parent_name": None,
+            "link_to_start": False,
+            "region_id": "virellea",
+        },
+        {
+            "name": "Adventurer's Guild",
+            "description": "Tall doors beneath a brass crest.",
+            "parent_name": "Main Street",
+            "link_to_start": True,
+        },
+    ]
+    result = instance_player_character(
+        path,
+        world_id="world-a",
+        operation_id="instance-region",
+        expected_revision=1,
+        character_id="fate",
+        location_name="Main Street",
+        location_layout=layout,
+    )
+    assert result["world_revision"] == 2
+    regions = read_world(path, "world-a")["regions"]
+    virellea = next(region for region in regions if region["region_id"] == "virellea")
+    assert virellea["location_id"] is not None
+    with sqlite3.connect(path) as connection:
+        connection.row_factory = sqlite3.Row
+        bound_name = connection.execute(
+            "SELECT name FROM locations WHERE id = ? AND world_id = 'world-a'",
+            (virellea["location_id"],),
+        ).fetchone()
+    assert bound_name is not None
+    assert bound_name["name"] == "Main Street"
+
+
+def test_instance_rejects_unknown_start_region(tmp_path: Path) -> None:
+    path = _database(tmp_path)
+    _world(path, "world-a")
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "INSERT INTO world_regions("
+            "world_id, region_id, parent_region_id, level, title, description, "
+            "attributes_json, location_id) "
+            "VALUES ('world-a', 'virellea', NULL, 'kingdom', 'Virellea', "
+            "'Fertile heart.', '{}', NULL)"
+        )
+    create_player_character(path, character_id="fate", operation_id="create-1", name="Fate")
+    layout = [
+        {
+            "name": "Main Street",
+            "description": "A broad street.",
+            "parent_name": None,
+            "link_to_start": False,
+            "region_id": "missing-region",
+        }
+    ]
+    with pytest.raises(WorldAdminConflict, match="region not found"):
+        instance_player_character(
+            path,
+            world_id="world-a",
+            operation_id="instance-region-bad",
+            expected_revision=1,
+            character_id="fate",
+            location_name="Main Street",
+            location_layout=layout,
+        )
+    with sqlite3.connect(path) as connection:
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM locations WHERE world_id = 'world-a'"
+            ).fetchone()[0]
+            == 0
+        )
+    assert read_world(path, "world-a")["player"] is None
+
+
+def test_instance_declares_missing_city_region_at_start(tmp_path: Path) -> None:
+    """The narrator may declare a missing city region and bind a location to it."""
+    path = _database(tmp_path)
+    _world(path, "world-a")
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "INSERT INTO world_regions("
+            "world_id, region_id, parent_region_id, level, title, description, "
+            "attributes_json, location_id) "
+            "VALUES ('world-a', 'virellea', NULL, 'kingdom', 'Virellea', "
+            "'Fertile heart.', '{}', NULL)"
+        )
+    create_player_character(path, character_id="fate", operation_id="create-1", name="Fate")
+    layout = [
+        {
+            "name": "Main Street",
+            "description": "A broad street in Elaris.",
+            "parent_name": None,
+            "link_to_start": False,
+            "region_id": "virellea-elaris",
+        },
+        {
+            "name": "Adventurer's Guild",
+            "description": "Tall doors beneath a brass crest.",
+            "parent_name": "Main Street",
+            "link_to_start": True,
+        },
+    ]
+    region_layout = [
+        {
+            "region_id": "virellea-elaris",
+            "parent_region_id": "virellea",
+            "level": "city",
+            "title": "Elaris",
+            "description": "Capital of Virellea.",
+            "attributes": {"biomes": ["Grassy Plains"]},
+        }
+    ]
+    result = instance_player_character(
+        path,
+        world_id="world-a",
+        operation_id="instance-declare-region",
+        expected_revision=1,
+        character_id="fate",
+        location_name="Main Street",
+        location_layout=layout,
+        region_layout=region_layout,
+    )
+    assert result["world_revision"] == 2
+    regions = read_world(path, "world-a")["regions"]
+    elaris = next(region for region in regions if region["region_id"] == "virellea-elaris")
+    assert elaris["level"] == "city"
+    assert elaris["parent_region_id"] == "virellea"
+    assert elaris["location_id"] is not None
+    with sqlite3.connect(path) as connection:
+        connection.row_factory = sqlite3.Row
+        bound_name = connection.execute(
+            "SELECT name FROM locations WHERE id = ? AND world_id = 'world-a'",
+            (elaris["location_id"],),
+        ).fetchone()
+    assert bound_name is not None
+    assert bound_name["name"] == "Main Street"
+
+
+def test_instance_rejects_declared_region_with_unknown_parent(tmp_path: Path) -> None:
+    path = _database(tmp_path)
+    _world(path, "world-a")
+    create_player_character(path, character_id="fate", operation_id="create-1", name="Fate")
+    layout = [
+        {
+            "name": "Main Street",
+            "description": "A broad street.",
+            "parent_name": None,
+            "link_to_start": False,
+            "region_id": "virellea-elaris",
+        }
+    ]
+    region_layout = [
+        {
+            "region_id": "virellea-elaris",
+            "parent_region_id": "missing-kingdom",
+            "level": "city",
+            "title": "Elaris",
+            "description": "Capital.",
+        }
+    ]
+    with pytest.raises(WorldAdminConflict, match="parent not found"):
+        instance_player_character(
+            path,
+            world_id="world-a",
+            operation_id="instance-bad-parent",
+            expected_revision=1,
+            character_id="fate",
+            location_name="Main Street",
+            location_layout=layout,
+            region_layout=region_layout,
+        )
+    with sqlite3.connect(path) as connection:
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM world_regions WHERE world_id = 'world-a'"
+            ).fetchone()[0]
+            == 0
+        )
     assert read_world(path, "world-a")["player"] is None

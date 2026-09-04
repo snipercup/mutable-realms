@@ -843,6 +843,7 @@ def create_app(
                             "geography_role": location.geography_role,
                             "direction": location.direction,
                             "range_band": location.range_band,
+                            "region_id": location.region_id,
                         }
                         for location in result.locations
                     ]
@@ -859,6 +860,21 @@ def create_app(
                     "revision_before": request.expected_revision,
                     "revision_after": request.expected_revision + 1,
                 },
+                region_layout=(
+                    [
+                        {
+                            "region_id": region.region_id,
+                            "parent_region_id": region.parent_region_id,
+                            "level": region.level,
+                            "title": region.title,
+                            "description": region.description,
+                            "attributes": region.attributes,
+                        }
+                        for region in result.regions
+                    ]
+                    if result.regions
+                    else None
+                ),
             )
             response = {
                 "outcome": "world_started",

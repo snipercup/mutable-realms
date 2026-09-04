@@ -607,6 +607,7 @@ def instance_player_character(
     location_name: str,
     location_description: str | None = None,
     location_layout: list[dict[str, Any]] | None = None,
+    region_layout: list[dict[str, Any]] | None = None,
     result_fields: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Copy a reusable character definition and bounded start layout into a world."""
@@ -642,6 +643,7 @@ def instance_player_character(
         direction = raw_location.get("direction")
         range_band = raw_location.get("range_band")
         map_form = raw_location.get("map_form")
+        region_id = raw_location.get("region_id")
         if not isinstance(name, str) or not name.strip() or len(name.strip()) > 200:
             raise WorldAdminConflict("start location name is invalid")
         if description is not None and not isinstance(description, str):
@@ -669,6 +671,14 @@ def instance_player_character(
             "building", "street", "district", "city", "mine", "forest", "water", "landmark"
         }:
             raise WorldAdminConflict("start location map_form is invalid")
+        if region_id is not None:
+            if not isinstance(region_id, str) or not _WORLD_ID_PATTERN.fullmatch(
+                region_id.strip()
+            ):
+                raise WorldAdminConflict(
+                    "start location region_id must be a lowercase kebab-case id"
+                )
+            region_id = region_id.strip()
         trimmed_name = name.strip()
         key = trimmed_name.casefold()
         if key in names:
@@ -684,6 +694,7 @@ def instance_player_character(
                 "direction": direction,
                 "range_band": range_band,
                 "map_form": map_form,
+                "region_id": region_id,
             }
         )
     start_key = trimmed_location.casefold()
@@ -711,12 +722,92 @@ def instance_player_character(
             if parent is None:
                 break
             current = parent
+    normalized_regions: list[dict[str, Any]] = []
+    if region_layout is not None:
+        if not 1 <= len(region_layout) <= 16:
+            raise WorldAdminConflict("start region layout must contain between 1 and 16 regions")
+        region_ids: set[str] = set()
+        for raw_region in region_layout:
+            if not isinstance(raw_region, dict):
+                raise WorldAdminConflict("start region layout item must be an object")
+            region_id = raw_region.get("region_id")
+            parent_region_id = raw_region.get("parent_region_id")
+            level = raw_region.get("level")
+            title = raw_region.get("title")
+            description = raw_region.get("description")
+            attributes = raw_region.get("attributes", {})
+            if not isinstance(region_id, str) or not _WORLD_ID_PATTERN.fullmatch(region_id.strip()):
+                raise WorldAdminConflict("start region region_id must be a lowercase kebab-case id")
+            region_id = region_id.strip()
+            if region_id in region_ids:
+                raise WorldAdminConflict("start region layout contains duplicate region ids")
+            region_ids.add(region_id)
+            if parent_region_id is not None:
+                if not isinstance(parent_region_id, str) or not _WORLD_ID_PATTERN.fullmatch(
+                    parent_region_id.strip()
+                ):
+                    raise WorldAdminConflict(
+                        "start region parent_region_id must be a lowercase kebab-case id or null"
+                    )
+                parent_region_id = parent_region_id.strip()
+                if parent_region_id == region_id:
+                    raise WorldAdminConflict("start region cannot contain itself")
+            if not isinstance(level, str) or not level.strip() or len(level.strip()) > 50:
+                raise WorldAdminConflict("start region level is invalid")
+            if not isinstance(title, str) or not title.strip() or len(title.strip()) > 200:
+                raise WorldAdminConflict("start region title is invalid")
+            if description is not None and (
+                not isinstance(description, str) or len(description.strip()) > 2000
+            ):
+                raise WorldAdminConflict("start region description is invalid")
+            if not isinstance(attributes, dict):
+                raise WorldAdminConflict("start region attributes must be an object or null")
+            try:
+                attributes_json = json.dumps(
+                    attributes, sort_keys=True, separators=(",", ":")
+                )
+            except (TypeError, ValueError) as error:
+                raise WorldAdminConflict(
+                    "start region attributes must be JSON-serializable"
+                ) from error
+            if len(attributes_json) > 10000:
+                raise WorldAdminConflict("start region attributes are too large")
+            normalized_regions.append(
+                {
+                    "region_id": region_id,
+                    "parent_region_id": parent_region_id,
+                    "level": level.strip(),
+                    "title": title.strip(),
+                    "description": description.strip() if isinstance(description, str) else None,
+                    "attributes": attributes,
+                }
+            )
+        # A parent chain must terminate within the declared set.
+        for region in normalized_regions:
+            seen: set[str] = set()
+            current = region["region_id"]
+            while current is not None:
+                if current in seen:
+                    raise WorldAdminConflict("start region layout contains a containment cycle")
+                seen.add(current)
+                parent = next(
+                    (
+                        entry["parent_region_id"]
+                        for entry in normalized_regions
+                        if entry["region_id"] == current
+                    ),
+                    None,
+                )
+                if parent is None:
+                    break
+                current = parent
     request_json = json.dumps(
         {
             "character_id": character_id,
             "location_name": trimmed_location,
             "location_description": trimmed_description,
             "location_layout": normalized_layout,
+            "region_layout": normalized_regions,
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -749,6 +840,69 @@ def instance_player_character(
             ).fetchone()
             if existing_player is not None:
                 raise WorldAdminConflict(f"world already has a player: {world_id}")
+            declared_region_ids = {region["region_id"] for region in normalized_regions}
+            existing_region_ids = {
+                row["region_id"]
+                for row in connection.execute(
+                    "SELECT region_id FROM world_regions WHERE world_id = ?",
+                    (world_id,),
+                ).fetchall()
+            }
+            all_region_ids = existing_region_ids | declared_region_ids
+            for region in normalized_regions:
+                parent = region["parent_region_id"]
+                if parent is not None and parent not in all_region_ids:
+                    raise WorldAdminConflict(
+                        f"start region parent not found: {parent}"
+                    )
+            for region in normalized_regions:
+                if region["region_id"] in existing_region_ids:
+                    raise WorldAdminConflict(
+                        f"start region already exists: {region['region_id']}"
+                    )
+            for item in normalized_layout:
+                if item["region_id"] is not None and item["region_id"] not in all_region_ids:
+                    raise WorldAdminConflict(
+                        f"start location region not found: {item['region_id']}"
+                    )
+            # Insert declared regions parent-first so the self-referential
+            # parent FK holds even when a declared region's parent is another
+            # declared region in the same start.
+            inserted_region_ids: set[str] = set()
+            remaining_regions = list(normalized_regions)
+            while remaining_regions:
+                progressed = False
+                for region in list(remaining_regions):
+                    parent = region["parent_region_id"]
+                    parent_ready = (
+                        parent is None
+                        or parent in existing_region_ids
+                        or parent in inserted_region_ids
+                    )
+                    if parent_ready:
+                        connection.execute(
+                            "INSERT INTO world_regions("
+                            "world_id, region_id, parent_region_id, level, title, description, "
+                            "attributes_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (
+                                world_id,
+                                region["region_id"],
+                                region["parent_region_id"],
+                                region["level"],
+                                region["title"],
+                                region["description"] or "Declared at world start.",
+                                json.dumps(
+                                    region["attributes"], sort_keys=True, separators=(",", ":")
+                                ),
+                            ),
+                        )
+                        inserted_region_ids.add(region["region_id"])
+                        remaining_regions.remove(region)
+                        progressed = True
+                if not progressed:
+                    raise WorldAdminConflict(
+                        "start region layout contains a containment cycle"
+                    )
             location_ids = {
                 item["name"].casefold(): f"{world_id}-start"
                 if item["name"].casefold() == start_key
@@ -787,6 +941,13 @@ def instance_player_character(
                         item["description"] or f"Starting area for {definition['name']}",
                     ),
                 )
+            for item in normalized_layout:
+                if item["region_id"] is not None:
+                    connection.execute(
+                        "UPDATE world_regions SET location_id = ? "
+                        "WHERE world_id = ? AND region_id = ?",
+                        (location_ids[item["name"].casefold()], world_id, item["region_id"]),
+                    )
             for item in normalized_layout:
                 item_id = location_ids[item["name"].casefold()]
                 connection.execute(

@@ -4,19 +4,21 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Reduce the narrator's turn output cap from 200 to 150 tokens — in progress
+### Bind world-start locations to the region framework (incl. declaring missing regions) — in progress
 
-**Goal:** tighten turn narration. The 150-token bound is a guideline (prompt instruction + SOUL rule) backed by a deterministic sentence-safe truncation (`bound_narration_tokens()`), exactly like the previous 200-token cap — the "guideline, not hard limit" behavior the user found worked well. 150 tokens ≈ 1–2 short paragraphs or ~110 words.
+**Problem:** a world's opening scene can place the player in a known region (e.g. "Elaris, Virellea"), but the start contract had no way to record that; `world_regions.location_id` stayed null for all start locations, so the narrator's region context was empty on turn one and the map showed siblings with no declared connection. Live failure: recreating Aerthalon produced `start location region not found: virellea-elaris` because the scenario framework has only the 7 kingdoms — no city region — and the start contract could not create one.
 
-**Changes (all three layers + docs + tests):** `_NARRATION_MAX_TOKENS = 150` and the prompt instruction ("at most 150 tokens, roughly 1 to 2 short paragraphs or about 110 words") in `backend/app/narrator.py`; SOUL.md rule updated; `docs/narration-agent-contract.md` step 12, `docs/maintenance-guide.md` rule 22 + development-history row updated; tests assert the 150 bound.
+**Goal:** let the world start bind locations to their regions, and let the narrator **declare missing region nodes** (e.g. the `virellea-elaris` city under the existing `virellea` kingdom) in the same atomic start. Start-layout locations gain an optional `region_id`; a new optional top-level `regions` array declares new framework nodes (region_id, parent_region_id, level, title, description, attributes), validated for structure, parents, and cycles, then inserted parent-first so the self-referential FK holds. `instance_player_character` validates location region_ids against existing ∪ declared regions and binds `world_regions.location_id` in one revision (same semantics as expansion's `region_id`).
 
-**Verification:** `322` backend tests pass; `npm run lint` passes Ruff + TypeScript; `npm run frontend-build` passes; `git diff --check` passes. Direct check: the built prompt contains the "at most 150 tokens" instruction, and `bound_narration_tokens()` truncates a long narration at a sentence boundary to 590 chars (≤ the 150 × 4 = 600 char budget).
+**Changes:** `NarratorStartRegion` dataclass + `NarratorStartResult.regions` + `_parse_start_regions` + prompt text + `_START_REGION_ID_PATTERN`/`_MAX_START_REGIONS` in `backend/app/narrator.py` (also cleaned a stray "object." artifact in the prompt); route passes `region_layout` in `backend/app/main.py`; normalization, parent/exists validation, parent-first insertion, and `world_regions.location_id` binding in `backend/world/worlds.py`; SOUL.md world-start guidance (declare missing regions, never reference undeclared ids); tests.
+
+**Verification:** `330` backend tests pass (6 new: parser parses declared regions, parser rejects region cycle, instancing declares+binds a missing city region, instancing rejects a declared region with an unknown parent, plus the prior parser/instancing region_id tests); `npm run lint` passes Ruff + TypeScript; `npm run frontend-build` passes; `git diff --check` passes. Live verification on a copy of the live DB (temp server): fresh world instanced from `world-of-aerthalon` (7 kingdoms, no cities) → start layout declaring `virellea-elaris` under `virellea` and binding Main Street to it → **succeeds**, region row created (city level, parent virellea) and `world_regions.location_id` bound to Main Street; `build_world_context` resolves `Elaris (city) → Virellea (kingdom)` from the first turn. `docs/narration-agent-contract.md`, `docs/interfaces-and-tools.md`, and this tracker updated.
 
 ## Recently completed
 
-
 | Idea | Completed | Commit |
 | --- | --- | --- |
+| Reduce the narrator's turn output cap from 200 to 150 tokens (prompt instruction + SOUL rule + deterministic sentence-safe truncation, all three layers + docs + tests) | 2026-08-21 | `62994bc` |
 | Show the copied region framework in the world editor (Manage view; world detail API already returned `regions`, frontend now types + renders them with source line, hierarchy indentation, and materialization status) | 2026-08-21 | `d22767b` |
 | Center sibling node labels on the node (same x, y) and clamp them inside the map so edge labels stay fully visible (frontend-only label layout) | 2026-08-21 | `7453b51` |
 | World-region framework — scenario-authored region hierarchy instanced per world (migrations `0019_scenario_regions` + `0020_world_regions` + `0021_backfill`, scenario region CRUD + Manage-view editor, world instancing copy, context `region_framework` chain resolution + prompt rendering, expansion `region_id` binding, framework-validated `world_create_route`, SOUL guidance) | 2026-08-20 | `9fef60a` · `4c1fac6` · `5ede07a` · `2fa919e` |

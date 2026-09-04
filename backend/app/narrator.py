@@ -49,6 +49,26 @@ class NarratorStartLocation:
     direction: str | None = None
     range_band: str | None = None
     map_form: str | None = None
+    region_id: str | None = None
+
+
+@dataclass(frozen=True)
+class NarratorStartRegion:
+    """One region framework node the narrator declares at world start.
+
+    Regions are knowledge, not playable nodes: the start may declare a missing
+    city/province/kingdom region (for example ``virellea-elaris`` beneath the
+    existing ``virellea`` kingdom) so the world records the player's location
+    in the framework from the first turn. Parents must be an existing world
+    region or declared in the same start.
+    """
+
+    region_id: str
+    parent_region_id: str | None
+    level: str
+    title: str
+    description: str | None
+    attributes: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -59,6 +79,7 @@ class NarratorStartResult:
     location_description: str | None
     narration: str
     locations: tuple[NarratorStartLocation, ...] = ()
+    regions: tuple[NarratorStartRegion, ...] = ()
 
     @property
     def start_location_name(self) -> str:
@@ -80,8 +101,10 @@ _START_DIRECTIONS = {
 }
 _START_RANGE_BANDS = {"short", "mid", "long"}
 _MAX_START_LOCATIONS = 16
+_MAX_START_REGIONS = 16
 _MIN_MAIN_STREET_CHILDREN = 10
 _START_MAP_FORMS = {"building", "street", "district", "city", "mine", "forest", "water", "landmark"}
+_START_REGION_ID_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 _DEFAULT_NARRATOR_TIMEOUT_SECONDS = 120.0
 _DEFAULT_START_NARRATOR_TIMEOUT_SECONDS = 240.0
@@ -323,9 +346,18 @@ def build_world_start_prompt(
         "parent_name (null unless that parent is also listed), link_to_start, "
         "geography_role (local, boundary, or route), direction (a cardinal or "
         "intercardinal direction, or null), range_band (short, mid, long, or "
-        "null), and map_form (building, street, district, city, mine, forest, "
-        "water, landmark, or null); "
-        "object. The top-level legacy field is location_description only when locations "
+        "null), map_form (building, street, district, city, mine, forest, "
+        "water, landmark, or null), and region_id (the id of the world region "
+        "framework node this location belongs to, e.g. a city or kingdom "
+        "region from the supplied World state, or null when no region "
+        "applies); the optional top-level regions array declares new region "
+        "framework nodes the start needs (for example a city region such as "
+        "virellea-elaris beneath the existing virellea kingdom), each with "
+        "region_id, parent_region_id (an existing region or one declared in "
+        "this array, or null), level, title, description, and attributes; "
+        "declare a missing city/province region rather than referencing a "
+        "region that does not exist; "
+        "The top-level legacy field is location_description only when locations "
         "is omitted. The top-level locations array and narration are required. "
         "link_to_start explicitly requests a local physical movement link. The "
         "location belongs to this world, not to the reusable character definition. "
@@ -429,6 +461,7 @@ def _parse_start_result(output: str) -> NarratorStartResult:
     allowed = {
         "start_location_name",
         "locations",
+        "regions",
         "location_name",
         "location_description",
         "narration",
@@ -530,6 +563,7 @@ def _parse_start_result(output: str) -> NarratorStartResult:
                     "direction",
                     "range_band",
                     "map_form",
+                    "region_id",
                 }
             ):
                 raise NarratorError(
@@ -544,6 +578,7 @@ def _parse_start_result(output: str) -> NarratorStartResult:
             direction = raw_location.get("direction")
             range_band = raw_location.get("range_band")
             map_form = raw_location.get("map_form")
+            region_id = raw_location.get("region_id")
             if geography_role in {"landmark", "water"}:
                 geography_role = "local"
             if not isinstance(name, str) or not name.strip() or len(name.strip()) > 200:
@@ -589,6 +624,15 @@ def _parse_start_result(output: str) -> NarratorStartResult:
                     "narration agent start map_form is invalid",
                     category="invalid_start_response",
                 )
+            if region_id is not None:
+                if not isinstance(region_id, str) or not _START_REGION_ID_PATTERN.fullmatch(
+                    region_id.strip()
+                ):
+                    raise NarratorError(
+                        "narration agent start region_id must be a lowercase kebab-case id",
+                        category="invalid_start_response",
+                    )
+                region_id = region_id.strip()
             if link_to_start is None:
                 link_to_start = False
             elif isinstance(link_to_start, str):
@@ -616,6 +660,7 @@ def _parse_start_result(output: str) -> NarratorStartResult:
                     direction=direction,
                     range_band=range_band,
                     map_form=map_form,
+                    region_id=region_id,
                 )
             )
         locations = tuple(locations_list)
@@ -640,6 +685,7 @@ def _parse_start_result(output: str) -> NarratorStartResult:
                 direction=location.direction,
                 range_band=location.range_band,
                 map_form=location.map_form,
+                region_id=location.region_id,
             )
             for location in locations
         )
@@ -693,7 +739,140 @@ def _parse_start_result(output: str) -> NarratorStartResult:
         ),
         narration.strip(),
         locations,
+        _parse_start_regions(payload),
     )
+
+
+def _parse_start_regions(payload: dict[str, Any]) -> tuple[NarratorStartRegion, ...]:
+    """Parse and validate the optional ``regions`` start declaration.
+
+    Regions are knowledge nodes the narrator may declare at start so the world
+    records the player's location in the region framework from the first turn
+    (for example declaring ``virellea-elaris`` beneath the existing ``virellea``
+    kingdom). Existence of parents against the world's own framework is checked
+    later by the persistence layer; this function only validates structure,
+    bounds, and internal consistency (unique ids, no self-parent, no cycles).
+    """
+    raw_regions = payload.get("regions")
+    if raw_regions is None:
+        return ()
+    if not isinstance(raw_regions, list) or not 1 <= len(raw_regions) <= _MAX_START_REGIONS:
+        raise NarratorError(
+            "narration agent start regions must contain between 1 and 16 items",
+            category="invalid_start_response",
+        )
+    parsed: list[NarratorStartRegion] = []
+    seen_ids: set[str] = set()
+    for raw_region in raw_regions:
+        if (
+            not isinstance(raw_region, dict)
+            or set(raw_region)
+            - {"region_id", "parent_region_id", "level", "title", "description", "attributes"}
+        ):
+            raise NarratorError(
+                "narration agent start region has invalid fields",
+                category="invalid_start_response",
+            )
+        region_id = raw_region.get("region_id")
+        parent_region_id = raw_region.get("parent_region_id")
+        level = raw_region.get("level")
+        title = raw_region.get("title")
+        description = raw_region.get("description")
+        attributes = raw_region.get("attributes")
+        if not isinstance(region_id, str) or not _START_REGION_ID_PATTERN.fullmatch(
+            region_id.strip()
+        ):
+            raise NarratorError(
+                "narration agent start region_id must be a lowercase kebab-case id",
+                category="invalid_start_response",
+            )
+        region_id = region_id.strip()
+        if region_id in seen_ids:
+            raise NarratorError(
+                "narration agent start contains duplicate region ids",
+                category="invalid_start_response",
+            )
+        seen_ids.add(region_id)
+        if parent_region_id is not None:
+            if not isinstance(parent_region_id, str) or not _START_REGION_ID_PATTERN.fullmatch(
+                parent_region_id.strip()
+            ):
+                raise NarratorError(
+                    "narration agent start parent_region_id must be a lowercase "
+                    "kebab-case id or null",
+                    category="invalid_start_response",
+                )
+            parent_region_id = parent_region_id.strip()
+            if parent_region_id == region_id:
+                raise NarratorError(
+                    "narration agent start region cannot contain itself",
+                    category="invalid_start_response",
+                )
+        if not isinstance(level, str) or not level.strip() or len(level.strip()) > 50:
+            raise NarratorError(
+                "narration agent start region level is invalid",
+                category="invalid_start_response",
+            )
+        if not isinstance(title, str) or not title.strip() or len(title.strip()) > 200:
+            raise NarratorError(
+                "narration agent start region title is invalid",
+                category="invalid_start_response",
+            )
+        if description is not None and (
+            not isinstance(description, str) or len(description.strip()) > 2000
+        ):
+            raise NarratorError(
+                "narration agent start region description is invalid",
+                category="invalid_start_response",
+            )
+        if attributes is None:
+            attributes = {}
+        if not isinstance(attributes, dict):
+            raise NarratorError(
+                "narration agent start region attributes must be an object or null",
+                category="invalid_start_response",
+            )
+        try:
+            attributes_json = json.dumps(attributes, sort_keys=True, separators=(",", ":"))
+        except (TypeError, ValueError) as error:
+            raise NarratorError(
+                "narration agent start region attributes must be JSON-serializable",
+                category="invalid_start_response",
+            ) from error
+        if len(attributes_json) > 10000:
+            raise NarratorError(
+                "narration agent start region attributes are too large",
+                category="invalid_start_response",
+            )
+        parsed.append(
+            NarratorStartRegion(
+                region_id=region_id,
+                parent_region_id=parent_region_id,
+                level=level.strip(),
+                title=title.strip(),
+                description=description.strip() if isinstance(description, str) else None,
+                attributes=attributes,
+            )
+        )
+    # Reject containment cycles entirely within the declared set.
+    for region in parsed:
+        seen: set[str] = set()
+        current = region.region_id
+        while current is not None:
+            if current in seen:
+                raise NarratorError(
+                    "narration agent start regions contain a containment cycle",
+                    category="invalid_start_response",
+                )
+            seen.add(current)
+            parent = next(
+                (entry.parent_region_id for entry in parsed if entry.region_id == current),
+                None,
+            )
+            if parent is None:
+                break
+            current = parent
+    return tuple(parsed)
 
 
 def clean_narration(output: str) -> str:

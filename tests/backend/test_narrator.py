@@ -237,6 +237,7 @@ def test_build_world_start_prompt_requires_bounded_contextual_layout() -> None:
     assert "at least one sibling location" in prompt
     assert "map_form" in prompt
     assert "mine" in prompt
+    assert "region_id" in prompt
     assert "3 to 16 locations" in prompt
     assert "at least 10 direct child locations" in prompt
 
@@ -268,6 +269,123 @@ def test_hermes_narrator_start_parses_allowlisted_map_form(
         "building",
         "forest",
     ]
+
+
+def test_hermes_narrator_start_parses_region_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            '{"start_location_name":"Elaris Street","locations":['
+            '{"name":"Elaris Street","description":"Street.","parent_name":null,'
+            '"link_to_start":false,"region_id":"virellea-elaris"},'
+            '{"name":"Guild","description":"Guild.","parent_name":"Elaris Street",'
+            '"link_to_start":false},'
+            '{"name":"North Road","description":"Road.","parent_name":null,'
+            '"link_to_start":false,"region_id":"virellea"}],'
+            '"narration":"You arrive."}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    result = HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+    assert [location.region_id for location in result.locations] == [
+        "virellea-elaris",
+        None,
+        "virellea",
+    ]
+
+
+def test_hermes_narrator_start_rejects_invalid_region_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            '{"start_location_name":"Elaris Street","locations":['
+            '{"name":"Elaris Street","description":"Street.","parent_name":null,'
+            '"link_to_start":false,"region_id":"Not A Region!"},'
+            '{"name":"Guild","description":"Guild.","parent_name":"Elaris Street",'
+            '"link_to_start":false},'
+            '{"name":"North Road","description":"Road.","parent_name":null,'
+            '"link_to_start":false}],'
+            '"narration":"You arrive."}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    with pytest.raises(NarratorError, match="region_id"):
+        HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+
+
+def test_hermes_narrator_start_parses_declared_regions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            '{"start_location_name":"Elaris Street","locations":['
+            '{"name":"Elaris Street","description":"Street.","parent_name":null,'
+            '"link_to_start":false,"region_id":"virellea-elaris"},'
+            '{"name":"Guild","description":"Guild.","parent_name":"Elaris Street",'
+            '"link_to_start":false},'
+            '{"name":"North Road","description":"Road.","parent_name":null,'
+            '"link_to_start":false}],'
+            '"regions":[{"region_id":"virellea-elaris","parent_region_id":"virellea",'
+            '"level":"city","title":"Elaris","description":"Capital.",'
+            '"attributes":{"biomes":["Grassy Plains"]}}],'
+            '"narration":"You arrive."}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    result = HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+    assert len(result.regions) == 1
+    region = result.regions[0]
+    assert region.region_id == "virellea-elaris"
+    assert region.parent_region_id == "virellea"
+    assert region.level == "city"
+    assert region.title == "Elaris"
+    assert region.attributes == {"biomes": ["Grassy Plains"]}
+
+
+def test_hermes_narrator_start_rejects_declared_region_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            '{"start_location_name":"Elaris Street","locations":['
+            '{"name":"Elaris Street","description":"Street.","parent_name":null,'
+            '"link_to_start":false},'
+            '{"name":"Guild","description":"Guild.","parent_name":"Elaris Street",'
+            '"link_to_start":false},'
+            '{"name":"North Road","description":"Road.","parent_name":null,'
+            '"link_to_start":false}],'
+            '"regions":[{"region_id":"a","parent_region_id":"b","level":"city",'
+            '"title":"A","description":"A."},'
+            '{"region_id":"b","parent_region_id":"a","level":"city",'
+            '"title":"B","description":"B."}],'
+            '"narration":"You arrive."}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    with pytest.raises(NarratorError, match="cycle"):
+        HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
 
 
 def test_hermes_narrator_start_accepts_json_code_fence(
