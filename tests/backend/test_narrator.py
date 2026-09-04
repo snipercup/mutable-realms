@@ -300,6 +300,58 @@ def test_hermes_narrator_start_parses_region_id(
     ]
 
 
+def test_hermes_narrator_start_normalizes_compass_abbreviations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            '{"start_location_name":"Elaris Street","locations":['
+            '{"name":"Elaris Street","description":"Street.","parent_name":null,'
+            '"link_to_start":false},'
+            '{"name":"Guild","description":"Guild.","parent_name":"Elaris Street",'
+            '"link_to_start":true,"direction":"N"},'
+            '{"name":"Road","description":"Road.","parent_name":null,'
+            '"link_to_start":false,"direction":"SW"}],'
+            '"narration":"You arrive."}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    result = HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+    assert [location.direction for location in result.locations] == [None, "north", "southwest"]
+
+
+def test_hermes_narrator_start_defaults_omitted_region_parent_to_null(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Completed:
+        returncode = 0
+        stdout = (
+            '{"start_location_name":"Elaris Street","locations":['
+            '{"name":"Elaris Street","description":"Street.","parent_name":null,'
+            '"link_to_start":false,"region_id":"virellea-elaris"},'
+            '{"name":"Guild","description":"Guild.","parent_name":"Elaris Street",'
+            '"link_to_start":false},'
+            '{"name":"North Road","description":"Road.","parent_name":null,'
+            '"link_to_start":false}],'
+            '"regions":[{"region_id":"virellea-elaris","level":"city",'
+            '"title":"Elaris","description":"Capital.","attributes":{}}],'
+            '"narration":"You arrive."}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        "backend.app.narrator.subprocess.run",
+        lambda *args, **kwargs: _Completed(),
+    )
+    result = HermesNarrator().start("world-a", {"id": "world-a"}, {"id": "fate"})
+    assert result.regions[0].parent_region_id is None
+
+
 def test_hermes_narrator_start_rejects_invalid_region_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

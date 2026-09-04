@@ -99,6 +99,16 @@ _START_DIRECTIONS = {
     "west",
     "northwest",
 }
+_START_DIRECTION_ALIASES = {
+    "n": "north",
+    "ne": "northeast",
+    "e": "east",
+    "se": "southeast",
+    "s": "south",
+    "sw": "southwest",
+    "w": "west",
+    "nw": "northwest",
+}
 _START_RANGE_BANDS = {"short", "mid", "long"}
 _MAX_START_LOCATIONS = 16
 _MAX_START_REGIONS = 16
@@ -344,9 +354,11 @@ def build_world_start_prompt(
         "start_location_name (non-empty string), locations (array of 3 to 16 "
         "objects with exactly these fields: name, description (the location description), "
         "parent_name (null unless that parent is also listed), link_to_start, "
-        "geography_role (local, boundary, or route), direction (a cardinal or "
-        "intercardinal direction, or null), range_band (short, mid, long, or "
-        "null), map_form (building, street, district, city, mine, forest, "
+        "geography_role (local, boundary, or route), direction (use lowercase "
+        "full cardinal/intercardinal names north, northeast, east, southeast, "
+        "south, southwest, west, northwest, or null; common abbreviations such "
+        "as N/NE/E/SE/S/SW/W/NW are also accepted), range_band (short, mid, "
+        "long, or null), map_form (building, street, district, city, mine, forest, "
         "water, landmark, or null), and region_id (the id of the world region "
         "framework node this location belongs to, e.g. a city or kingdom "
         "region from the supplied World state, or null when no region "
@@ -609,11 +621,19 @@ def _parse_start_result(output: str) -> NarratorStartResult:
                     "narration agent start geography_role is invalid",
                     category="invalid_start_response",
                 )
-            if direction is not None and direction not in _START_DIRECTIONS:
-                raise NarratorError(
-                    "narration agent start direction is invalid",
-                    category="invalid_start_response",
-                )
+            if direction is not None:
+                if not isinstance(direction, str):
+                    raise NarratorError(
+                        "narration agent start direction is invalid",
+                        category="invalid_start_response",
+                    )
+                direction = direction.strip().casefold()
+                direction = _START_DIRECTION_ALIASES.get(direction, direction)
+                if direction not in _START_DIRECTIONS:
+                    raise NarratorError(
+                        "narration agent start direction is invalid",
+                        category="invalid_start_response",
+                    )
             if range_band is not None and range_band not in _START_RANGE_BANDS:
                 raise NarratorError(
                     "narration agent start range_band is invalid",
