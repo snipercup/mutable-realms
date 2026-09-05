@@ -978,6 +978,53 @@ function mapShape(location: WorldMapLocation, isSibling: boolean): SVGElement {
   return svgElement("circle", { ...attributes, r: size });
 }
 
+function appendRoadDecoration(svg: SVGElement): void {
+  const roadY = MAP_CENTER_Y;
+  const roadTop = roadY - 46;
+  const roadBottom = roadY + 46;
+  svg.append(
+    svgElement("path", {
+      d: `M 0 ${roadTop + 12} C 150 ${roadTop - 8}, 285 ${roadTop + 18}, ${MAP_CENTER_X} ${roadTop} S 650 ${roadTop - 18}, ${MAP_WIDTH} ${roadTop + 8} L ${MAP_WIDTH} ${roadBottom - 8} S 650 ${roadBottom + 18}, ${MAP_CENTER_X} ${roadBottom} S 150 ${roadBottom + 8}, 0 ${roadBottom - 12} Z`,
+      class: "map-road-surface",
+      "data-map-layer": "road-surface",
+    }),
+    svgElement("path", {
+      d: `M 0 ${roadY + 2} C 150 ${roadY - 18}, 285 ${roadY + 8}, ${MAP_CENTER_X} ${roadY - 10} S 650 ${roadY - 28}, ${MAP_WIDTH} ${roadY - 2}`,
+      class: "map-road-centerline",
+      "data-map-layer": "road-centerline",
+    }),
+  );
+  const treeXs = [54, 126, 214, 586, 674, 746];
+  for (const [index, x] of treeXs.entries()) {
+    const y = index % 2 === 0 ? roadTop - 34 : roadBottom + 34;
+    const trunkY = y + 9;
+    svg.append(
+      svgElement("line", {
+        x1: x,
+        y1: trunkY - 2,
+        x2: x,
+        y2: trunkY + 13,
+        class: "map-road-tree-trunk",
+        "data-map-layer": "road-decoration",
+      }),
+      svgElement("path", {
+        d: `M ${x} ${y - 18} L ${x + 13} ${y + 7} L ${x - 13} ${y + 7} Z`,
+        class: "map-road-tree",
+        "data-map-layer": "road-decoration",
+      }),
+    );
+  }
+  for (const [x, y] of [[315, roadTop - 22], [494, roadBottom + 22]] as const) {
+    svg.append(
+      svgElement("path", {
+        d: `M ${x - 15} ${y + 8} L ${x - 5} ${y - 8} L ${x + 8} ${y + 5} L ${x + 16} ${y - 4} L ${x + 20} ${y + 10} Z`,
+        class: "map-road-rock",
+        "data-map-layer": "road-decoration",
+      }),
+    );
+  }
+}
+
 function renderMap(state: WorldState): HTMLElement {
   const panel = element("section", "panel map-panel");
   const scopeName = state.map.scope_location?.name ?? state.world.name;
@@ -1024,6 +1071,8 @@ function renderMap(state: WorldState): HTMLElement {
   const siblings = ordered.filter((location) => location.is_neighbor);
   const isStreetScope = state.map.scope_location?.map_form === "street"
     || state.map.scope_location?.name.toLocaleLowerCase() === "main street";
+  const isRoadScope = state.map.scope_location?.kind === "route"
+    || state.map.scope_location?.name.toLocaleLowerCase().includes("road");
   const positions = state.map.scope_location === null
     ? orientedMapPositions(ordered)
     : new Map([
@@ -1078,6 +1127,7 @@ function renderMap(state: WorldState): HTMLElement {
         }),
       );
     }
+    if (isRoadScope) appendRoadDecoration(svg);
   }
 
   if (state.map.scope_location === null) {

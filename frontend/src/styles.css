@@ -133,6 +133,11 @@ h1, h2, h3, p { margin: 0; }
 .map-edge-strip-inner { fill: none; stroke: #405579; stroke-width: 1; opacity: .28; }
 .map-street-road { fill: #263449; stroke: #52657f; stroke-width: 1; }
 .map-street-road-marking { stroke: #d2b36a; stroke-width: 1; stroke-dasharray: 8 8; opacity: .8; }
+.map-road-surface { fill: #263449; stroke: #52657f; stroke-width: 1.5; }
+.map-road-centerline { fill: none; stroke: #d2b36a; stroke-width: 2; stroke-dasharray: 14 12; opacity: .85; }
+.map-road-tree { fill: #28513f; stroke: #6eaa72; stroke-width: 1.5; }
+.map-road-tree-trunk { stroke: #9a704d; stroke-width: 3; stroke-linecap: round; }
+.map-road-rock { fill: #59677b; stroke: #8491a3; stroke-width: 1; }
 .map-node-circle { fill: #1b2740; stroke: #5a6f94; stroke-width: 2; }
 .map-node-shape { fill: #1b2740; stroke: #5a6f94; stroke-width: 2; }
 .map-node-shape[data-map-form="street"] { fill: #253c5c; }
