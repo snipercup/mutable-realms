@@ -242,20 +242,58 @@ def list_recent_events(
             """,
             (world_id, limit),
         ).fetchall()
-    return [
-        {
-            "id": row["id"],
-            "world_id": row["world_id"],
-            "operation_id": row["operation_id"],
-            "event_type": row["event_type"],
-            "actor_entity_id": row["actor_entity_id"],
-            "summary": row["summary"],
-            "payload": json.loads(row["payload_json"]),
-            "world_revision": row["world_revision"],
-            "occurred_at": row["occurred_at"],
-        }
-        for row in rows
-    ]
+        events = []
+        for row in rows:
+            payload = json.loads(row["payload_json"])
+            summary = row["summary"]
+            if row["event_type"] == "entity_moved":
+                summary = _friendly_movement_summary(connection, summary, payload, world_id)
+            events.append(
+                {
+                    "id": row["id"],
+                    "world_id": row["world_id"],
+                    "operation_id": row["operation_id"],
+                    "event_type": row["event_type"],
+                    "actor_entity_id": row["actor_entity_id"],
+                    "summary": summary,
+                    "payload": payload,
+                    "world_revision": row["world_revision"],
+                    "occurred_at": row["occurred_at"],
+                }
+            )
+    return events
+
+
+def _friendly_movement_summary(
+    connection: sqlite3.Connection,
+    stored_summary: str,
+    payload: dict[str, Any],
+    world_id: str,
+) -> str:
+    """Return a name-based movement summary, including for legacy events."""
+    entity_id = payload.get("entity_id")
+    source_id = payload.get("source_location_id")
+    destination_id = payload.get("destination_location_id")
+    if not all(
+        isinstance(value, str) and value
+        for value in (entity_id, source_id, destination_id)
+    ):
+        return stored_summary
+    entity = connection.execute(
+        "SELECT name FROM entities WHERE world_id = ? AND id = ?",
+        (world_id, entity_id),
+    ).fetchone()
+    source = connection.execute(
+        "SELECT name FROM locations WHERE world_id = ? AND id = ?",
+        (world_id, source_id),
+    ).fetchone()
+    destination = connection.execute(
+        "SELECT name FROM locations WHERE world_id = ? AND id = ?",
+        (world_id, destination_id),
+    ).fetchone()
+    if entity is None or source is None or destination is None:
+        return stored_summary
+    return f"{entity['name']} moved from {source['name']} to {destination['name']}"
 
 
 def get_world_map(

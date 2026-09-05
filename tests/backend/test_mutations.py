@@ -16,6 +16,7 @@ from backend.world.mutations import (
     StaleWorldRevision,
     move_entity,
 )
+from backend.world.queries import list_recent_events
 from backend.world.validation import validate_worlds
 from tests.backend.general_world import GENERAL_WORLD_ID, seed_general_world
 
@@ -147,10 +148,21 @@ def test_move_entity_persists_placement_operation_and_event(tmp_path: Path) -> N
     assert tuple(event[:2]) == ("entity_moved", "player")
     assert json.loads(event["payload_json"]) == {
         "destination_location_id": "hall",
+        "destination_location_name": "Hall",
         "entity_id": "player",
+        "entity_name": "Player",
         "source_location_id": "ward",
+        "source_location_name": "Recovery Ward",
     }
     assert event["world_revision"] == 1
+
+    with connect_database(database_path) as connection:
+        connection.execute(
+            "UPDATE events SET summary = ? WHERE world_id = ? AND world_revision = 1",
+            ("player moved from ward to hall", WARD_WORLD_ID),
+        )
+    legacy_event = list_recent_events(database_path, WARD_WORLD_ID, limit=1)[0]
+    assert legacy_event["summary"] == "Player moved from Recovery Ward to Hall"
     assert validate_worlds(database_path) == []
 
 

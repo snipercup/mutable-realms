@@ -103,7 +103,7 @@ def move_entity(
 
             entity = connection.execute(
                 """
-                SELECT e.kind, c.entity_id AS character_id, c.disposition,
+                SELECT e.name, e.kind, c.entity_id AS character_id, c.disposition,
                        el.location_id
                 FROM entities e
                 LEFT JOIN characters c ON c.entity_id = e.id
@@ -126,11 +126,18 @@ def move_entity(
                 raise MutationConflict(f"entity is already at location: {destination_location_id}")
 
             destination = connection.execute(
-                "SELECT 1 FROM locations WHERE id = ? AND world_id = ?",
+                "SELECT name FROM locations WHERE id = ? AND world_id = ?",
                 (destination_location_id, world_id),
             ).fetchone()
             if destination is None:
                 raise MutationNotFound(f"location not found: {destination_location_id}")
+
+            source = connection.execute(
+                "SELECT name FROM locations WHERE id = ? AND world_id = ?",
+                (entity["location_id"], world_id),
+            ).fetchone()
+            if source is None:
+                raise MutationNotFound(f"location not found: {entity['location_id']}")
 
             linked = connection.execute(
                 """SELECT 1 FROM location_links
@@ -197,8 +204,11 @@ def move_entity(
             payload_json = json.dumps(
                 {
                     "destination_location_id": destination_location_id,
+                    "destination_location_name": destination["name"],
                     "entity_id": entity_id,
+                    "entity_name": entity["name"],
                     "source_location_id": entity["location_id"],
+                    "source_location_name": source["name"],
                 },
                 sort_keys=True,
                 separators=(",", ":"),
@@ -216,7 +226,7 @@ def move_entity(
                     operation_id,
                     _MOVE_EVENT_TYPE,
                     actor_entity_id,
-                    f"{entity_id} moved from {entity['location_id']} to {destination_location_id}",
+                    f"{entity['name']} moved from {source['name']} to {destination['name']}",
                     payload_json,
                     next_revision,
                 ),
