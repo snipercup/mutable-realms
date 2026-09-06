@@ -141,6 +141,7 @@ Quests and other narrative goals are not tracked as world state in this design. 
 Two derived-but-persisted knowledge stores help the narrator stay consistent without flooding context:
 
 - **Location memories** (`world_record_location_memory`) are condensed narrative facts about a place ("Fate fixed a cart at the farmstead"). Keep quantified facts and mechanical invariants in `location_properties` (via `world_update_location`); keep story-beats in location memories. Use a stable `memory_key` per recurring fact so repeated events combine into an occurrence count. Only the player's current location's memories are loaded into context (1000-token render budget); when the context notes older memories were dropped, summarize them with `world_consolidate_location_memories`.
+- **AI instructions** (`ai_instructions`) are the highest-priority scenario/world writing and behavior guidance, above the author's note, plot essentials, and opening scene. Use them for readability, format, and narrator behavior rather than setting facts.
 - **The region framework** (`world_context.region_framework`) is authoritative world knowledge: kingdoms → provinces → cities (or whatever levels the scenario uses), each with descriptions, biomes, species, and declared connections. Use it to ground new locations: bind a new place to its region with `region_id` on `world_expand_location`, and only create routes between regions the framework declares adjacent. Never narrate crossing a border you haven't linked or routed.
 
 ## Deterministic implementation seam

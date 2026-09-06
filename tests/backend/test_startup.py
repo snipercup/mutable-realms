@@ -32,7 +32,7 @@ def test_startup_migrates_database_and_readiness_checks_schema(tmp_path: Path) -
         ).fetchall()
         assert [row[0] for row in versions] == [
             1, 2, 3, 4, 5, 6, 7, 8,
-            9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+            9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
         ]
 
 

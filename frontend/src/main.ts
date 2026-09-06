@@ -322,6 +322,11 @@ root.innerHTML = `
         <div class="scenario-elements">
           <span class="eyebrow">Story elements</span>
           <label class="manage-field">
+            AI instructions
+            <textarea class="manage-textarea" id="scenario-element-ai_instructions"></textarea>
+            <button class="manage-button" data-element-save="ai_instructions" type="button">Save instructions</button>
+          </label>
+          <label class="manage-field">
             Author's note
             <textarea class="manage-textarea" id="scenario-element-author_note"></textarea>
             <button class="manage-button" data-element-save="author_note" type="button">Save note</button>
@@ -419,6 +424,11 @@ root.innerHTML = `
         <button class="manage-button" id="world-edit-save" type="button">Save name &amp; description</button>
         <div class="scenario-elements">
           <span class="eyebrow">Story elements</span>
+          <label class="manage-field">
+            AI instructions
+            <textarea class="manage-textarea" id="world-element-ai_instructions"></textarea>
+            <button class="manage-button" data-world-element-save="ai_instructions" type="button">Save instructions</button>
+          </label>
           <label class="manage-field">
             Author's note
             <textarea class="manage-textarea" id="world-element-author_note"></textarea>
@@ -1770,7 +1780,7 @@ async function openScenarioEditor(scenarioId: string): Promise<void> {
   scenarioEditorName.textContent = scenarioId;
   scenarioEditTitle.value = "";
   scenarioEditDescription.value = "";
-  for (const elementType of ["author_note", "plot_essentials", "opening_scene"]) {
+  for (const elementType of ["ai_instructions", "author_note", "plot_essentials", "opening_scene"]) {
     elementTextarea(elementType).value = "";
   }
   setError(null);
@@ -1784,7 +1794,7 @@ async function loadScenarioDetail(scenarioId: string): Promise<void> {
     scenarioEditTitle.value = detail.title;
     scenarioEditDescription.value = detail.description ?? "";
     const byType = new Map(detail.elements.map((element) => [element.element_type, element.content]));
-    for (const elementType of ["author_note", "plot_essentials", "opening_scene"]) {
+    for (const elementType of ["ai_instructions", "author_note", "plot_essentials", "opening_scene"]) {
       elementTextarea(elementType).value = byType.get(elementType) ?? "";
     }
     scenarioRegions = detail.regions;
@@ -2078,7 +2088,7 @@ async function openWorldEditor(worldId: string): Promise<void> {
   worldEditorRevision.textContent = "";
   worldEditName.value = "";
   worldEditDescription.value = "";
-  for (const elementType of ["author_note", "plot_essentials", "opening_scene"]) {
+  for (const elementType of ["ai_instructions", "author_note", "plot_essentials", "opening_scene"]) {
     worldElementTextarea(elementType).value = "";
   }
   setError(null);
@@ -2094,7 +2104,7 @@ async function loadWorldDetail(worldId: string): Promise<void> {
     worldEditName.value = detail.name;
     worldEditDescription.value = detail.description ?? "";
     const byType = new Map(detail.elements.map((element) => [element.element_type, element.content]));
-    for (const elementType of ["author_note", "plot_essentials", "opening_scene"]) {
+    for (const elementType of ["ai_instructions", "author_note", "plot_essentials", "opening_scene"]) {
       worldElementTextarea(elementType).value = byType.get(elementType) ?? "";
     }
     renderWorldRegions(detail);

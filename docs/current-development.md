@@ -14,13 +14,13 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 **Verification:** `332` backend tests pass (8 new: parser parses declared regions, parser rejects region cycle, instancing declares+binds a missing city region, instancing rejects a declared region with an unknown parent, parser normalizes compass abbreviations, parser defaults an omitted optional region parent, plus the prior parser/instancing region_id tests); `npm run lint` passes Ruff + TypeScript; `npm run frontend-build` passes; `git diff --check` passes. Live verification on a copy of the live DB (temp server): fresh world instanced from `world-of-aerthalon` (7 kingdoms, no cities) → start layout declaring `virellea-elaris` under `virellea` and binding Main Street to it → **succeeds**, region row created (city level, parent virellea) and `world_regions.location_id` bound to Main Street; `build_world_context` resolves `Elaris (city) → Virellea (kingdom)` from the first turn. Captured production-like response `aerthalon_start.json` that previously failed now parses after direction normalization. `docs/narration-agent-contract.md`, `docs/interfaces-and-tools.md`, and this tracker updated.
 
-### Road-scope map decoration — in progress
+### Dedicated scenario AI instructions — in progress
 
-**Goal:** when the current scoped location is a road or route with no child locations, keep the map useful and legible by rendering simple derived scenery: a road surface and center line with small trees and rocks. This is frontend-only presentation; it must not create locations, links, events, revisions, or inferred geography.
+**Goal:** add an optional `ai_instructions` story element to scenarios and copy it into each instanced world. The narration prompt presents it before the author's note, plot essentials, and opening scene; the current authoritative world context remains the source of truth for current facts.
 
-**Changes:** `appendRoadDecoration()` in `frontend/src/main.ts` draws bounded SVG paths and shapes when the authoritative scope metadata identifies `kind: "route"` (with a narrow legacy name fallback for names containing `road`). Styles live in `frontend/src/styles.css`; empty road scopes remain empty in the authoritative location/map data.
+**Changes:** migration `0022_ai_instructions_elements` expands both element tables compatibly; scenario/world services accept the new type; instancing copies it; Manage editors expose it; narration prompt renders directives in priority order; SOUL and contract docs define the precedence.
 
-**Verification:** frontend build/lint and full backend suite pass. Temporary browser verification should assert the scoped King’s Road map contains `data-map-layer="road-surface"`, `road-centerline`, and six `road-decoration` tree elements plus rocks, while SQLite revision, locations, containment, and links remain unchanged.
+**Verification:** targeted and full backend tests, migration preservation/idempotency, frontend typecheck/build, lint, diff check, and prompt-order assertions.
 
 ## Recently completed
 

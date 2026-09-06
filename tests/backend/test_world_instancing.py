@@ -48,7 +48,7 @@ def _scenario(database_path: Path, scenario_id: str = "aerthalon") -> None:
         description="A vast ancient fantasy world.",
     )
     for index, element_type in enumerate(
-        ("author_note", "plot_essentials", "opening_scene")
+        ("ai_instructions", "author_note", "plot_essentials", "opening_scene")
     ):
         set_scenario_element(
             database_path,
@@ -158,7 +158,7 @@ def test_instancing_copies_title_description_and_elements(tmp_path: Path) -> Non
         "world_id": "aerthalon-campaign",
         "world_revision": 1,
         "source_scenario_id": "aerthalon",
-        "copied_elements": ["author_note", "opening_scene", "plot_essentials"],
+        "copied_elements": ["ai_instructions", "author_note", "opening_scene", "plot_essentials"],
         "copied_regions": [],
     }
     world = _world_row(database_path, "aerthalon-campaign")
@@ -168,6 +168,7 @@ def test_instancing_copies_title_description_and_elements(tmp_path: Path) -> Non
     assert world["source_scenario_id"] == "aerthalon"
     assert world["revision"] == 1
     assert _world_elements(database_path, "aerthalon-campaign") == [
+        {"element_type": "ai_instructions", "content": "ai_instructions content."},
         {"element_type": "author_note", "content": "author_note content."},
         {"element_type": "opening_scene", "content": "opening_scene content."},
         {"element_type": "plot_essentials", "content": "plot_essentials content."},
@@ -311,7 +312,7 @@ def test_deleting_scenario_keeps_instanced_world(tmp_path: Path) -> None:
     assert world is not None
     assert world["name"] == "Aerthalon"
     assert world["source_scenario_id"] is None
-    assert len(_world_elements(database_path, "aerthalon-campaign")) == 3
+    assert len(_world_elements(database_path, "aerthalon-campaign")) == 4
     assert validate_worlds(database_path) == []
 
 
@@ -331,6 +332,7 @@ def test_context_includes_world_metadata_and_elements(tmp_path: Path) -> None:
     assert context.world.source_scenario_id == "aerthalon"
     assert context.world.revision == 1
     assert [element["element_type"] for element in context.world_elements] == [
+        "ai_instructions",
         "author_note",
         "opening_scene",
         "plot_essentials",
@@ -471,7 +473,7 @@ def test_read_world_returns_metadata_and_elements(tmp_path: Path) -> None:
     assert detail["source_scenario_id"] == "aerthalon"
     assert detail["revision"] == 1
     element_types = [element["element_type"] for element in detail["elements"]]
-    assert element_types == ["author_note", "opening_scene", "plot_essentials"]
+    assert element_types == ["ai_instructions", "author_note", "opening_scene", "plot_essentials"]
     with pytest.raises(WorldQueryError):
         read_world(database_path, "missing")
 
@@ -485,8 +487,8 @@ def test_world_api_detail_endpoint(tmp_path: Path) -> None:
     assert status == 200
     assert body["name"] == "Aerthalon"
     assert body["source_scenario_id"] == "aerthalon"
-    assert len(body["elements"]) == 3
-    assert body["elements"][0]["element_type"] == "author_note"
+    assert len(body["elements"]) == 4
+    assert body["elements"][0]["element_type"] == "ai_instructions"
 
     status, _ = asyncio.run(_request(app, "GET", "/api/worlds/missing"))
     assert status == 404

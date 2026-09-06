@@ -191,7 +191,7 @@ def test_set_scenario_element_upserts_all_three_types(tmp_path: Path) -> None:
     _create(database_path)
 
     for index, element_type in enumerate(
-        ("author_note", "plot_essentials", "opening_scene")
+        ("ai_instructions", "author_note", "plot_essentials", "opening_scene")
     ):
         set_scenario_element(
             database_path,
@@ -203,20 +203,21 @@ def test_set_scenario_element_upserts_all_three_types(tmp_path: Path) -> None:
 
     scenario = read_scenario(database_path, "aerthalon")
     assert [element["element_type"] for element in scenario["elements"]] == [
+        "ai_instructions",
         "author_note",
         "opening_scene",
         "plot_essentials",
     ]
-    assert _element_count(database_path, "aerthalon") == 3
+    assert _element_count(database_path, "aerthalon") == 4
 
     set_scenario_element(
         database_path,
         scenario_id="aerthalon",
-        operation_id="scenario-element-4",
+        operation_id="scenario-element-5",
         element_type="author_note",
         content="Updated author note.",
     )
-    assert _element_count(database_path, "aerthalon") == 3
+    assert _element_count(database_path, "aerthalon") == 4
     scenario = read_scenario(database_path, "aerthalon")
     author_note = next(
         element for element in scenario["elements"] if element["element_type"] == "author_note"

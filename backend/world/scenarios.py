@@ -22,7 +22,7 @@ from typing import Any
 
 from backend.persistence.database import connect_database, connect_readonly_database
 
-SCENARIO_ELEMENT_TYPES = ("author_note", "plot_essentials", "opening_scene")
+SCENARIO_ELEMENT_TYPES = ("ai_instructions", "author_note", "plot_essentials", "opening_scene")
 _MAX_ELEMENT_LENGTH = 20_000
 _MAX_REGION_ID_LENGTH = 100
 _MAX_REGION_LEVEL_LENGTH = 50

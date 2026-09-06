@@ -86,7 +86,7 @@ npm run update-scenario -- --scenario-id aerthalon --operation-id op-3 --title "
 npm run remove-scenario -- --scenario-id aerthalon --operation-id op-4
 ```
 
-Element types: `author_note`, `plot_essentials`, `opening_scene` (content 1–20000 characters). Scenario mutations are idempotent by caller operation ID; a removed scenario leaves no trace (its elements and operation records cascade).
+Element types: `ai_instructions`, `author_note`, `plot_essentials`, `opening_scene` (content 1–20000 characters). `ai_instructions` is optional and is presented to the narrator before the other story elements. Scenario mutations are idempotent by caller operation ID; a removed scenario leaves no trace (its elements and operation records cascade).
 
 ### World instancing
 

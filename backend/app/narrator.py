@@ -192,6 +192,28 @@ def _format_narration_history(entries: list[dict[str, Any]]) -> str:
     return "\n".join(reversed(lines))
 
 
+def _format_story_directives(context: dict[str, Any]) -> str:
+    """Render story instructions in descending instruction priority."""
+    elements = {
+        element.get("element_type"): element.get("content", "")
+        for element in context.get("world_elements", [])
+    }
+    sections = [
+        ("AI instructions (highest scenario priority)", elements.get("ai_instructions")),
+        ("Author's note", elements.get("author_note")),
+        ("Plot essentials", elements.get("plot_essentials")),
+        ("Opening scene", elements.get("opening_scene")),
+    ]
+    lines = [
+        "Scenario directives (follow in this order; current authoritative state "
+        "below wins on facts):"
+    ]
+    for title, content in sections:
+        if content:
+            lines.append(f"{title}:\n{content}")
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
 def _format_context_block(context: dict[str, Any]) -> str:
     """Render a compact, bounded context snapshot for the narration prompt.
 
@@ -259,11 +281,6 @@ def _format_context_block(context: dict[str, Any]) -> str:
                 )
                 bits.append(f"Connected by road to: {roads}")
             lines.append("  " + " — ".join(bits))
-    elements = context.get("world_elements", [])
-    if elements:
-        lines.append("Story elements:")
-        for element in elements:
-            lines.append(f"  {element.get('element_type', '?')}: {element.get('content', '')}")
     events = context.get("recent_events", [])
     if events:
         lines.append("Recent events:")
@@ -294,6 +311,9 @@ def build_narration_prompt(
         f"Player: {player_id}\n\n"
     )
     if context is not None:
+        directives = _format_story_directives(context)
+        if directives:
+            prompt += directives + "\n\n"
         prompt += "Current world state (authoritative snapshot for this turn):\n"
         prompt += _format_context_block(context)
         prompt += "\n\n"
@@ -377,6 +397,7 @@ def build_world_start_prompt(
         "or in front of the Adventurer's Guild in Elaris, use Main Street as "
         "the start location and place the Adventurer's Guild beneath it.\n\n"
         f"World id: {world_id}\n"
+        f"{_format_story_directives(world)}\n\n"
         f"World state: {json.dumps(world, sort_keys=True)}\n"
         f"Reusable character: {json.dumps(character, sort_keys=True)}\n\n"
         "The narration should welcome the player into the chosen location, in "

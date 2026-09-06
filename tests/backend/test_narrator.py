@@ -118,19 +118,28 @@ def test_build_narration_prompt_embeds_selected_world_context() -> None:
             "entities": [],
         },
         "world_elements": [
-            {
-                "element_type": "opening_scene",
-                "content": "You arrive at the gates of the guild city.",
-            },
+            {"element_type": "ai_instructions", "content": "Use simple words first."},
+            {"element_type": "opening_scene", "content":
+             "You arrive at the gates of the guild city."},
             {"element_type": "author_note", "content": "Fate is a wandering diplomat."},
+            {"element_type": "plot_essentials", "content": "The guild matters."},
         ],
         "recent_events": [],
     }
 
     prompt = build_narration_prompt("world-of-earthalon", "fate", "Enter the guild hall.", context)
 
-    assert "Current world state" in prompt
-    assert "world of Aerthalon" in prompt
+    assert "Use simple words first." in prompt
+    assert prompt.index("Use simple words first.") < prompt.index(
+        "Fate is a wandering diplomat."
+    )
+    assert prompt.index("Fate is a wandering diplomat.") < prompt.index("The guild matters.")
+    assert prompt.index("The guild matters.") < prompt.index(
+        "You arrive at the gates of the guild city."
+    )
+    assert prompt.index("You arrive at the gates of the guild city.") < prompt.index(
+        "Current world state"
+    )
     assert "A kingdom of sunlit plains and ancient groves." in prompt
     assert "You arrive at the gates of the guild city." in prompt
     assert "Fate is a wandering diplomat." in prompt
