@@ -37,19 +37,20 @@ def update_location(
     actor_entity_id: str,
     location_id: str,
     display_name: str | None = None,
+    description: str | None = None,
     property: str | None = None,
     value: int | None = None,
 ) -> dict[str, Any]:
     """Atomically rename a location and/or set one property value.
 
-    ``display_name`` changes the mutable display name behind the stable ID
-    (identity evolution such as The Slums → Riverside Quarter). ``property``
-    with ``value`` sets a bounded 0–100 property such as ``cleanliness``.
+    ``description`` changes the current state description while preserving the
+    original discovery description. ``property`` with ``value`` sets a bounded
+    0–100 property such as ``cleanliness``.
     """
     if not operation_id.strip():
         raise LocationStateConflict("operation ID must not be blank")
-    if display_name is None and property is None:
-        raise LocationStateConflict("display_name or property is required")
+    if display_name is None and description is None and property is None:
+        raise LocationStateConflict("display_name, description, or property is required")
     if display_name is not None:
         if not display_name.strip():
             raise LocationStateConflict("display name must not be blank")
@@ -57,6 +58,11 @@ def update_location(
             raise LocationStateConflict(
                 f"display name must be at most {_MAX_DISPLAY_NAME_LENGTH} characters"
             )
+    if description is not None:
+        if not description.strip():
+            raise LocationStateConflict("description must not be blank")
+        if len(description) > 5_000:
+            raise LocationStateConflict("description must be at most 5000 characters")
     if property is not None:
         if not property.strip():
             raise LocationStateConflict("property must not be blank")
@@ -74,6 +80,7 @@ def update_location(
         raise LocationStateConflict("property is required when a value is set")
     request = {
         "actor_entity_id": actor_entity_id,
+        "description": description,
         "display_name": display_name,
         "expected_revision": expected_revision,
         "location_id": location_id,
@@ -142,6 +149,7 @@ def update_location(
                 ),
             )
             payload = {
+                "description": description,
                 "display_name": display_name,
                 "location_id": location_id,
                 "property": property,
@@ -152,6 +160,8 @@ def update_location(
                 summary_parts.append(
                     f"location renamed to {display_name.strip()} from {location['name']}"
                 )
+            if description is not None:
+                summary_parts.append("location description updated")
             if property is not None:
                 summary_parts.append(f"{property} set to {value}")
             connection.execute(
@@ -174,6 +184,11 @@ def update_location(
                 connection.execute(
                     "UPDATE locations SET name = ? WHERE id = ? AND world_id = ?",
                     (display_name.strip(), location_id, world_id),
+                )
+            if description is not None:
+                connection.execute(
+                    "UPDATE locations SET current_description = ? WHERE id = ? AND world_id = ?",
+                    (description.strip(), location_id, world_id),
                 )
             if property is not None:
                 connection.execute(

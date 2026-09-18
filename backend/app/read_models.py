@@ -81,6 +81,7 @@ class LocationRead(StrictReadModel):
     world_id: str
     name: str
     description: str | None
+    current_description: str | None
     revision: int = Field(ge=0)
     entities: list[LocationEntityRead]
 
@@ -112,6 +113,7 @@ class WorldMapLocationRead(StrictReadModel):
     id: str
     name: str
     description: str | None
+    current_description: str | None = None
     kind: str | None = None
     is_map_scope: bool = False
     is_default_scope: bool = False

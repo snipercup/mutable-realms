@@ -71,6 +71,33 @@ def test_location_property_update_persists_ledger_event_and_readback(tmp_path: P
     assert validate_worlds(database_path) == []
 
 
+def test_location_description_update_preserves_original_and_updates_context(
+    tmp_path: Path,
+) -> None:
+    database_path = _ward_database(tmp_path)
+
+    result = update_location(
+        database_path,
+        world_id=WARD_WORLD_ID,
+        operation_id="location-description-1",
+        expected_revision=0,
+        actor_entity_id="player",
+        location_id="ward",
+        description="The ward is clean and quiet after the infestation is gone.",
+    )
+
+    assert result == {"already_applied": False, "world_revision": 1}
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            "SELECT description, current_description FROM locations WHERE id = 'ward'"
+        ).fetchone()
+    assert row["description"] == "A small six-bed ward used to verify persistent causality."
+    assert row["current_description"] == (
+        "The ward is clean and quiet after the infestation is gone."
+    )
+    assert validate_worlds(database_path) == []
+
+
 def test_location_rename_persists_identity_evolution(tmp_path: Path) -> None:
     database_path = _ward_database(tmp_path)
 

@@ -244,7 +244,7 @@ The MCP server (`python -m backend.world.mcp_server`) exposes controlled applica
 | `world_record_location_memory` | Atomically record one narrative memory about a location; the same normalized `memory_key` increments `occurrence_count` instead of duplicating. |
 | `world_consolidate_location_memories` | Merge several location memories into one condensed row with summed counts (the narrator's summarize step). |
 | `world_transfer_resource` | Grant from the world or transfer between characters. |
-| `world_update_location` | Rename a location and/or set one property value. |
+| `world_update_location` | Rename a location, update its current description after a meaningful lasting change, and/or set one property value. The original discovery `description` is preserved; the mutable `current_description` is returned in location reads and used by narrator context. |
 | `world_validate` | Whole-world administration diagnostic; **refused when a session binding is configured**. |
 
 Mutations are advertised only for worlds that support them (e.g. the ward operation only where ward state exists). Every tool accepts `world_id` (optional on reads, required on mutations — naming the world explicitly on a mutation is deliberate); when omitted on a read it falls back to the profile binding. Every mutation requires `world_id`, `operation_id` (fresh per call), and the observed `expected_revision`. The page's turn relay embeds the selected world's context into the prompt and instructs the agent to pass that `world_id` explicitly, so the agent operates on the world the player chose.

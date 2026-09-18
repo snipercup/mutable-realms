@@ -86,6 +86,7 @@ def test_generic_reads_do_not_include_ward_capability_state(tmp_path: Path) -> N
         "world_id": GENERAL_WORLD_ID,
         "name": "Ocean Farm",
         "description": "A farm on the ocean floor.",
+        "current_description": None,
         "revision": 0,
         "entities": [
             {

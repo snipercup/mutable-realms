@@ -44,6 +44,7 @@ def test_builds_scenario_neutral_context_for_current_location(tmp_path: Path) ->
             "world_id": GENERAL_WORLD_ID,
             "name": "Ocean Farm",
             "description": "A farm on the ocean floor.",
+            "current_description": None,
             "revision": 0,
             "entities": [
                 {

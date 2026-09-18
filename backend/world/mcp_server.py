@@ -399,6 +399,7 @@ def world_update_location(
     expected_revision: int,
     location_id: str,
     display_name: Annotated[str | None, Field(min_length=1, max_length=100)] = None,
+    description: Annotated[str | None, Field(min_length=1, max_length=5000)] = None,
     property: Annotated[str | None, Field(min_length=1, max_length=50)] = None,
     value: Annotated[int | None, Field(ge=0, le=100)] = None,
     actor_entity_id: str | None = None,
@@ -415,6 +416,7 @@ def world_update_location(
         actor_entity_id=actor,
         location_id=location_id,
         display_name=display_name,
+        description=description,
         property=property,
         value=value,
     )

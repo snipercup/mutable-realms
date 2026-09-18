@@ -396,7 +396,9 @@ def read_location_ancestors(
                 JOIN ancestors a ON a.id = lc.child_location_id
                 WHERE lc.world_id = ?
             )
-            SELECT l.id, l.name, l.description, m.kind,
+            SELECT l.id, l.name,
+                   COALESCE(l.current_description, l.description) AS description,
+                   m.kind,
                    m.map_form,
                    COALESCE(m.is_map_scope, 0) AS is_map_scope,
                    COALESCE(m.is_default_scope, 0) AS is_default_scope
@@ -442,7 +444,9 @@ def read_scoped_world_map(
             return None
 
         base_select = """
-            SELECT l.id, l.name, l.description, m.kind,
+            SELECT l.id, l.name,
+                   COALESCE(l.current_description, l.description) AS description,
+                   m.kind,
                    m.map_form,
                    COALESCE(m.is_map_scope, 0) AS is_map_scope,
                    COALESCE(m.is_default_scope, 0) AS is_default_scope,
@@ -757,7 +761,9 @@ def read_location_children(
         ).fetchone()[0]
         rows = connection.execute(
             """
-            SELECT l.id, l.name, l.description, m.kind,
+            SELECT l.id, l.name,
+                   COALESCE(l.current_description, l.description) AS description,
+                   m.kind,
                    m.map_form,
                    COALESCE(m.is_map_scope, 0) AS is_map_scope,
                    COALESCE(m.is_default_scope, 0) AS is_default_scope

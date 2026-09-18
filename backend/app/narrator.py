@@ -236,10 +236,13 @@ def _format_context_block(context: dict[str, Any]) -> str:
     if location:
         location_name = location.get("name", "?")
         location_description = location.get("description")
+        current_description = location.get("current_description")
         if location_description:
             lines.append(f"You are at: {location_name} — {location_description}")
         else:
             lines.append(f"You are at: {location_name}")
+        if current_description:
+            lines.append(f"Current state of this location: {current_description}")
         entities = location.get("entities", [])
         if entities:
             here = ", ".join(
@@ -336,6 +339,11 @@ def build_narration_prompt(
         f"world_id={world_id} and use the player entity id {player_id} for "
         "actor_entity_id when calling them — ignore any world binding in your "
         "profile configuration; this world is authoritative for this turn.\n\n"
+        "When a meaningful event permanently changes the general condition of the "
+        "current location, use world_update_location with description to update "
+        "its current state. Keep the original location description as history; "
+        "use location memories for specific incidents and consequences. Do not "
+        "rewrite the current description for temporary or unconfirmed events.\n\n"
         "Your entire reply must be the player-facing narration itself, written "
         "directly to the player in the second person and present tense. Do not "
         "include decision summaries, tool reports, status lines, or any text "

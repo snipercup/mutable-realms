@@ -63,6 +63,7 @@ class OperationDecision(BaseModel):
     source_entity_id: str | None = None
     location_id: str | None = None
     display_name: str | None = None
+    description: str | None = None
     property: str | None = None
     value: int | None = None
 
@@ -77,6 +78,7 @@ class OperationDecision(BaseModel):
         location_args = (
             self.location_id,
             self.display_name,
+            self.description,
             self.property,
             self.value is not None,
         )
@@ -181,10 +183,15 @@ class OperationDecision(BaseModel):
                 )
             if not self.location_id:
                 raise ValueError("world_update_location requires location_id")
-            if self.display_name is None and self.property is None:
-                raise ValueError("world_update_location requires display_name or property")
+            if self.display_name is None and self.description is None and self.property is None:
+                raise ValueError(
+                    "world_update_location requires location_id and display_name, "
+                    "description, or property"
+                )
             if self.display_name is not None and not self.display_name.strip():
                 raise ValueError("display name must not be blank")
+            if self.description is not None and not self.description.strip():
+                raise ValueError("description must not be blank")
             if self.property is not None and self.value is None:
                 raise ValueError("world_update_location requires value when property is set")
             if self.value is not None and self.property is None:
@@ -332,6 +339,7 @@ def _execute_operation(
             actor_entity_id=player_id,
             location_id=operation.location_id,
             display_name=operation.display_name,
+            description=operation.description,
             property=operation.property,
             value=operation.value,
         )

@@ -63,7 +63,7 @@ The supported mutation vocabulary is the set advertised by `world_status`, which
 - `world_treat_and_discharge_patient` for the ward's atomic treatment/discharge transition;
 - `world_record_social_interaction` for one bounded relationship change plus one concise event-linked memory;
 - `world_transfer_resource` for granting or transferring resource units (rewards, currency, items) between characters;
-- `world_update_location` for renaming a location and/or setting one bounded 0–100 property value (e.g. `cleanliness`).
+- `world_update_location` for renaming a location, updating its bounded current description after a meaningful lasting change, and/or setting one bounded 0–100 property value (e.g. `cleanliness`). The original `description` remains the discovery/history description; `current_description` is the mutable state description.
 
 Worlds with the relevant state also advertise:
 
@@ -138,9 +138,8 @@ Quests and other narrative goals are not tracked as world state in this design. 
 
 ## Location memories and the region framework
 
-Two derived-but-persisted knowledge stores help the narrator stay consistent without flooding context:
-
-- **Location memories** (`world_record_location_memory`) are condensed narrative facts about a place ("Fate fixed a cart at the farmstead"). Keep quantified facts and mechanical invariants in `location_properties` (via `world_update_location`); keep story-beats in location memories. Use a stable `memory_key` per recurring fact so repeated events combine into an occurrence count. Only the player's current location's memories are loaded into context (1000-token render budget); when the context notes older memories were dropped, summarize them with `world_consolidate_location_memories`.
+- **Location descriptions have two roles.** `description` is the original discovery/history text. `current_description` is optional mutable state used when a meaningful event permanently changes the location's general condition. Update it through `world_update_location`; do not rewrite it for temporary or unconfirmed events. Keep specific incidents and causal details in location memories.
+- **Location memories** (`world_record_location_memory`) are condensed narrative facts about a place ("Fate fixed a cart at the farmstead"). Keep quantified facts and mechanical invariants in `location_properties` (via `world_update_location`); keep story-beats and specific incidents in location memories. Use a stable `memory_key` per recurring fact so repeated events combine into an occurrence count. Only the player's current location's memories are loaded into context; when older memories are dropped, summarize them with `world_consolidate_location_memories`.
 - **AI instructions** (`ai_instructions`) are the highest-priority scenario/world writing and behavior guidance, above the author's note, plot essentials, and opening scene. Use them for readability, format, and narrator behavior rather than setting facts.
 - **The region framework** (`world_context.region_framework`) is authoritative world knowledge: kingdoms → provinces → cities (or whatever levels the scenario uses), each with descriptions, biomes, species, and declared connections. Use it to ground new locations: bind a new place to its region with `region_id` on `world_expand_location`, and only create routes between regions the framework declares adjacent. Never narrate crossing a border you haven't linked or routed.
 

@@ -153,7 +153,7 @@ def get_location(
             connection.execute("BEGIN")
         location = connection.execute(
             """
-            SELECT l.id, l.world_id, l.name, l.description, w.revision
+            SELECT l.id, l.world_id, l.name, l.description, l.current_description, w.revision
             FROM locations l
             JOIN worlds w ON w.id = l.world_id
             WHERE l.world_id = ? AND l.id = ?
@@ -312,7 +312,9 @@ def get_world_map(
         if world is None:
             raise WorldNotFound(f"World {world_id!r} was not found")
         location_rows = connection.execute(
-            "SELECT id, name, description FROM locations WHERE world_id = ? ORDER BY name, id",
+            "SELECT id, name, "
+            "COALESCE(current_description, description) AS description, "
+            "current_description FROM locations WHERE world_id = ? ORDER BY name, id",
             (world_id,),
         ).fetchall()
         link_rows = connection.execute(

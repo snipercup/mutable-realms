@@ -4,23 +4,15 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Bind world-start locations to the region framework (incl. declaring missing regions) — in progress
+### Dynamic location state after meaningful events — complete (uncommitted)
 
-**Problem:** a world's opening scene can place the player in a known region (e.g. "Elaris, Virellea"), but the start contract had no way to record that; `world_regions.location_id` stayed null for all start locations, so the narrator's region context was empty on turn one and the map showed siblings with no declared connection. Live failure: recreating Aerthalon produced `start location region not found: virellea-elaris` because the scenario framework has only the 7 kingdoms — no city region — and the start contract could not create one.
+**Goal:** preserve the original location discovery description while allowing the narrator to record a lasting change in the location's general condition after an authoritative event. The mutable `current_description` is updated through the existing revision-checked `world_update_location` operation and is used by narrator context and map/location reads.
 
-**Goal:** let the world start bind locations to their regions, and let the narrator **declare missing region nodes** (e.g. the `virellea-elaris` city under the existing `virellea` kingdom) in the same atomic start. Start-layout locations gain an optional `region_id`; a new optional top-level `regions` array declares new framework nodes (region_id, parent_region_id, level, title, description, attributes), validated for structure, parents, and cycles, then inserted parent-first so the self-referential FK holds. `instance_player_character` validates location region_ids against existing ∪ declared regions and binds `world_regions.location_id` in one revision (same semantics as expansion's `region_id`).
+**Changes:** migration `0023_dynamic_location_descriptions`; `world_update_location` accepts a bounded description; turn decisions, agent tools, and MCP expose it; context and map reads distinguish the original `description` from the effective current state; narrator guidance says to update only after meaningful, lasting, confirmed changes and to keep incident details in location memories.
 
-**Changes:** `NarratorStartRegion` dataclass + `NarratorStartResult.regions` + `_parse_start_regions` + prompt text + `_START_REGION_ID_PATTERN`/`_MAX_START_REGIONS` in `backend/app/narrator.py` (also cleaned a stray "object." artifact in the prompt); route passes `region_layout` in `backend/app/main.py`; normalization, parent/exists validation, parent-first insertion, and `world_regions.location_id` binding in `backend/world/worlds.py`; SOUL.md world-start guidance (declare missing regions, never reference undeclared ids); narrow start-response normalization now canonicalizes model compass abbreviations (`N`, `SW`, etc.) while rejecting unknown directions; tests.
+**Verification:** `333` backend tests pass; `npm run lint` passes Ruff + TypeScript; `npm run frontend-build` passes; `git diff --check` passes. Temporary database readback confirmed the original description remains unchanged, `current_description` is persisted, the `location_updated` event records revision 1, and the narrator prompt includes the current state. No live world database was modified.
 
-**Verification:** `332` backend tests pass (8 new: parser parses declared regions, parser rejects region cycle, instancing declares+binds a missing city region, instancing rejects a declared region with an unknown parent, parser normalizes compass abbreviations, parser defaults an omitted optional region parent, plus the prior parser/instancing region_id tests); `npm run lint` passes Ruff + TypeScript; `npm run frontend-build` passes; `git diff --check` passes. Live verification on a copy of the live DB (temp server): fresh world instanced from `world-of-aerthalon` (7 kingdoms, no cities) → start layout declaring `virellea-elaris` under `virellea` and binding Main Street to it → **succeeds**, region row created (city level, parent virellea) and `world_regions.location_id` bound to Main Street; `build_world_context` resolves `Elaris (city) → Virellea (kingdom)` from the first turn. Captured production-like response `aerthalon_start.json` that previously failed now parses after direction normalization. `docs/narration-agent-contract.md`, `docs/interfaces-and-tools.md`, and this tracker updated.
-
-### Dedicated scenario AI instructions — in progress
-
-**Goal:** add an optional `ai_instructions` story element to scenarios and copy it into each instanced world. The narration prompt presents it before the author's note, plot essentials, and opening scene; the current authoritative world context remains the source of truth for current facts.
-
-**Changes:** migration `0022_ai_instructions_elements` expands both element tables compatibly; scenario/world services accept the new type; instancing copies it; Manage editors expose it; narration prompt renders directives in priority order; SOUL and contract docs define the precedence.
-
-**Verification:** targeted and full backend tests, migration preservation/idempotency, frontend typecheck/build, lint, diff check, and prompt-order assertions.
+**Suggested commit message:** `Persist dynamic location state descriptions`
 
 ## Recently completed
 

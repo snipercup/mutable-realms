@@ -60,6 +60,7 @@ class ContextLocation(ContextModel):
     world_id: str
     name: str
     description: str | None
+    current_description: str | None
     revision: int = Field(ge=0)
     entities: list[ContextEntity]
     properties: list[dict[str, Any]]

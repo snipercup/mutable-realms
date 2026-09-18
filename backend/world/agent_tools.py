@@ -312,6 +312,7 @@ def update_world_location(
     actor_entity_id: str,
     location_id: str,
     display_name: str | None = None,
+    description: str | None = None,
     property: str | None = None,
     value: int | None = None,
 ) -> dict[str, Any]:
@@ -324,6 +325,7 @@ def update_world_location(
         actor_entity_id=actor_entity_id,
         location_id=location_id,
         display_name=display_name,
+        description=description,
         property=property,
         value=value,
     )
