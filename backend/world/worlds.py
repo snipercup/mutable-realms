@@ -668,7 +668,7 @@ def instance_player_character(
         if range_band is not None and range_band not in {"short", "mid", "long"}:
             raise WorldAdminConflict("start location range_band is invalid")
         if map_form is not None and map_form not in {
-            "building", "street", "district", "city", "mine", "forest", "water", "landmark"
+            "building", "street", "district", "city", "mine", "forest", "water", "gate", "landmark"
         }:
             raise WorldAdminConflict("start location map_form is invalid")
         if region_id is not None:

@@ -262,8 +262,8 @@ def test_hermes_narrator_start_parses_allowlisted_map_form(
             '"link_to_start":false,"map_form":"street"},'
             '{"name":"Guild","description":"Guild.","parent_name":"Elaris Street",'
             '"link_to_start":false,"map_form":"building"},'
-            '{"name":"North Road","description":"Road.","parent_name":null,'
-            '"link_to_start":false,"map_form":"forest"}],'
+            '{"name":"North Gate","description":"Gate.","parent_name":null,'
+            '"link_to_start":false,"map_form":"gate"}],'
             '"narration":"You arrive."}'
         )
         stderr = ""
@@ -276,7 +276,7 @@ def test_hermes_narrator_start_parses_allowlisted_map_form(
     assert [location.map_form for location in result.locations] == [
         "street",
         "building",
-        "forest",
+        "gate",
     ]
 
 

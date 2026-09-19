@@ -265,6 +265,30 @@ def test_expansion_rejects_invalid_orientation_metadata(tmp_path: Path) -> None:
         propose_location_expansion(path, **{**base, "map_form": "castle"})
 
 
+
+def test_expansion_accepts_gate_map_form(tmp_path: Path) -> None:
+    path = _world(tmp_path)
+
+    result = propose_location_expansion(
+        path,
+        world_id="world-a",
+        operation_id="expand-gate-1",
+        expected_revision=0,
+        proposal_id="gate-proposal-1",
+        location_id="west-gate",
+        anchor_location_id="harbor",
+        name="West Gate",
+        connect_to_anchor=True,
+        map_form="gate",
+    )
+
+    assert result["world_revision"] == 1
+    with connect_database(path) as connection:
+        assert connection.execute(
+            "SELECT map_form FROM location_metadata WHERE location_id = 'west-gate'"
+        ).fetchone()[0] == "gate"
+
+
 def test_expansion_moves_actor_into_new_location_atomically(tmp_path: Path) -> None:
     path = _world_with_actor_at_harbor(tmp_path)
 

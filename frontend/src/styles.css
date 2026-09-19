@@ -138,6 +138,10 @@ h1, h2, h3, p { margin: 0; }
 .map-road-tree { fill: #28513f; stroke: #6eaa72; stroke-width: 1.5; }
 .map-road-tree-trunk { stroke: #9a704d; stroke-width: 3; stroke-linecap: round; }
 .map-road-rock { fill: #59677b; stroke: #8491a3; stroke-width: 1; }
+.map-gate-wall { fill: #33445a; stroke: #7589a2; stroke-width: 2; }
+.map-gate-arch { fill: none; stroke: #a6b6c8; stroke-width: 5; stroke-linecap: round; }
+.map-gate-doors { fill: none; stroke: #916d48; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+.map-gate-road { fill: #263449; stroke: #52657f; stroke-width: 1.5; }
 .map-node-circle { fill: #1b2740; stroke: #5a6f94; stroke-width: 2; }
 .map-node-shape { fill: #1b2740; stroke: #5a6f94; stroke-width: 2; }
 .map-node-shape[data-map-form="street"] { fill: #253c5c; }

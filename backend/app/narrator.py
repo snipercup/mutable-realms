@@ -113,7 +113,9 @@ _START_RANGE_BANDS = {"short", "mid", "long"}
 _MAX_START_LOCATIONS = 16
 _MAX_START_REGIONS = 16
 _MIN_MAIN_STREET_CHILDREN = 10
-_START_MAP_FORMS = {"building", "street", "district", "city", "mine", "forest", "water", "landmark"}
+_START_MAP_FORMS = {
+    "building", "street", "district", "city", "mine", "forest", "water", "gate", "landmark"
+}
 _START_REGION_ID_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 _DEFAULT_NARRATOR_TIMEOUT_SECONDS = 120.0
@@ -387,7 +389,7 @@ def build_world_start_prompt(
         "south, southwest, west, northwest, or null; common abbreviations such "
         "as N/NE/E/SE/S/SW/W/NW are also accepted), range_band (short, mid, "
         "long, or null), map_form (building, street, district, city, mine, forest, "
-        "water, landmark, or null), and region_id (the id of the world region "
+        "water, gate, landmark, or null), and region_id (the id of the world region "
         "framework node this location belongs to, e.g. a city or kingdom "
         "region from the supplied World state, or null when no region "
         "applies); the optional top-level regions array declares new region "

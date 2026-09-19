@@ -4,15 +4,15 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Dynamic location state after meaningful events — complete (uncommitted)
+### Semantic map decoration — complete (uncommitted)
 
-**Goal:** preserve the original location discovery description while allowing the narrator to record a lasting change in the location's general condition after an authoritative event. The mutable `current_description` is updated through the existing revision-checked `world_update_location` operation and is used by narrator context and map/location reads.
+**Goal:** give empty map scopes a useful deterministic visual scene without asking the narrator to generate SVG or treating graphics as world state. The narrator supplies bounded semantic `map_form` metadata; the frontend selects the matching presentation. The first new form is `gate`, which renders a wall, arch, doors, and approach road.
 
-**Changes:** migration `0023_dynamic_location_descriptions`; `world_update_location` accepts a bounded description; turn decisions, agent tools, and MCP expose it; context and map reads distinguish the original `description` from the effective current state; narrator guidance says to update only after meaningful, lasting, confirmed changes and to keep incident details in location memories.
+**Scope:** migration `0024_gate_map_form` expands the SQLite metadata allowlist; starts and expansions accept `map_form: "gate"`; the frontend renders gate node icons and scope decoration; a narrow legacy name fallback makes existing Elaris Gates render without a state mutation. Graphics never create locations, links, events, or revisions.
 
-**Verification:** `333` backend tests pass; `npm run lint` passes Ruff + TypeScript; `npm run frontend-build` passes; `git diff --check` passes. Temporary database readback confirmed the original description remains unchanged, `current_description` is persisted, the `location_updated` event records revision 1, and the narrator prompt includes the current state. No live world database was modified.
+**Verification:** `334` backend tests pass; `npm run lint` passes Ruff + TypeScript; `npm run frontend-build` and `git diff --check` pass. Browser verification on a migrated temporary copy of live Aerthalon showed `Map of Elaris Gates` with `gate-wall`, `gate-arch`, `gate-doors`, and `gate-road` layers, five existing map nodes, and no JavaScript errors. Source and temporary copies both remained revision 7 with 16 locations, 10 containment rows, 13 links, 7 events, and 7 operations; the temporary DB was removed and port 8795 confirmed closed.
 
-**Suggested commit message:** `Persist dynamic location state descriptions`
+**Suggested commit message:** `Render semantic gate decorations on maps`
 
 ## Recently completed
 

@@ -985,6 +985,9 @@ function mapShape(location: WorldMapLocation, isSibling: boolean): SVGElement {
   if (form === "water") {
     return svgElement("path", { ...attributes, d: `M ${-size} 0 Q ${-size * 0.5} ${-size * 0.5} 0 0 T ${size} 0 M ${-size} ${size * 0.5} Q ${-size * 0.5} 0 0 ${size * 0.5} T ${size} ${size * 0.5}` });
   }
+  if (form === "gate") {
+    return svgElement("path", { ...attributes, d: `M ${-size} ${size} V ${-size * 0.7} H ${size} V ${size} M ${-size * 0.35} ${size} V ${size * 0.2} A ${size * 0.35} ${size * 0.35} 0 0 1 ${size * 0.35} ${size * 0.2} V ${size}` });
+  }
   return svgElement("circle", { ...attributes, r: size });
 }
 
@@ -1035,6 +1038,36 @@ function appendRoadDecoration(svg: SVGElement): void {
   }
 }
 
+function appendGateDecoration(svg: SVGElement): void {
+  const wallTop = 138;
+  const wallBottom = 324;
+  const gateLeft = MAP_CENTER_X - 112;
+  const gateRight = MAP_CENTER_X + 112;
+  const archTop = 176;
+  svg.append(
+    svgElement("path", {
+      d: `M 0 ${wallTop} H ${gateLeft} V ${wallTop - 18} H ${gateLeft + 20} V ${wallTop} H ${gateLeft + 40} V ${wallTop - 18} H ${gateLeft + 60} V ${wallTop} H ${gateLeft + 80} V ${wallTop - 18} H ${gateLeft + 100} V ${wallTop} H ${gateLeft + 112} V ${archTop} A 112 112 0 0 1 ${gateRight} ${archTop} V ${wallTop} H ${gateRight + 20} V ${wallTop - 18} H ${gateRight + 40} V ${wallTop} H ${gateRight + 60} V ${wallTop - 18} H ${gateRight + 80} V ${wallTop} H ${gateRight + 100} V ${wallTop - 18} H ${gateRight + 120} V ${wallTop} H ${MAP_WIDTH} V ${wallBottom} H ${gateRight} V ${wallBottom - 24} H ${gateLeft} V ${wallBottom} H 0 Z`,
+      class: "map-gate-wall",
+      "data-map-layer": "gate-wall",
+    }),
+    svgElement("path", {
+      d: `M ${gateLeft + 16} ${wallBottom - 2} V ${archTop + 28} A 96 96 0 0 1 ${gateRight - 16} ${archTop + 28} V ${wallBottom - 2}`,
+      class: "map-gate-arch",
+      "data-map-layer": "gate-arch",
+    }),
+    svgElement("path", {
+      d: `M ${MAP_CENTER_X - 44} ${wallBottom - 2} V ${wallBottom - 62} H ${MAP_CENTER_X + 44} V ${wallBottom - 2}`,
+      class: "map-gate-doors",
+      "data-map-layer": "gate-doors",
+    }),
+    svgElement("path", {
+      d: `M ${MAP_CENTER_X - 70} ${wallBottom} L ${MAP_CENTER_X - 118} ${MAP_HEIGHT} H ${MAP_CENTER_X + 118} L ${MAP_CENTER_X + 70} ${wallBottom} Z`,
+      class: "map-gate-road",
+      "data-map-layer": "gate-road",
+    }),
+  );
+}
+
 function renderMap(state: WorldState): HTMLElement {
   const panel = element("section", "panel map-panel");
   const scopeName = state.map.scope_location?.name ?? state.world.name;
@@ -1083,6 +1116,8 @@ function renderMap(state: WorldState): HTMLElement {
     || state.map.scope_location?.name.toLocaleLowerCase() === "main street";
   const isRoadScope = state.map.scope_location?.kind === "route"
     || state.map.scope_location?.name.toLocaleLowerCase().includes("road");
+  const isGateScope = state.map.scope_location?.map_form === "gate"
+    || /\bgates?\b/i.test(state.map.scope_location?.name ?? "");
   const positions = state.map.scope_location === null
     ? orientedMapPositions(ordered)
     : new Map([
@@ -1138,6 +1173,7 @@ function renderMap(state: WorldState): HTMLElement {
       );
     }
     if (isRoadScope) appendRoadDecoration(svg);
+    if (isGateScope) appendGateDecoration(svg);
   }
 
   if (state.map.scope_location === null) {
