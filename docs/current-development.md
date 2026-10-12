@@ -4,15 +4,15 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Semantic map decoration — complete (uncommitted)
+### Semantic map decoration — in progress
 
-**Goal:** give empty map scopes a useful deterministic visual scene without asking the narrator to generate SVG or treating graphics as world state. The narrator supplies bounded semantic `map_form` metadata; the frontend selects the matching presentation. The first new form is `gate`, which renders a wall, arch, doors, and approach road.
+**Goal:** extend deterministic semantic map graphics so farm locations are visually identifiable without asking the narrator to generate SVG or treating graphics as world state. The narrator supplies bounded semantic `map_form` metadata; the frontend selects the matching presentation. The next form is `farm`, which renders fields, furrows, a barn, fencing, and a tree.
 
-**Scope:** migration `0024_gate_map_form` expands the SQLite metadata allowlist; starts and expansions accept `map_form: "gate"`; the frontend renders gate node icons and scope decoration; a narrow legacy name fallback makes existing Elaris Gates render without a state mutation. Graphics never create locations, links, events, or revisions.
+**Scope:** migration `0025_farm_map_form` expands the SQLite metadata allowlist; starts and expansions accept `map_form: "farm"`; the frontend renders farm node icons and scope decoration; a narrow legacy name fallback makes existing farm records render without a state mutation. Graphics never create locations, links, events, or revisions.
 
-**Verification:** `334` backend tests pass; `npm run lint` passes Ruff + TypeScript; `npm run frontend-build` and `git diff --check` pass. Browser verification on a migrated temporary copy of live Aerthalon showed `Map of Elaris Gates` with `gate-wall`, `gate-arch`, `gate-doors`, and `gate-road` layers, five existing map nodes, and no JavaScript errors. Source and temporary copies both remained revision 7 with 16 locations, 10 containment rows, 13 links, 7 events, and 7 operations; the temporary DB was removed and port 8795 confirmed closed.
+**Verification:** `335` backend tests pass; `npm run lint` passes Ruff + TypeScript; `npm run frontend-build` and `git diff --check` pass. Browser verification on a migrated temporary copy of live Aerthalon showed `Map of Reedbank Farm` with `farm-field`, `farm-furrows`, `farm-barn`, `farm-barn-detail`, `farm-fence`, and `farm-tree` layers, and no JavaScript errors. The API still reports the legacy `building` metadata for Reedbank Farm; the name fallback is intentionally presentation-only. The temporary DB was removed and port 8795 confirmed closed.
 
-**Suggested commit message:** `Render semantic gate decorations on maps`
+**Suggested commit message:** `Render semantic farm decorations on maps`
 
 ## Recently completed
 

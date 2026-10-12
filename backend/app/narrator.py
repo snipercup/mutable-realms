@@ -114,7 +114,7 @@ _MAX_START_LOCATIONS = 16
 _MAX_START_REGIONS = 16
 _MIN_MAIN_STREET_CHILDREN = 10
 _START_MAP_FORMS = {
-    "building", "street", "district", "city", "mine", "forest", "water", "gate", "landmark"
+    "building", "street", "district", "city", "mine", "forest", "water", "gate", "farm", "landmark"
 }
 _START_REGION_ID_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 

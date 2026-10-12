@@ -238,8 +238,9 @@ root.innerHTML = `
       </div>
     </header>
     <div class="status-banner" id="status" role="alert" hidden></div>
-    <section id="world-view" aria-live="polite"></section>
-    <section class="panel narration-panel" id="narration-panel" aria-label="Narration">
+    <div class="play-stage">
+      <section id="world-view" aria-live="polite"></section>
+      <section class="panel narration-panel" id="narration-panel" aria-label="Narration">
       <div class="narration-heading">
         <div>
           <span class="eyebrow">Narration agent</span>
@@ -259,7 +260,8 @@ root.innerHTML = `
         />
         <button class="action-button" id="action-submit" type="submit">Act</button>
       </form>
-    </section>
+      </section>
+    </div>
     <section class="manage-view" id="manage-view" hidden aria-label="World management">
       <span class="eyebrow">World management</span>
       <h2 class="section-title">Player characters</h2>
@@ -477,6 +479,7 @@ const worldSelect = requireElement<HTMLSelectElement>("#world-select");
 const refreshButton = requireElement<HTMLButtonElement>("#refresh");
 const freshness = requireElement<HTMLSpanElement>("#freshness");
 const statusBanner = requireElement<HTMLDivElement>("#status");
+const playStage = requireElement<HTMLDivElement>(".play-stage");
 const worldView = requireElement<HTMLElement>("#world-view");
 const narrationPanel = requireElement<HTMLElement>("#narration-panel");
 const narrationLog = requireElement<HTMLDivElement>("#narration-log");
@@ -985,6 +988,9 @@ function mapShape(location: WorldMapLocation, isSibling: boolean): SVGElement {
   if (form === "water") {
     return svgElement("path", { ...attributes, d: `M ${-size} 0 Q ${-size * 0.5} ${-size * 0.5} 0 0 T ${size} 0 M ${-size} ${size * 0.5} Q ${-size * 0.5} 0 0 ${size * 0.5} T ${size} ${size * 0.5}` });
   }
+  if (form === "farm") {
+    return svgElement("path", { ...attributes, d: `M ${-size} ${size} V ${-size * 0.15} L 0 ${-size} L ${size} ${-size * 0.15} V ${size} Z M ${-size * 0.45} ${size} V ${size * 0.15} H ${size * 0.45} V ${size}` });
+  }
   if (form === "gate") {
     return svgElement("path", { ...attributes, d: `M ${-size} ${size} V ${-size * 0.7} H ${size} V ${size} M ${-size * 0.35} ${size} V ${size * 0.2} A ${size * 0.35} ${size * 0.35} 0 0 1 ${size * 0.35} ${size * 0.2} V ${size}` });
   }
@@ -1036,6 +1042,17 @@ function appendRoadDecoration(svg: SVGElement): void {
       }),
     );
   }
+}
+
+function appendFarmDecoration(svg: SVGElement): void {
+  svg.append(
+    svgElement("rect", { x: 80, y: 120, width: 640, height: 360, rx: 22, class: "map-farm-field", "data-map-layer": "farm-field" }),
+    svgElement("path", { d: "M 110 150 H 690 M 110 210 H 690 M 110 270 H 690 M 110 330 H 690 M 110 390 H 690", class: "map-farm-furrow", "data-map-layer": "farm-furrows" }),
+    svgElement("path", { d: "M 245 410 V 275 L 340 215 L 435 275 V 410 Z", class: "map-farm-barn", "data-map-layer": "farm-barn" }),
+    svgElement("path", { d: "M 285 410 V 330 H 335 V 410 M 365 285 V 410", class: "map-farm-barn-detail", "data-map-layer": "farm-barn-detail" }),
+    svgElement("path", { d: "M 105 120 V 480 M 175 120 V 480 M 545 120 V 480 M 615 120 V 480 M 685 120 V 480 M 80 160 H 720 M 80 440 H 720", class: "map-farm-fence", "data-map-layer": "farm-fence" }),
+    svgElement("circle", { cx: 590, cy: 205, r: 30, class: "map-farm-tree", "data-map-layer": "farm-tree" }),
+  );
 }
 
 function appendGateDecoration(svg: SVGElement): void {
@@ -1118,6 +1135,8 @@ function renderMap(state: WorldState): HTMLElement {
     || state.map.scope_location?.name.toLocaleLowerCase().includes("road");
   const isGateScope = state.map.scope_location?.map_form === "gate"
     || /\bgates?\b/i.test(state.map.scope_location?.name ?? "");
+  const isFarmScope = state.map.scope_location?.map_form === "farm"
+    || /\bfarm\b/i.test(state.map.scope_location?.name ?? "");
   const positions = state.map.scope_location === null
     ? orientedMapPositions(ordered)
     : new Map([
@@ -1174,6 +1193,7 @@ function renderMap(state: WorldState): HTMLElement {
     }
     if (isRoadScope) appendRoadDecoration(svg);
     if (isGateScope) appendGateDecoration(svg);
+    if (isFarmScope) appendFarmDecoration(svg);
   }
 
   if (state.map.scope_location === null) {
@@ -1786,6 +1806,7 @@ function populateWorldScenarioSelect(scenarios: Scenario[]): void {
 
 function setViewMode(mode: "play" | "manage"): void {
   const playActive = mode === "play";
+  playStage.hidden = !playActive;
   worldView.hidden = !playActive;
   narrationPanel.hidden = !playActive;
   manageView.hidden = playActive;

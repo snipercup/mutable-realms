@@ -289,6 +289,29 @@ def test_expansion_accepts_gate_map_form(tmp_path: Path) -> None:
         ).fetchone()[0] == "gate"
 
 
+def test_expansion_accepts_farm_map_form(tmp_path: Path) -> None:
+    path = _world(tmp_path)
+
+    result = propose_location_expansion(
+        path,
+        world_id="world-a",
+        operation_id="expand-farm-1",
+        expected_revision=0,
+        proposal_id="farm-proposal-1",
+        location_id="reedbank-farm",
+        anchor_location_id="harbor",
+        name="Reedbank Farm",
+        connect_to_anchor=True,
+        map_form="farm",
+    )
+
+    assert result["world_revision"] == 1
+    with connect_database(path) as connection:
+        assert connection.execute(
+            "SELECT map_form FROM location_metadata WHERE location_id = 'reedbank-farm'"
+        ).fetchone()[0] == "farm"
+
+
 def test_expansion_moves_actor_into_new_location_atomically(tmp_path: Path) -> None:
     path = _world_with_actor_at_harbor(tmp_path)
 

@@ -36,6 +36,7 @@ _ALLOWED_MAP_FORMS = frozenset(
         "forest",
         "water",
         "gate",
+        "farm",
         "landmark",
     }
 )

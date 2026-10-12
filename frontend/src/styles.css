@@ -72,10 +72,28 @@ h1, h2, h3, p { margin: 0; }
   color: #ffd1d5;
   background: #351d24;
 }
+.play-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(320px, .85fr);
+  align-items: start;
+  gap: 20px;
+}
+#world-view { min-width: 0; }
 .content-grid {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(280px, .82fr);
   gap: 20px;
+}
+.play-stage > .narration-panel {
+  position: sticky;
+  top: 18px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: min(680px, calc(100vh - 150px));
+  min-height: 360px;
+  margin-top: 0;
+  padding: clamp(18px, 2vw, 26px);
 }
 .panel {
   border: 1px solid var(--border);
@@ -121,6 +139,15 @@ h1, h2, h3, p { margin: 0; }
   .topbar, .location-heading { align-items: flex-start; flex-direction: column; }
   .controls { width: 100%; justify-content: flex-start; }
   .world-control, .world-control select { width: 100%; }
+  .play-stage { grid-template-columns: 1fr; }
+  .play-stage > .narration-panel {
+    position: static;
+    height: auto;
+    min-height: 420px;
+  }
+  .play-stage > .narration-panel .narration-log {
+    max-height: 300px;
+  }
   .content-grid { grid-template-columns: 1fr; }
   .entity-grid { grid-template-columns: 1fr; }
   .revision-block { border-left: 0; padding-left: 0; text-align: left; }
@@ -142,6 +169,12 @@ h1, h2, h3, p { margin: 0; }
 .map-gate-arch { fill: none; stroke: #a6b6c8; stroke-width: 5; stroke-linecap: round; }
 .map-gate-doors { fill: none; stroke: #916d48; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
 .map-gate-road { fill: #263449; stroke: #52657f; stroke-width: 1.5; }
+.map-farm-field { fill: #435b3a; stroke: #81945c; stroke-width: 2; }
+.map-farm-furrow { fill: none; stroke: #81945c; stroke-width: 3; stroke-dasharray: 18 10; opacity: .8; }
+.map-farm-barn { fill: #704b3b; stroke: #c18a61; stroke-width: 3; }
+.map-farm-barn-detail { fill: none; stroke: #d3a274; stroke-width: 5; stroke-linejoin: round; }
+.map-farm-fence { fill: none; stroke: #c5a06e; stroke-width: 3; stroke-linecap: round; opacity: .9; }
+.map-farm-tree { fill: #2d6143; stroke: #82ad70; stroke-width: 3; }
 .map-node-circle { fill: #1b2740; stroke: #5a6f94; stroke-width: 2; }
 .map-node-shape { fill: #1b2740; stroke: #5a6f94; stroke-width: 2; }
 .map-node-shape[data-map-form="street"] { fill: #253c5c; }
@@ -170,9 +203,11 @@ h1, h2, h3, p { margin: 0; }
 .narration-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .narration-log {
   display: flex;
+  flex: 1;
+  min-height: 0;
   flex-direction: column;
   gap: 10px;
-  max-height: 300px;
+  max-height: none;
   overflow-y: auto;
   padding: 10px 4px 10px 0;
 }

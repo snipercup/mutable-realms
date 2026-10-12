@@ -263,7 +263,9 @@ def test_hermes_narrator_start_parses_allowlisted_map_form(
             '{"name":"Guild","description":"Guild.","parent_name":"Elaris Street",'
             '"link_to_start":false,"map_form":"building"},'
             '{"name":"North Gate","description":"Gate.","parent_name":null,'
-            '"link_to_start":false,"map_form":"gate"}],'
+            '"link_to_start":false,"map_form":"gate"},'
+            '{"name":"Reedbank Farm","description":"Farm.","parent_name":null,'
+            '"link_to_start":false,"map_form":"farm"}],'
             '"narration":"You arrive."}'
         )
         stderr = ""
@@ -277,6 +279,7 @@ def test_hermes_narrator_start_parses_allowlisted_map_form(
         "street",
         "building",
         "gate",
+        "farm",
     ]
 
 
