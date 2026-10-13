@@ -4,20 +4,23 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Semantic map decoration — in progress
+### Scenario and world lore entries — in progress
 
-**Goal:** extend deterministic semantic map graphics so farm locations are visually identifiable without asking the narrator to generate SVG or treating graphics as world state. The narrator supplies bounded semantic `map_form` metadata; the frontend selects the matching presentation. The next form is `farm`, which renders fields, furrows, a barn, fencing, and a tree.
+**Goal:** let authors maintain fixed, reusable lore (factions, characters, items, or other categories) without putting an entire scenario encyclopedia into every narration prompt. Lore is scenario-authored and copied into worlds; world copies can diverge during play.
 
-**Scope:** migration `0025_farm_map_form` expands the SQLite metadata allowlist; starts and expansions accept `map_form: "farm"`; the frontend renders farm node icons and scope decoration; a narrow legacy name fallback makes existing farm records render without a state mutation. Graphics never create locations, links, events, or revisions.
+**Scope:** additive scenario/world lore tables with stable kebab-case IDs, category, title, content, and optional keywords; idempotent scenario CRUD plus revision-checked world CRUD; scenario-to-world copy semantics; bounded deterministic relevant-lore context selected from the current location, its region chain, and present entities; explicit bounded narrator search/read tools for lore outside that working set; HTTP and Manage-view authoring/editing/deletion; tests and documentation. Lore remains independent records with no required relationship graph.
 
-**Verification:** `335` backend tests pass; `npm run lint` passes Ruff + TypeScript; `npm run frontend-build` and `git diff --check` pass. Browser verification on a migrated temporary copy of live Aerthalon showed `Map of Reedbank Farm` with `farm-field`, `farm-furrows`, `farm-barn`, `farm-barn-detail`, `farm-fence`, and `farm-tree` layers, and no JavaScript errors. The API still reports the legacy `building` metadata for Reedbank Farm; the name fallback is intentionally presentation-only. The temporary DB was removed and port 8795 confirmed closed.
+**Out of scope:** automatic generation of lore, inference of new lore facts from narration, a lore graph, full-text/vector infrastructure, and indiscriminate prompt injection of all entries.
 
-**Suggested commit message:** `Render semantic farm decorations on maps`
+**Verification:** `337` backend tests pass; `npm run lint`, `npm run frontend-build`, and `git diff --check` pass. A live migration applied `0026` to the scenario database, then the idempotent scenario service wrote and read back `cyberpunk-2077` / `tyger-claws` with category `faction` and its explicit Westbrook/Japantown/Arasaka keywords. Focused tests cover scenario-to-world copying, world-only divergence, stale-revision rejection, search, and bounded context selection.
+
+**Suggested commit message:** `Add scoped scenario and world lore entries`
 
 ## Recently completed
 
 | Idea | Completed | Commit |
 | --- | --- | --- |
+| Semantic map decoration — deterministic SVG scenery for `gate` and `farm` scoped locations (migrations `0024`/`0025` allowlists, start + expansion acceptance, node shapes, scope decoration layers, legacy name fallback; presentation-only, no state mutations) | 2026-10-12 | `924f5d5` · `aea6f8f` |
 | Reduce the narrator's turn output cap from 200 to 150 tokens (prompt instruction + SOUL rule + deterministic sentence-safe truncation, all three layers + docs + tests) | 2026-08-21 | `62994bc` |
 | Show the copied region framework in the world editor (Manage view; world detail API already returned `regions`, frontend now types + renders them with source line, hierarchy indentation, and materialization status) | 2026-08-21 | `d22767b` |
 | Center sibling node labels on the node (same x, y) and clamp them inside the map so edge labels stay fully visible (frontend-only label layout) | 2026-08-21 | `7453b51` |

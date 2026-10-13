@@ -52,6 +52,7 @@ class WorldRegionRead(StrictReadModel):
 
 class WorldDetailRead(WorldRead):
     elements: list[WorldElementRead] = Field(default_factory=list)
+    lore: list[LoreEntryRead] = Field(default_factory=list)
     regions: list[WorldRegionRead] = Field(default_factory=list)
     player: PlayerSummaryRead | None = None
 
@@ -217,6 +218,24 @@ class ScenarioElementRead(StrictReadModel):
     updated_at: str
 
 
+class LoreEntryRead(StrictReadModel):
+    lore_id: str
+    category: str
+    title: str
+    content: str
+    keywords: list[str] = Field(default_factory=list)
+    updated_at: str
+
+
+class LoreEntryRequest(StrictReadModel):
+    category: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1, max_length=20000)
+    keywords: list[str] = Field(default_factory=list)
+    operation_id: str
+    expected_revision: int | None = Field(default=None, ge=0)
+
+
 class ScenarioRegionRead(StrictReadModel):
     region_id: str
     parent_region_id: str | None
@@ -233,6 +252,7 @@ class ScenarioRead(StrictReadModel):
     description: str | None
     created_at: str
     elements: list[ScenarioElementRead] = Field(default_factory=list)
+    lore: list[LoreEntryRead] = Field(default_factory=list)
     regions: list[ScenarioRegionRead] = Field(default_factory=list)
 
 

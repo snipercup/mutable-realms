@@ -24,6 +24,7 @@ from backend.world.agent_tools import (
     validate_world_state,
 )
 from backend.world.context import build_world_context
+from backend.world.lore import read_world_lore, remove_world_lore, search_world_lore, set_world_lore
 
 mcp = FastMCP(
     "Mutable Realms World Tools",
@@ -104,6 +105,72 @@ def world_context(world_id: str | None = None, event_limit: EventLimit = 10) -> 
     return build_world_context(
         get_database_path(), world_id=resolve_world_id(world_id), recent_event_limit=event_limit
     ).model_dump()
+
+
+@mcp.tool()
+def world_lore_search(
+    world_id: str | None = None, query: str | None = None, limit: EventLimit = 10
+) -> dict[str, list[dict[str, Any]]]:
+    """Search fixed lore by title, category, keywords, or text.
+
+    Read a match by id before relying on its full text.
+    """
+    if query is None:
+        raise RuntimeError("query is required")
+    return {
+        "entries": search_world_lore(
+            get_database_path(), world_id=resolve_world_id(world_id), query=query, limit=limit
+        )
+    }
+
+
+@mcp.tool()
+def world_lore_read(world_id: str | None = None, lore_id: str | None = None) -> dict[str, Any]:
+    """Read one authoritative full lore entry by stable lore id."""
+    if lore_id is None:
+        raise RuntimeError("lore_id is required")
+    return read_world_lore(
+        get_database_path(), world_id=resolve_world_id(world_id), lore_id=lore_id
+    )
+
+
+@mcp.tool()
+def world_lore_set(
+    world_id: str = "",
+    operation_id: str = "",
+    expected_revision: int = 0,
+    lore_id: str = "",
+    category: str = "",
+    title: str = "",
+    content: str = "",
+    keywords: list[str] | None = None,
+) -> dict[str, Any]:
+    """Create or update one world-owned fixed lore entry atomically."""
+    return set_world_lore(
+        get_database_path(),
+        world_id=resolve_world_id(world_id),
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        lore_id=lore_id,
+        category=category,
+        title=title,
+        content=content,
+        keywords=keywords,
+    )
+
+
+@mcp.tool()
+def world_lore_remove(
+    world_id: str = "", operation_id: str = "", expected_revision: int = 0, lore_id: str = ""
+) -> dict[str, Any]:
+    """Delete one world-owned lore entry atomically."""
+    return remove_world_lore(
+        get_database_path(),
+        world_id=resolve_world_id(world_id),
+        operation_id=operation_id,
+        expected_revision=expected_revision,
+        lore_id=lore_id,
+    )
 
 
 @mcp.tool()

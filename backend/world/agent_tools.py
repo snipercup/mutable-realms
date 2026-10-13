@@ -73,7 +73,7 @@ def read_world_status(database_path: str | Path, *, world_id: str) -> dict[str, 
             is not None
         )
 
-    mutations = ["world_move_entity"]
+    mutations = ["world_move_entity", "world_lore_set", "world_lore_remove"]
     if has_ward_state:
         mutations.append("world_treat_and_discharge_patient")
     if has_social_state:

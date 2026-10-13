@@ -64,6 +64,13 @@ def read_world(database_path: str | Path, world_id: str) -> dict[str, Any]:
             "WHERE world_id = ? ORDER BY region_id",
             (world_id,),
         ).fetchall()
+        lore = connection.execute(
+            "SELECT wl.lore_id, wl.category, wl.title, wl.content, wl.keywords_json, "
+            "ev.occurred_at AS updated_at FROM world_lore wl "
+            "JOIN events ev ON ev.id = wl.updated_event_id "
+            "WHERE wl.world_id = ? ORDER BY wl.category, wl.title, wl.lore_id",
+            (world_id,),
+        ).fetchall()
         player = connection.execute(
             "SELECT e.id, e.name, pci.basic_info, pci.character_definition_id, "
             "el.location_id, loc.name AS location_name "
@@ -78,6 +85,17 @@ def read_world(database_path: str | Path, world_id: str) -> dict[str, Any]:
     return {
         **dict(world),
         "elements": [dict(row) for row in elements],
+        "lore": [
+            {
+                "lore_id": entry["lore_id"],
+                "category": entry["category"],
+                "title": entry["title"],
+                "content": entry["content"],
+                "keywords": json.loads(entry["keywords_json"]),
+                "updated_at": entry["updated_at"],
+            }
+            for entry in lore
+        ],
         "regions": [
             {
                 "region_id": region["region_id"],
@@ -275,8 +293,7 @@ def _friendly_movement_summary(
     source_id = payload.get("source_location_id")
     destination_id = payload.get("destination_location_id")
     if not all(
-        isinstance(value, str) and value
-        for value in (entity_id, source_id, destination_id)
+        isinstance(value, str) and value for value in (entity_id, source_id, destination_id)
     ):
         return stored_summary
     entity = connection.execute(

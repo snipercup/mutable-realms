@@ -31,8 +31,18 @@ type ScenarioRegion = {
   updated_at: string;
 };
 
+type LoreEntry = {
+  lore_id: string;
+  category: string;
+  title: string;
+  content: string;
+  keywords: string[];
+  updated_at: string;
+};
+
 type ScenarioDetail = Scenario & {
   elements: ScenarioElement[];
+  lore: LoreEntry[];
   regions: ScenarioRegion[];
 };
 
@@ -56,6 +66,7 @@ type PlayerCharacter = {
 
 type WorldDetail = World & {
   elements: ScenarioElement[];
+  lore: LoreEntry[];
   regions: WorldRegion[];
   player: PlayerSummary | null;
 };
@@ -345,6 +356,21 @@ root.innerHTML = `
           </label>
         </div>
         <div class="scenario-elements">
+          <span class="eyebrow">Lore entries</span>
+          <p class="manage-description">Fixed facts copied into new worlds. Matching entries are supplied only when the current location, region, or entities make them relevant.</p>
+          <div class="manage-grid" id="scenario-lore-list"></div>
+          <button class="manage-button" id="scenario-lore-add" type="button">Add lore entry</button>
+          <div class="region-editor" id="scenario-lore-editor" hidden>
+            <label class="manage-field">Lore id<input class="manage-input" id="scenario-lore-id" placeholder="kebab-case (e.g. tyger-claws)" /></label>
+            <label class="manage-field">Category<input class="manage-input" id="scenario-lore-category" placeholder="faction / character / item / lore" /></label>
+            <label class="manage-field">Title<input class="manage-input" id="scenario-lore-title" /></label>
+            <label class="manage-field">Keywords (comma-separated)<input class="manage-input" id="scenario-lore-keywords" placeholder="Westbrook, Japantown" /></label>
+            <label class="manage-field">Fixed lore text<textarea class="manage-textarea" id="scenario-lore-content"></textarea></label>
+            <button class="manage-button" id="scenario-lore-save" type="button">Save lore entry</button>
+            <button class="manage-button manage-button--danger" id="scenario-lore-delete" type="button">Delete lore entry</button>
+          </div>
+        </div>
+        <div class="scenario-elements">
           <span class="eyebrow">Region framework</span>
           <p class="manage-description">
             The scenario's geography hierarchy (kingdoms → provinces → cities, or whatever levels this
@@ -448,6 +474,21 @@ root.innerHTML = `
           </label>
         </div>
         <div class="scenario-elements">
+          <span class="eyebrow">World lore</span>
+          <p class="manage-description">World-owned lore starts as a copy of the scenario and may diverge during play.</p>
+          <div class="manage-grid" id="world-lore-list"></div>
+          <button class="manage-button" id="world-lore-add" type="button">Add world lore</button>
+          <div class="region-editor" id="world-lore-editor" hidden>
+            <label class="manage-field">Lore id<input class="manage-input" id="world-lore-id" placeholder="kebab-case" /></label>
+            <label class="manage-field">Category<input class="manage-input" id="world-lore-category" /></label>
+            <label class="manage-field">Title<input class="manage-input" id="world-lore-title" /></label>
+            <label class="manage-field">Keywords (comma-separated)<input class="manage-input" id="world-lore-keywords" /></label>
+            <label class="manage-field">Fixed lore text<textarea class="manage-textarea" id="world-lore-content"></textarea></label>
+            <button class="manage-button" id="world-lore-save" type="button">Save world lore</button>
+            <button class="manage-button manage-button--danger" id="world-lore-delete" type="button">Delete world lore</button>
+          </div>
+        </div>
+        <div class="scenario-elements">
           <span class="eyebrow">Region framework</span>
           <p class="manage-description" id="world-region-source"></p>
           <div class="manage-grid" id="world-region-list"></div>
@@ -515,6 +556,16 @@ const scenarioEditDescription = requireElement<HTMLTextAreaElement>("#scenario-e
 const scenarioEditSave = requireElement<HTMLButtonElement>("#scenario-edit-save");
 const scenarioEditorClose = requireElement<HTMLButtonElement>("#scenario-editor-close");
 const scenarioDelete = requireElement<HTMLButtonElement>("#scenario-delete");
+const scenarioLoreList = requireElement<HTMLDivElement>("#scenario-lore-list");
+const scenarioLoreAdd = requireElement<HTMLButtonElement>("#scenario-lore-add");
+const scenarioLoreEditor = requireElement<HTMLDivElement>("#scenario-lore-editor");
+const scenarioLoreId = requireElement<HTMLInputElement>("#scenario-lore-id");
+const scenarioLoreCategory = requireElement<HTMLInputElement>("#scenario-lore-category");
+const scenarioLoreTitle = requireElement<HTMLInputElement>("#scenario-lore-title");
+const scenarioLoreKeywords = requireElement<HTMLInputElement>("#scenario-lore-keywords");
+const scenarioLoreContent = requireElement<HTMLTextAreaElement>("#scenario-lore-content");
+const scenarioLoreSave = requireElement<HTMLButtonElement>("#scenario-lore-save");
+const scenarioLoreDelete = requireElement<HTMLButtonElement>("#scenario-lore-delete");
 const scenarioRegionList = requireElement<HTMLDivElement>("#scenario-region-list");
 const scenarioRegionAdd = requireElement<HTMLButtonElement>("#scenario-region-add");
 const scenarioRegionEditor = requireElement<HTMLDivElement>("#scenario-region-editor");
@@ -540,6 +591,16 @@ const worldEditDescription = requireElement<HTMLTextAreaElement>("#world-edit-de
 const worldEditSave = requireElement<HTMLButtonElement>("#world-edit-save");
 const worldEditorClose = requireElement<HTMLButtonElement>("#world-editor-close");
 const worldDelete = requireElement<HTMLButtonElement>("#world-delete");
+const worldLoreList = requireElement<HTMLDivElement>("#world-lore-list");
+const worldLoreAdd = requireElement<HTMLButtonElement>("#world-lore-add");
+const worldLoreEditor = requireElement<HTMLDivElement>("#world-lore-editor");
+const worldLoreId = requireElement<HTMLInputElement>("#world-lore-id");
+const worldLoreCategory = requireElement<HTMLInputElement>("#world-lore-category");
+const worldLoreTitle = requireElement<HTMLInputElement>("#world-lore-title");
+const worldLoreKeywords = requireElement<HTMLInputElement>("#world-lore-keywords");
+const worldLoreContent = requireElement<HTMLTextAreaElement>("#world-lore-content");
+const worldLoreSave = requireElement<HTMLButtonElement>("#world-lore-save");
+const worldLoreDelete = requireElement<HTMLButtonElement>("#world-lore-delete");
 const worldPlayerInfo = requireElement<HTMLDivElement>("#world-player-info");
 const worldPlayerForm = requireElement<HTMLFormElement>("#world-player-form");
 const worldPlayerCharacter = requireElement<HTMLSelectElement>("#world-player-character");
@@ -560,7 +621,11 @@ let manageLoading = false;
 let editingScenarioId: string | null = null;
 let editingRegionId: string | null = null;
 let scenarioRegions: ScenarioRegion[] = [];
+let scenarioLore: LoreEntry[] = [];
+let editingScenarioLoreId: string | null = null;
 let editingWorldId: string | null = null;
+let worldLore: LoreEntry[] = [];
+let editingWorldLoreId: string | null = null;
 let editingWorldRevision = 0;
 let manageBusy = false;
 let lastUpdated: Date | null = null;
@@ -1854,11 +1919,94 @@ async function loadScenarioDetail(scenarioId: string): Promise<void> {
     for (const elementType of ["ai_instructions", "author_note", "plot_essentials", "opening_scene"]) {
       elementTextarea(elementType).value = byType.get(elementType) ?? "";
     }
+    scenarioLore = detail.lore;
+    renderLoreList(scenarioLoreList, scenarioLore, (loreId) => openScenarioLore(loreId));
     scenarioRegions = detail.regions;
     renderScenarioRegions();
   } catch (error) {
     setError(error instanceof Error ? error.message : "Unable to load scenario");
   }
+}
+
+function renderLoreList(
+  container: HTMLDivElement,
+  entries: LoreEntry[],
+  open: (loreId: string) => void,
+): void {
+  container.replaceChildren();
+  if (entries.length === 0) {
+    container.append(element("p", "empty-state", "No lore entries yet."));
+    return;
+  }
+  for (const entry of entries) {
+    const card = element("article", "manage-card");
+    card.append(element("h3", "manage-name", entry.title));
+    card.append(element("span", "manage-meta", `${entry.category} · ${entry.lore_id}`));
+    card.append(element("p", "manage-description", entry.content));
+    const edit = element("button", "manage-button", "Edit");
+    edit.type = "button";
+    edit.addEventListener("click", () => open(entry.lore_id));
+    card.append(edit);
+    container.append(card);
+  }
+}
+
+function fillLoreEditor(
+  entry: LoreEntry | undefined,
+  editor: HTMLDivElement,
+  id: HTMLInputElement,
+  category: HTMLInputElement,
+  title: HTMLInputElement,
+  keywords: HTMLInputElement,
+  content: HTMLTextAreaElement,
+): void {
+  editor.hidden = false;
+  id.value = entry?.lore_id ?? "";
+  id.disabled = entry !== undefined;
+  category.value = entry?.category ?? "";
+  title.value = entry?.title ?? "";
+  keywords.value = entry?.keywords.join(", ") ?? "";
+  content.value = entry?.content ?? "";
+}
+
+function openScenarioLore(loreId: string | null): void {
+  editingScenarioLoreId = loreId;
+  fillLoreEditor(
+    loreId === null ? undefined : scenarioLore.find((entry) => entry.lore_id === loreId),
+    scenarioLoreEditor, scenarioLoreId, scenarioLoreCategory, scenarioLoreTitle,
+    scenarioLoreKeywords, scenarioLoreContent,
+  );
+}
+
+async function saveScenarioLore(): Promise<void> {
+  if (editingScenarioId === null || manageBusy) return;
+  const loreId = scenarioLoreId.value.trim();
+  if (!loreId || !scenarioLoreCategory.value.trim() || !scenarioLoreTitle.value.trim() || !scenarioLoreContent.value.trim()) {
+    setError("Lore id, category, title, and fixed text are required"); return;
+  }
+  manageBusy = true;
+  try {
+    await requestJson("PUT", `/api/scenarios/${encodeURIComponent(editingScenarioId)}/lore/${encodeURIComponent(loreId)}`, {
+      category: scenarioLoreCategory.value, title: scenarioLoreTitle.value,
+      content: scenarioLoreContent.value,
+      keywords: scenarioLoreKeywords.value.split(",").map((word) => word.trim()).filter(Boolean),
+      operation_id: crypto.randomUUID(),
+    });
+    await loadScenarioDetail(editingScenarioId);
+  } catch (error) { setError(error instanceof Error ? error.message : "Unable to save lore"); }
+  finally { manageBusy = false; }
+}
+
+async function deleteScenarioLore(): Promise<void> {
+  if (editingScenarioId === null || editingScenarioLoreId === null || manageBusy) return;
+  if (!window.confirm(`Delete lore entry "${editingScenarioLoreId}"?`)) return;
+  manageBusy = true;
+  try {
+    await requestJson("DELETE", `/api/scenarios/${encodeURIComponent(editingScenarioId)}/lore/${encodeURIComponent(editingScenarioLoreId)}?operation_id=${crypto.randomUUID()}`);
+    scenarioLoreEditor.hidden = true;
+    await loadScenarioDetail(editingScenarioId);
+  } catch (error) { setError(error instanceof Error ? error.message : "Unable to delete lore"); }
+  finally { manageBusy = false; }
 }
 
 async function saveScenarioDetails(): Promise<void> {
@@ -2127,6 +2275,10 @@ for (const button of root?.querySelectorAll<HTMLButtonElement>("[data-element-sa
   }
 }
 
+scenarioLoreAdd.addEventListener("click", () => openScenarioLore(null));
+scenarioLoreSave.addEventListener("click", () => void saveScenarioLore());
+scenarioLoreDelete.addEventListener("click", () => void deleteScenarioLore());
+
 function worldElementTextarea(elementType: string): HTMLTextAreaElement {
   const textarea = root?.querySelector<HTMLTextAreaElement>(
     `#world-element-${elementType}`,
@@ -2164,11 +2316,61 @@ async function loadWorldDetail(worldId: string): Promise<void> {
     for (const elementType of ["ai_instructions", "author_note", "plot_essentials", "opening_scene"]) {
       worldElementTextarea(elementType).value = byType.get(elementType) ?? "";
     }
+    renderWorldLore(detail);
     renderWorldRegions(detail);
     renderWorldPlayer(detail);
   } catch (error) {
     setError(error instanceof Error ? error.message : "Unable to load world");
   }
+}
+
+function renderWorldLore(detail: WorldDetail): void {
+  worldLore = detail.lore;
+  renderLoreList(worldLoreList, worldLore, (loreId) => openWorldLore(loreId));
+}
+
+function openWorldLore(loreId: string | null): void {
+  editingWorldLoreId = loreId;
+  fillLoreEditor(
+    loreId === null ? undefined : worldLore.find((entry) => entry.lore_id === loreId),
+    worldLoreEditor, worldLoreId, worldLoreCategory, worldLoreTitle,
+    worldLoreKeywords, worldLoreContent,
+  );
+}
+
+async function saveWorldLore(): Promise<void> {
+  if (editingWorldId === null || manageBusy) return;
+  const loreId = worldLoreId.value.trim();
+  if (!loreId || !worldLoreCategory.value.trim() || !worldLoreTitle.value.trim() || !worldLoreContent.value.trim()) {
+    setError("Lore id, category, title, and fixed text are required"); return;
+  }
+  manageBusy = true;
+  try {
+    const response = await requestJson<{ world_revision: number }>(
+      "PUT", `/api/worlds/${encodeURIComponent(editingWorldId)}/lore/${encodeURIComponent(loreId)}`,
+      { category: worldLoreCategory.value, title: worldLoreTitle.value, content: worldLoreContent.value,
+        keywords: worldLoreKeywords.value.split(",").map((word) => word.trim()).filter(Boolean),
+        operation_id: crypto.randomUUID(), expected_revision: editingWorldRevision },
+    );
+    editingWorldRevision = response.world_revision;
+    await Promise.all([loadManage(), loadWorldDetail(editingWorldId)]);
+  } catch (error) { setError(error instanceof Error ? error.message : "Unable to save world lore"); }
+  finally { manageBusy = false; }
+}
+
+async function deleteWorldLore(): Promise<void> {
+  if (editingWorldId === null || editingWorldLoreId === null || manageBusy) return;
+  if (!window.confirm(`Delete lore entry "${editingWorldLoreId}"?`)) return;
+  manageBusy = true;
+  try {
+    const response = await requestJson<{ world_revision: number }>(
+      "DELETE", `/api/worlds/${encodeURIComponent(editingWorldId)}/lore/${encodeURIComponent(editingWorldLoreId)}?operation_id=${crypto.randomUUID()}&expected_revision=${editingWorldRevision}`,
+    );
+    editingWorldRevision = response.world_revision;
+    worldLoreEditor.hidden = true;
+    await Promise.all([loadManage(), loadWorldDetail(editingWorldId)]);
+  } catch (error) { setError(error instanceof Error ? error.message : "Unable to delete world lore"); }
+  finally { manageBusy = false; }
 }
 
 function worldRegionDepth(
@@ -2369,6 +2571,9 @@ worldCreateForm.addEventListener("submit", (event) => {
 worldEditSave.addEventListener("click", () => void saveWorldDetails());
 worldEditorClose.addEventListener("click", closeWorldEditor);
 worldDelete.addEventListener("click", () => void deleteWorld());
+worldLoreAdd.addEventListener("click", () => openWorldLore(null));
+worldLoreSave.addEventListener("click", () => void saveWorldLore());
+worldLoreDelete.addEventListener("click", () => void deleteWorldLore());
 for (const button of root?.querySelectorAll<HTMLButtonElement>("[data-world-element-save]") ?? []) {
   const elementType = button.dataset.worldElementSave;
   if (elementType !== undefined) {

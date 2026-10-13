@@ -84,6 +84,7 @@ def test_builds_scenario_neutral_context_for_current_location(tmp_path: Path) ->
         "memories": [],
         "resources": [],
         "world_elements": [],
+        "relevant_lore": [],
     }
 
 

@@ -11,6 +11,7 @@ from backend.world.hierarchy import read_location_ancestors
 from backend.world.links import read_linked_locations
 from backend.world.location_memories import read_location_memories
 from backend.world.locations import read_location_properties
+from backend.world.lore import relevant_world_lore
 from backend.world.queries import (
     LocationNotFound,
     WorldNotFound,
@@ -100,6 +101,7 @@ class WorldContext(ContextModel):
     memories: list[dict[str, Any]]
     resources: list[dict[str, Any]]
     world_elements: list[dict[str, Any]] = Field(default_factory=list)
+    relevant_lore: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def build_world_context(
@@ -194,6 +196,18 @@ def build_world_context(
             location_id=location_id,
             _connection=connection,
         )
+        relevant_lore = relevant_world_lore(
+            connection,
+            world_id=world_id,
+            terms=[
+                location.get("name", ""),
+                location.get("description", ""),
+                location.get("current_description", ""),
+                *[entity.get("name", "") for entity in location["entities"]],
+                *[region.get("title", "") for region in region_framework],
+                *[region.get("description", "") for region in region_framework],
+            ],
+        )
         social = read_social_context(
             database_path,
             world_id=world_id,
@@ -224,6 +238,7 @@ def build_world_context(
             "region_framework": region_framework,
             "recent_events": events,
             "world_elements": [dict(element) for element in world_elements],
+            "relevant_lore": relevant_lore,
             **social,
             **resources,
         }

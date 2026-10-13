@@ -232,7 +232,10 @@ The MCP server (`python -m backend.world.mcp_server`) exposes controlled applica
 | Tool | Purpose |
 | --- | --- |
 | `world_status` | World identity, revision, and currently supported mutation tools (`available_mutations`). |
-| `world_context` | Bounded context snapshot (player, location, entities, relationships, resources, properties, events, region framework). |
+| `world_context` | Bounded context snapshot (player, location, entities, relationships, resources, properties, events, region framework, and automatically relevant fixed lore). |
+| `world_lore_search` | Bounded lore index search by ID, category, title, keyword, or text; returns summaries only. |
+| `world_lore_read` | Read one full fixed lore entry by stable ID. |
+| `world_lore_set` / `world_lore_remove` | Revision-checked create/update or deletion of a world-owned lore entry. Search/read before changing lore; never replace fixed facts speculatively. |
 | `world_inspect_entity` | One entity and optional character state. |
 | `world_events` | Newest-first event window. |
 | `world_move_entity` | Revision-checked, idempotent move; destination must be linked. |

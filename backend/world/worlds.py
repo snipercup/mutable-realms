@@ -246,6 +246,11 @@ def create_world_from_scenario(
                 (scenario_id,),
             ).fetchall()
 
+            lore = connection.execute(
+                "SELECT lore_id, category, title, content, keywords_json FROM scenario_lore "
+                "WHERE scenario_id = ? ORDER BY lore_id",
+                (scenario_id,),
+            ).fetchall()
             connection.execute(
                 "INSERT INTO worlds (id, name, description, source_scenario_id, revision) "
                 "VALUES (?, ?, ?, ?, 0)",
@@ -259,6 +264,7 @@ def create_world_from_scenario(
                 "source_scenario_id": scenario_id,
                 "copied_elements": [element["element_type"] for element in elements],
                 "copied_regions": [region["region_id"] for region in regions],
+                "copied_lore": [entry["lore_id"] for entry in lore],
             }
             result_json = json.dumps(result, sort_keys=True, separators=(",", ":"))
             connection.execute(
@@ -315,6 +321,21 @@ def create_world_from_scenario(
                         region["title"],
                         region["description"],
                         region["attributes_json"],
+                    ),
+                )
+            for entry in lore:
+                connection.execute(
+                    "INSERT INTO world_lore("
+                    "world_id, lore_id, category, title, content, keywords_json, updated_event_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        world_id,
+                        entry["lore_id"],
+                        entry["category"],
+                        entry["title"],
+                        entry["content"],
+                        entry["keywords_json"],
+                        event_identifier,
                     ),
                 )
             connection.commit()
@@ -668,13 +689,19 @@ def instance_player_character(
         if range_band is not None and range_band not in {"short", "mid", "long"}:
             raise WorldAdminConflict("start location range_band is invalid")
         if map_form is not None and map_form not in {
-            "building", "street", "district", "city", "mine", "forest", "water", "gate", "landmark"
+            "building",
+            "street",
+            "district",
+            "city",
+            "mine",
+            "forest",
+            "water",
+            "gate",
+            "landmark",
         }:
             raise WorldAdminConflict("start location map_form is invalid")
         if region_id is not None:
-            if not isinstance(region_id, str) or not _WORLD_ID_PATTERN.fullmatch(
-                region_id.strip()
-            ):
+            if not isinstance(region_id, str) or not _WORLD_ID_PATTERN.fullmatch(region_id.strip()):
                 raise WorldAdminConflict(
                     "start location region_id must be a lowercase kebab-case id"
                 )
@@ -763,9 +790,7 @@ def instance_player_character(
             if not isinstance(attributes, dict):
                 raise WorldAdminConflict("start region attributes must be an object or null")
             try:
-                attributes_json = json.dumps(
-                    attributes, sort_keys=True, separators=(",", ":")
-                )
+                attributes_json = json.dumps(attributes, sort_keys=True, separators=(",", ":"))
             except (TypeError, ValueError) as error:
                 raise WorldAdminConflict(
                     "start region attributes must be JSON-serializable"
@@ -852,14 +877,10 @@ def instance_player_character(
             for region in normalized_regions:
                 parent = region["parent_region_id"]
                 if parent is not None and parent not in all_region_ids:
-                    raise WorldAdminConflict(
-                        f"start region parent not found: {parent}"
-                    )
+                    raise WorldAdminConflict(f"start region parent not found: {parent}")
             for region in normalized_regions:
                 if region["region_id"] in existing_region_ids:
-                    raise WorldAdminConflict(
-                        f"start region already exists: {region['region_id']}"
-                    )
+                    raise WorldAdminConflict(f"start region already exists: {region['region_id']}")
             for item in normalized_layout:
                 if item["region_id"] is not None and item["region_id"] not in all_region_ids:
                     raise WorldAdminConflict(
@@ -900,9 +921,7 @@ def instance_player_character(
                         remaining_regions.remove(region)
                         progressed = True
                 if not progressed:
-                    raise WorldAdminConflict(
-                        "start region layout contains a containment cycle"
-                    )
+                    raise WorldAdminConflict("start region layout contains a containment cycle")
             location_ids = {
                 item["name"].casefold(): f"{world_id}-start"
                 if item["name"].casefold() == start_key

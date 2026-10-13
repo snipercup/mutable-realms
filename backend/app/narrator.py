@@ -114,7 +114,16 @@ _MAX_START_LOCATIONS = 16
 _MAX_START_REGIONS = 16
 _MIN_MAIN_STREET_CHILDREN = 10
 _START_MAP_FORMS = {
-    "building", "street", "district", "city", "mine", "forest", "water", "gate", "farm", "landmark"
+    "building",
+    "street",
+    "district",
+    "city",
+    "mine",
+    "forest",
+    "water",
+    "gate",
+    "farm",
+    "landmark",
 }
 _START_REGION_ID_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
@@ -272,13 +281,9 @@ def _format_context_block(context: dict[str, Any]) -> str:
             if attributes.get("biomes"):
                 bits.append(f"Biomes: {', '.join(attributes['biomes'])}")
             if attributes.get("present_species"):
-                bits.append(
-                    "Present species: " + ", ".join(attributes["present_species"])
-                )
+                bits.append("Present species: " + ", ".join(attributes["present_species"]))
             if attributes.get("absent_species"):
-                bits.append(
-                    "Absent: " + ", ".join(attributes["absent_species"])
-                )
+                bits.append("Absent: " + ", ".join(attributes["absent_species"]))
             if attributes.get("connected_by_road_to"):
                 roads = ", ".join(
                     f"{target} ({direction})"
@@ -286,6 +291,14 @@ def _format_context_block(context: dict[str, Any]) -> str:
                 )
                 bits.append(f"Connected by road to: {roads}")
             lines.append("  " + " — ".join(bits))
+    relevant_lore = context.get("relevant_lore", [])
+    if relevant_lore:
+        lines.append("Relevant fixed lore (authoritative unless newer world state conflicts):")
+        for entry in relevant_lore:
+            lines.append(
+                f"  - {entry.get('title', '?')} [{entry.get('category', '?')}]: "
+                f"{entry.get('content', '')}"
+            )
     events = context.get("recent_events", [])
     if events:
         lines.append("Recent events:")
@@ -769,8 +782,7 @@ def _parse_start_result(output: str) -> NarratorStartResult:
             )
         if start_key == "main street":
             child_count = sum(
-                location.parent_name is not None
-                and location.parent_name.casefold() == start_key
+                location.parent_name is not None and location.parent_name.casefold() == start_key
                 for location in locations
             )
             if child_count < _MIN_MAIN_STREET_CHILDREN:
@@ -815,11 +827,14 @@ def _parse_start_regions(payload: dict[str, Any]) -> tuple[NarratorStartRegion, 
     parsed: list[NarratorStartRegion] = []
     seen_ids: set[str] = set()
     for raw_region in raw_regions:
-        if (
-            not isinstance(raw_region, dict)
-            or set(raw_region)
-            - {"region_id", "parent_region_id", "level", "title", "description", "attributes"}
-        ):
+        if not isinstance(raw_region, dict) or set(raw_region) - {
+            "region_id",
+            "parent_region_id",
+            "level",
+            "title",
+            "description",
+            "attributes",
+        }:
             raise NarratorError(
                 "narration agent start region has invalid fields",
                 category="invalid_start_response",

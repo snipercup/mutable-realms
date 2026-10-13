@@ -89,8 +89,7 @@ def _scenario_with_regions(database_path: Path, scenario_id: str = "aerthalon") 
 def _world_row(database_path: Path, world_id: str) -> dict[str, Any] | None:
     with connect_database(database_path) as connection:
         row = connection.execute(
-            "SELECT id, name, description, source_scenario_id, revision "
-            "FROM worlds WHERE id = ?",
+            "SELECT id, name, description, source_scenario_id, revision FROM worlds WHERE id = ?",
             (world_id,),
         ).fetchone()
     return None if row is None else dict(row)
@@ -138,8 +137,7 @@ def _add_player_fixture(database_path: Path, world_id: str) -> None:
             "VALUES ('hero', 'player', 'active')"
         )
         connection.execute(
-            "INSERT INTO entity_locations (entity_id, location_id) "
-            "VALUES ('hero', 'guild-city')"
+            "INSERT INTO entity_locations (entity_id, location_id) VALUES ('hero', 'guild-city')"
         )
         connection.commit()
 
@@ -160,6 +158,7 @@ def test_instancing_copies_title_description_and_elements(tmp_path: Path) -> Non
         "source_scenario_id": "aerthalon",
         "copied_elements": ["ai_instructions", "author_note", "opening_scene", "plot_essentials"],
         "copied_regions": [],
+        "copied_lore": [],
     }
     world = _world_row(database_path, "aerthalon-campaign")
     assert world is not None
@@ -243,15 +242,11 @@ def test_instancing_diverges_when_scenario_is_edited(tmp_path: Path) -> None:
     )
 
     elements = _world_elements(database_path, "aerthalon-campaign")
-    opening = next(
-        element for element in elements if element["element_type"] == "opening_scene"
-    )
+    opening = next(element for element in elements if element["element_type"] == "opening_scene")
     assert opening["content"] == "opening_scene content."
     scenario_elements = read_scenario(database_path, "aerthalon")["elements"]
     scenario_opening = next(
-        element
-        for element in scenario_elements
-        if element["element_type"] == "opening_scene"
+        element for element in scenario_elements if element["element_type"] == "opening_scene"
     )
     assert scenario_opening["content"] == "The gates have changed forever."
 
@@ -369,23 +364,75 @@ def test_cli_create_world_from_scenario_roundtrip(
 ) -> None:
     database_path = _database(tmp_path)
     db_args = ["--db-path", str(database_path)]
-    assert main([*db_args, "create-scenario", "--scenario-id", "aerthalon",
-                 "--operation-id", "op-1", "--title", "Aerthalon"]) == 0
+    assert (
+        main(
+            [
+                *db_args,
+                "create-scenario",
+                "--scenario-id",
+                "aerthalon",
+                "--operation-id",
+                "op-1",
+                "--title",
+                "Aerthalon",
+            ]
+        )
+        == 0
+    )
     capsys.readouterr()
 
-    assert main([*db_args, "create-world-from-scenario", "--world-id", "campaign-1",
-                 "--operation-id", "op-2", "--scenario-id", "aerthalon"]) == 0
+    assert (
+        main(
+            [
+                *db_args,
+                "create-world-from-scenario",
+                "--world-id",
+                "campaign-1",
+                "--operation-id",
+                "op-2",
+                "--scenario-id",
+                "aerthalon",
+            ]
+        )
+        == 0
+    )
     captured = capsys.readouterr()
     assert '"world_revision": 1' in captured.out
     assert '"source_scenario_id": "aerthalon"' in captured.out
 
-    assert main([*db_args, "create-world-from-scenario", "--world-id", "campaign-1",
-                 "--operation-id", "op-2", "--scenario-id", "aerthalon"]) == 0
+    assert (
+        main(
+            [
+                *db_args,
+                "create-world-from-scenario",
+                "--world-id",
+                "campaign-1",
+                "--operation-id",
+                "op-2",
+                "--scenario-id",
+                "aerthalon",
+            ]
+        )
+        == 0
+    )
     captured = capsys.readouterr()
     assert '"already_applied": true' in captured.out
 
-    assert main([*db_args, "create-world-from-scenario", "--world-id", "campaign-2",
-                 "--operation-id", "op-3", "--scenario-id", "missing"]) == 2
+    assert (
+        main(
+            [
+                *db_args,
+                "create-world-from-scenario",
+                "--world-id",
+                "campaign-2",
+                "--operation-id",
+                "op-3",
+                "--scenario-id",
+                "missing",
+            ]
+        )
+        == 2
+    )
     captured = capsys.readouterr()
     assert "scenario not found" in captured.err
 
@@ -393,9 +440,7 @@ def test_cli_create_world_from_scenario_roundtrip(
 # --- HTTP API --------------------------------------------------------------
 
 
-async def _request(
-    app: Any, method: str, path: str, **kwargs: Any
-) -> tuple[int, Any]:
+async def _request(app: Any, method: str, path: str, **kwargs: Any) -> tuple[int, Any]:
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -528,8 +573,7 @@ def test_provision_player_creates_player_and_starting_location(
         ).fetchone()
         assert dict(player) == {"name": "fate", "role": "player"}
         placement = connection.execute(
-            "SELECT location_id FROM entity_locations "
-            "WHERE entity_id = 'campaign-1-player'"
+            "SELECT location_id FROM entity_locations WHERE entity_id = 'campaign-1-player'"
         ).fetchone()
         assert dict(placement)["location_id"] == "campaign-1-start"
         event = connection.execute(
@@ -661,23 +705,81 @@ def test_provision_player_reuses_name_across_worlds(tmp_path: Path) -> None:
 def test_cli_and_api_provision_player(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     database_path = _database(tmp_path)
     db_args = ["--db-path", str(database_path)]
-    assert main([*db_args, "create-scenario", "--scenario-id", "aerthalon",
-                 "--operation-id", "op-1", "--title", "Aerthalon"]) == 0
+    assert (
+        main(
+            [
+                *db_args,
+                "create-scenario",
+                "--scenario-id",
+                "aerthalon",
+                "--operation-id",
+                "op-1",
+                "--title",
+                "Aerthalon",
+            ]
+        )
+        == 0
+    )
     capsys.readouterr()
-    assert main([*db_args, "create-world-from-scenario", "--world-id", "campaign-1",
-                 "--operation-id", "op-2", "--scenario-id", "aerthalon"]) == 0
+    assert (
+        main(
+            [
+                *db_args,
+                "create-world-from-scenario",
+                "--world-id",
+                "campaign-1",
+                "--operation-id",
+                "op-2",
+                "--scenario-id",
+                "aerthalon",
+            ]
+        )
+        == 0
+    )
     capsys.readouterr()
 
-    assert main([*db_args, "provision-player", "--world-id", "campaign-1",
-                 "--operation-id", "op-3", "--expected-revision", "1",
-                 "--player-name", "fate", "--location-name", "Settlement"]) == 0
+    assert (
+        main(
+            [
+                *db_args,
+                "provision-player",
+                "--world-id",
+                "campaign-1",
+                "--operation-id",
+                "op-3",
+                "--expected-revision",
+                "1",
+                "--player-name",
+                "fate",
+                "--location-name",
+                "Settlement",
+            ]
+        )
+        == 0
+    )
     captured = capsys.readouterr()
     assert '"world_revision": 2' in captured.out
     assert "campaign-1-player" in captured.out
 
-    assert main([*db_args, "provision-player", "--world-id", "campaign-1",
-                 "--operation-id", "op-4", "--expected-revision", "2",
-                 "--player-name", "fate", "--location-name", "Settlement"]) == 2
+    assert (
+        main(
+            [
+                *db_args,
+                "provision-player",
+                "--world-id",
+                "campaign-1",
+                "--operation-id",
+                "op-4",
+                "--expected-revision",
+                "2",
+                "--player-name",
+                "fate",
+                "--location-name",
+                "Settlement",
+            ]
+        )
+        == 2
+    )
     captured = capsys.readouterr()
     assert "already has a player" in captured.err
 
@@ -804,9 +906,7 @@ def test_set_world_element_upserts_and_links_event(tmp_path: Path) -> None:
 
     assert result["world_revision"] == 2
     elements = _world_elements(database_path, "campaign-1")
-    opening = next(
-        element for element in elements if element["element_type"] == "opening_scene"
-    )
+    opening = next(element for element in elements if element["element_type"] == "opening_scene")
     assert opening["content"] == "The gates have changed forever."
     with connect_database(database_path) as connection:
         row = connection.execute(
@@ -834,9 +934,7 @@ def test_set_world_element_does_not_touch_scenario(tmp_path: Path) -> None:
 
     scenario_elements = read_scenario(database_path, "aerthalon")["elements"]
     scenario_opening = next(
-        element
-        for element in scenario_elements
-        if element["element_type"] == "opening_scene"
+        element for element in scenario_elements if element["element_type"] == "opening_scene"
     )
     assert scenario_opening["content"] == "opening_scene content."
     elements = _world_elements(database_path, "campaign-1")
@@ -974,34 +1072,114 @@ def test_remove_world_stale_revision_and_missing(tmp_path: Path) -> None:
     assert _world_row(database_path, "campaign-1") is not None
 
 
-def test_cli_world_management_roundtrip(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_world_management_roundtrip(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     database_path = _database(tmp_path)
     db_args = ["--db-path", str(database_path)]
-    assert main([*db_args, "create-scenario", "--scenario-id", "aerthalon",
-                 "--operation-id", "op-1", "--title", "Aerthalon"]) == 0
+    assert (
+        main(
+            [
+                *db_args,
+                "create-scenario",
+                "--scenario-id",
+                "aerthalon",
+                "--operation-id",
+                "op-1",
+                "--title",
+                "Aerthalon",
+            ]
+        )
+        == 0
+    )
     capsys.readouterr()
-    assert main([*db_args, "create-world-from-scenario", "--world-id", "campaign-1",
-                 "--operation-id", "op-2", "--scenario-id", "aerthalon"]) == 0
+    assert (
+        main(
+            [
+                *db_args,
+                "create-world-from-scenario",
+                "--world-id",
+                "campaign-1",
+                "--operation-id",
+                "op-2",
+                "--scenario-id",
+                "aerthalon",
+            ]
+        )
+        == 0
+    )
     capsys.readouterr()
 
-    assert main([*db_args, "update-world", "--world-id", "campaign-1",
-                 "--operation-id", "op-3", "--expected-revision", "1",
-                 "--title", "Aerthalon Reborn"]) == 0
-    assert main([*db_args, "set-world-element", "--world-id", "campaign-1",
-                 "--operation-id", "op-4", "--expected-revision", "2",
-                 "--element-type", "opening_scene", "--content", "New opening."]) == 0
+    assert (
+        main(
+            [
+                *db_args,
+                "update-world",
+                "--world-id",
+                "campaign-1",
+                "--operation-id",
+                "op-3",
+                "--expected-revision",
+                "1",
+                "--title",
+                "Aerthalon Reborn",
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                *db_args,
+                "set-world-element",
+                "--world-id",
+                "campaign-1",
+                "--operation-id",
+                "op-4",
+                "--expected-revision",
+                "2",
+                "--element-type",
+                "opening_scene",
+                "--content",
+                "New opening.",
+            ]
+        )
+        == 0
+    )
     captured = capsys.readouterr()
     assert '"world_revision": 3' in captured.out
 
-    assert main([*db_args, "remove-world", "--world-id", "campaign-1",
-                 "--operation-id", "op-5", "--expected-revision", "3"]) == 0
+    assert (
+        main(
+            [
+                *db_args,
+                "remove-world",
+                "--world-id",
+                "campaign-1",
+                "--operation-id",
+                "op-5",
+                "--expected-revision",
+                "3",
+            ]
+        )
+        == 0
+    )
     captured = capsys.readouterr()
     assert '"removed": true' in captured.out
 
-    assert main([*db_args, "remove-world", "--world-id", "campaign-1",
-                 "--operation-id", "op-6", "--expected-revision", "3"]) == 2
+    assert (
+        main(
+            [
+                *db_args,
+                "remove-world",
+                "--world-id",
+                "campaign-1",
+                "--operation-id",
+                "op-6",
+                "--expected-revision",
+                "3",
+            ]
+        )
+        == 2
+    )
     captured = capsys.readouterr()
     assert "world not found" in captured.err
 

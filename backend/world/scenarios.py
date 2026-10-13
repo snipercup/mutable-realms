@@ -58,9 +58,7 @@ def _validate_operation_id(operation_id: str) -> None:
 
 def _validate_element_type(element_type: str) -> None:
     if element_type not in SCENARIO_ELEMENT_TYPES:
-        raise ScenarioConflict(
-            "element type must be one of: " + ", ".join(SCENARIO_ELEMENT_TYPES)
-        )
+        raise ScenarioConflict("element type must be one of: " + ", ".join(SCENARIO_ELEMENT_TYPES))
 
 
 def _validate_content(content: str) -> str:
@@ -68,9 +66,7 @@ def _validate_content(content: str) -> str:
     if not trimmed:
         raise ScenarioConflict("element content must not be blank")
     if len(trimmed) > _MAX_ELEMENT_LENGTH:
-        raise ScenarioConflict(
-            f"element content must be at most {_MAX_ELEMENT_LENGTH} characters"
-        )
+        raise ScenarioConflict(f"element content must be at most {_MAX_ELEMENT_LENGTH} characters")
     return trimmed
 
 
@@ -100,10 +96,7 @@ def _replay_or_conflict(
     ).fetchone()
     if existing is None:
         return None
-    if (
-        existing["operation_type"] != operation_type
-        or existing["request_json"] != request_json
-    ):
+    if existing["operation_type"] != operation_type or existing["request_json"] != request_json:
         raise ScenarioConflict("operation ID was already used for a different request")
     result = json.loads(existing["result_json"])
     result["already_applied"] = True
@@ -133,12 +126,8 @@ def _record_operation(
     )
 
 
-def _require_scenario(
-    connection: sqlite3.Connection, scenario_id: str
-) -> None:
-    row = connection.execute(
-        "SELECT id FROM scenarios WHERE id = ?", (scenario_id,)
-    ).fetchone()
+def _require_scenario(connection: sqlite3.Connection, scenario_id: str) -> None:
+    row = connection.execute("SELECT id FROM scenarios WHERE id = ?", (scenario_id,)).fetchone()
     if row is None:
         raise ScenarioNotFound(f"scenario not found: {scenario_id}")
 
@@ -333,13 +322,9 @@ def set_scenario_element(
 def _validate_region_id(region_id: str) -> str:
     trimmed = region_id.strip()
     if not _ID_PATTERN.fullmatch(trimmed):
-        raise ScenarioConflict(
-            "region id must be lowercase kebab-case (letters, digits, hyphens)"
-        )
+        raise ScenarioConflict("region id must be lowercase kebab-case (letters, digits, hyphens)")
     if len(trimmed) > _MAX_REGION_ID_LENGTH:
-        raise ScenarioConflict(
-            f"region id must be at most {_MAX_REGION_ID_LENGTH} characters"
-        )
+        raise ScenarioConflict(f"region id must be at most {_MAX_REGION_ID_LENGTH} characters")
     return trimmed
 
 
@@ -371,8 +356,7 @@ def _validate_region_description(description: str) -> str:
         raise ScenarioConflict("region description must not be blank")
     if len(trimmed) > _MAX_REGION_DESCRIPTION_LENGTH:
         raise ScenarioConflict(
-            f"region description must be at most "
-            f"{_MAX_REGION_DESCRIPTION_LENGTH} characters"
+            f"region description must be at most {_MAX_REGION_DESCRIPTION_LENGTH} characters"
         )
     return trimmed
 
@@ -383,8 +367,7 @@ def _validate_region_attributes(attributes: dict[str, Any] | None) -> str:
     serialized = json.dumps(attributes, sort_keys=True, separators=(",", ":"))
     if len(serialized) > _MAX_REGION_ATTRIBUTES_LENGTH:
         raise ScenarioConflict(
-            f"region attributes must be at most "
-            f"{_MAX_REGION_ATTRIBUTES_LENGTH} characters"
+            f"region attributes must be at most {_MAX_REGION_ATTRIBUTES_LENGTH} characters"
         )
     return serialized
 
@@ -400,15 +383,12 @@ def _require_parent_is_acyclic(
     depth = 0
     while current is not None:
         if current == region_id:
-            raise ScenarioConflict(
-                "region parent must not create a cycle in the hierarchy"
-            )
+            raise ScenarioConflict("region parent must not create a cycle in the hierarchy")
         depth += 1
         if depth > 1000:
             raise ScenarioConflict("region hierarchy is too deep")
         row = connection.execute(
-            "SELECT parent_region_id FROM scenario_regions "
-            "WHERE scenario_id = ? AND region_id = ?",
+            "SELECT parent_region_id FROM scenario_regions WHERE scenario_id = ? AND region_id = ?",
             (scenario_id, current),
         ).fetchone()
         if row is None:
@@ -443,9 +423,7 @@ def set_scenario_region(
     title = _validate_region_title(title)
     description = _validate_region_description(description)
     parent_region_id = (
-        _validate_region_id(parent_region_id)
-        if parent_region_id is not None
-        else None
+        _validate_region_id(parent_region_id) if parent_region_id is not None else None
     )
     attributes_json = _validate_region_attributes(attributes)
     request = {
@@ -479,12 +457,8 @@ def set_scenario_region(
                     (scenario_id, parent_region_id),
                 ).fetchone()
                 if parent is None:
-                    raise ScenarioConflict(
-                        f"parent region not found: {parent_region_id}"
-                    )
-                _require_parent_is_acyclic(
-                    connection, scenario_id, region_id, parent_region_id
-                )
+                    raise ScenarioConflict(f"parent region not found: {parent_region_id}")
+                _require_parent_is_acyclic(connection, scenario_id, region_id, parent_region_id)
             connection.execute(
                 "INSERT INTO scenario_regions ("
                 "scenario_id, region_id, parent_region_id, level, title, "
@@ -561,15 +535,13 @@ def remove_scenario_region(
                 return replay
             _require_scenario(connection, scenario_id)
             existing = connection.execute(
-                "SELECT region_id FROM scenario_regions "
-                "WHERE scenario_id = ? AND region_id = ?",
+                "SELECT region_id FROM scenario_regions WHERE scenario_id = ? AND region_id = ?",
                 (scenario_id, region_id),
             ).fetchone()
             if existing is None:
                 raise ScenarioNotFound(f"region not found: {region_id}")
             connection.execute(
-                "DELETE FROM scenario_regions "
-                "WHERE scenario_id = ? AND region_id = ?",
+                "DELETE FROM scenario_regions WHERE scenario_id = ? AND region_id = ?",
                 (scenario_id, region_id),
             )
             result = {
@@ -641,6 +613,12 @@ def read_scenario(database_path: str | Path, scenario_id: str) -> dict[str, Any]
             "WHERE scenario_id = ? ORDER BY region_id",
             (scenario_id,),
         ).fetchall()
+        lore = connection.execute(
+            "SELECT lore_id, category, title, content, keywords_json, updated_at "
+            "FROM scenario_lore WHERE scenario_id = ? "
+            "ORDER BY category, title, lore_id",
+            (scenario_id,),
+        ).fetchall()
         return {
             "id": row["id"],
             "title": row["title"],
@@ -653,6 +631,17 @@ def read_scenario(database_path: str | Path, scenario_id: str) -> dict[str, Any]
                     "updated_at": element["updated_at"],
                 }
                 for element in elements
+            ],
+            "lore": [
+                {
+                    "lore_id": entry["lore_id"],
+                    "category": entry["category"],
+                    "title": entry["title"],
+                    "content": entry["content"],
+                    "keywords": json.loads(entry["keywords_json"]),
+                    "updated_at": entry["updated_at"],
+                }
+                for entry in lore
             ],
             "regions": [
                 {

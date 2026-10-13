@@ -28,6 +28,7 @@ from backend.app.read_models import (
     LocationRead,
     LocationScopePromotionMutationResponse,
     LocationScopePromotionRequest,
+    LoreEntryRequest,
     NarrationEntryRead,
     NarrationHistoryRead,
     PlayerCharacterCreateRequest,
@@ -85,6 +86,12 @@ from backend.world.characters import (
 from backend.world.context import build_world_context
 from backend.world.expansion import ExpansionConflict, ExpansionNotFound, propose_location_expansion
 from backend.world.hierarchy import set_location_hierarchy, set_location_scope_promotion
+from backend.world.lore import (
+    remove_scenario_lore,
+    remove_world_lore,
+    set_scenario_lore,
+    set_world_lore,
+)
 from backend.world.narration_history import append_narration, read_narration_history
 from backend.world.queries import (
     EntityNotFound,
@@ -245,6 +252,59 @@ def create_app(
             )
         except WorldAdminNotFound as error:
             raise HTTPException(status_code=404, detail="world not found") from error
+        except WorldAdminConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return WorldMutationResponse(
+            already_applied=result["already_applied"],
+            world_id=result["world_id"],
+            world_revision=result["world_revision"],
+        )
+
+    @application.put("/api/worlds/{world_id}/lore/{lore_id}", tags=["world administration"])
+    def set_world_lore_route(
+        world_id: str, lore_id: str, request: LoreEntryRequest
+    ) -> WorldMutationResponse:
+        if request.expected_revision is None:
+            raise HTTPException(status_code=422, detail="expected_revision is required")
+        try:
+            result = set_world_lore(
+                get_database_path(),
+                world_id=world_id,
+                operation_id=request.operation_id,
+                expected_revision=request.expected_revision,
+                lore_id=lore_id,
+                category=request.category,
+                title=request.title,
+                content=request.content,
+                keywords=request.keywords,
+            )
+        except WorldAdminNotFound as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except WorldAdminConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return WorldMutationResponse(
+            already_applied=result["already_applied"],
+            world_id=result["world_id"],
+            world_revision=result["world_revision"],
+        )
+
+    @application.delete("/api/worlds/{world_id}/lore/{lore_id}", tags=["world administration"])
+    def remove_world_lore_route(
+        world_id: str,
+        lore_id: str,
+        operation_id: str = Query(...),
+        expected_revision: int = Query(..., ge=0),
+    ) -> WorldMutationResponse:
+        try:
+            result = remove_world_lore(
+                get_database_path(),
+                world_id=world_id,
+                operation_id=operation_id,
+                expected_revision=expected_revision,
+                lore_id=lore_id,
+            )
+        except WorldAdminNotFound as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
         except WorldAdminConflict as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
         return WorldMutationResponse(
@@ -502,9 +562,7 @@ def create_app(
         world_id: str, limit: int = Query(default=20, ge=1, le=100)
     ) -> NarrationHistoryRead:
         try:
-            entries = read_narration_history(
-                get_database_path(), world_id=world_id, limit=limit
-            )
+            entries = read_narration_history(get_database_path(), world_id=world_id, limit=limit)
         except WorldNotFound as error:
             raise HTTPException(status_code=404, detail="world not found") from error
         return NarrationHistoryRead(
@@ -694,6 +752,48 @@ def create_app(
         return ScenarioMutationResponse(
             already_applied=result["already_applied"],
             scenario_id=result["scenario_id"],
+        )
+
+    @application.put("/api/scenarios/{scenario_id}/lore/{lore_id}", tags=["scenario mutations"])
+    def set_scenario_lore_route(
+        scenario_id: str, lore_id: str, request: LoreEntryRequest
+    ) -> ScenarioMutationResponse:
+        try:
+            result = set_scenario_lore(
+                get_database_path(),
+                scenario_id=scenario_id,
+                operation_id=request.operation_id,
+                lore_id=lore_id,
+                category=request.category,
+                title=request.title,
+                content=request.content,
+                keywords=request.keywords,
+            )
+        except ScenarioNotFound as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ScenarioConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return ScenarioMutationResponse(
+            already_applied=result["already_applied"], scenario_id=result["scenario_id"]
+        )
+
+    @application.delete("/api/scenarios/{scenario_id}/lore/{lore_id}", tags=["scenario mutations"])
+    def remove_scenario_lore_route(
+        scenario_id: str, lore_id: str, operation_id: str = Query(...)
+    ) -> ScenarioMutationResponse:
+        try:
+            result = remove_scenario_lore(
+                get_database_path(),
+                scenario_id=scenario_id,
+                operation_id=operation_id,
+                lore_id=lore_id,
+            )
+        except ScenarioNotFound as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ScenarioConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return ScenarioMutationResponse(
+            already_applied=result["already_applied"], scenario_id=result["scenario_id"]
         )
 
     @application.delete("/api/scenarios/{scenario_id}", tags=["scenario mutations"])

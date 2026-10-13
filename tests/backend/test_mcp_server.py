@@ -26,6 +26,10 @@ def test_mcp_exposes_only_controlled_world_tools_without_database_arguments() ->
     assert [tool.name for tool in tools] == [
         "world_status",
         "world_context",
+        "world_lore_search",
+        "world_lore_read",
+        "world_lore_set",
+        "world_lore_remove",
         "world_inspect_entity",
         "world_events",
         "world_move_entity",
@@ -163,7 +167,11 @@ def test_stdio_server_supports_real_tool_discovery_and_calls(tmp_path: Path) -> 
                 result = await session.call_tool("world_status", {"world_id": "protocol-world"})
                 assert result.isError is False
                 assert result.structuredContent == {
-                    "available_mutations": ["world_move_entity"],
+                    "available_mutations": [
+                        "world_move_entity",
+                        "world_lore_set",
+                        "world_lore_remove",
+                    ],
                     "world": {
                         "id": "protocol-world",
                         "name": "Protocol World",
