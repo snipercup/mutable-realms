@@ -12,7 +12,7 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 **Out of scope:** automatic generation of lore, inference of new lore facts from narration, a lore graph, full-text/vector infrastructure, and indiscriminate prompt injection of all entries.
 
-**Verification:** `337` backend tests pass; `npm run lint`, `npm run frontend-build`, and `git diff --check` pass. A live migration applied `0026` to the scenario database, then the idempotent scenario service wrote and read back `cyberpunk-2077` / `tyger-claws` with category `faction` and its explicit Westbrook/Japantown/Arasaka keywords. Focused tests cover scenario-to-world copying, world-only divergence, stale-revision rejection, search, and bounded context selection.
+**Verification:** `338` backend tests pass; `npm run lint`, `npm run frontend-build`, and `git diff --check` pass. A live migration applied `0026` to the scenario database, then the idempotent scenario service wrote and read back `cyberpunk-2077` / `tyger-claws` with category `faction` and its explicit Westbrook/Japantown/Arasaka keywords. Focused tests cover scenario-to-world copying, world-only divergence, stale-revision rejection, search, and bounded context selection. A parent-first instancing regression test confirms multi-level hierarchies where child IDs sort before parents; an isolated copy of the live Cyberpunk scenario instanced via HTTP with 12 regions, 217 lore entries, five verified parent links, and no foreign-key violations.
 
 **Suggested commit message:** `Add scoped scenario and world lore entries`
 

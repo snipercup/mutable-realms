@@ -196,6 +196,37 @@ def test_instancing_copies_scenario_regions_into_world(tmp_path: Path) -> None:
     assert elaris["location_id"] is None
 
 
+def test_instancing_inserts_scenario_regions_parent_first_when_child_sorts_first(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path)
+    _scenario(database_path)
+    for region_id, title, parent_region_id in (
+        ("z-parent", "Parent", None),
+        ("a-child", "Child", "z-parent"),
+        ("0-grandchild", "Grandchild", "a-child"),
+    ):
+        set_scenario_region(
+            database_path,
+            scenario_id="aerthalon",
+            operation_id=f"region-{region_id}",
+            region_id=region_id,
+            level="test-region",
+            title=title,
+            description=f"{title} description.",
+            parent_region_id=parent_region_id,
+        )
+
+    result = _instance(database_path)
+
+    assert result["copied_regions"] == ["0-grandchild", "a-child", "z-parent"]
+    world_regions = read_world(database_path, "aerthalon-campaign")["regions"]
+    by_id = {region["region_id"]: region for region in world_regions}
+    assert by_id["z-parent"]["parent_region_id"] is None
+    assert by_id["a-child"]["parent_region_id"] == "z-parent"
+    assert by_id["0-grandchild"]["parent_region_id"] == "a-child"
+
+
 def test_instancing_records_world_created_event(tmp_path: Path) -> None:
     database_path = _database(tmp_path)
     _scenario(database_path)

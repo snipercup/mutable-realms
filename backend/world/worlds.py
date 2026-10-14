@@ -180,6 +180,27 @@ def _commit_world_mutation(
     return result
 
 
+def _regions_parent_first(regions: list[sqlite3.Row]) -> list[sqlite3.Row]:
+    """Return regions in deterministic order with each parent before its children."""
+    remaining = sorted(regions, key=lambda region: region["region_id"])
+    ordered: list[sqlite3.Row] = []
+    inserted_region_ids: set[str] = set()
+    while remaining:
+        ready = [
+            region
+            for region in remaining
+            if region["parent_region_id"] is None
+            or region["parent_region_id"] in inserted_region_ids
+        ]
+        if not ready:
+            raise WorldAdminConflict("scenario region hierarchy contains a cycle or missing parent")
+        for region in ready:
+            ordered.append(region)
+            inserted_region_ids.add(region["region_id"])
+            remaining.remove(region)
+    return ordered
+
+
 def create_world_from_scenario(
     database_path: str | Path,
     *,
@@ -308,7 +329,7 @@ def create_world_from_scenario(
                     "VALUES (?, ?, ?, ?)",
                     (world_id, element["element_type"], element["content"], event_identifier),
                 )
-            for region in regions:
+            for region in _regions_parent_first(regions):
                 connection.execute(
                     "INSERT INTO world_regions "
                     "(world_id, region_id, parent_region_id, level, title, "
