@@ -1038,6 +1038,9 @@ function mapShape(location: WorldMapLocation, isSibling: boolean): SVGElement {
   if (form === "building") {
     return svgElement("rect", { ...attributes, x: -size, y: -size * 0.7, width: size * 2, height: size * 1.4, rx: 2 });
   }
+  if (form === "corridor") {
+    return svgElement("rect", { ...attributes, x: -size, y: -size * 0.55, width: size * 2, height: size * 1.1, rx: size * 0.35 });
+  }
   if (form === "street") {
     return svgElement("path", { ...attributes, d: `M ${-size} ${size * 0.45} L ${size} ${-size * 0.45} L ${size} ${size * 0.45} L ${-size} ${-size * 0.45} Z` });
   }
@@ -1150,6 +1153,43 @@ function appendGateDecoration(svg: SVGElement): void {
   );
 }
 
+function corridorMapPositions(children: WorldMapLocation[]): Map<string, [number, number]> {
+  const positions = new Map<string, [number, number]>();
+  const xs = [120, 260, 400, 540, 680];
+  children.forEach((location, index) => {
+    const column = index % xs.length;
+    const row = Math.floor(index / xs.length);
+    positions.set(location.id, [xs[column]!, row % 2 === 0 ? 190 : 410]);
+  });
+  return positions;
+}
+
+function appendCorridorDecoration(svg: SVGElement, children: WorldMapLocation[], positions: Map<string, [number, number]>): void {
+  svg.append(
+    svgElement("rect", { x: 48, y: 255, width: MAP_WIDTH - 96, height: 90, rx: 20, class: "map-corridor-floor", "data-map-layer": "corridor-floor" }),
+    svgElement("line", { x1: 62, y1: 270, x2: MAP_WIDTH - 62, y2: 270, class: "map-corridor-wall", "data-map-layer": "corridor-wall" }),
+    svgElement("line", { x1: 62, y1: 330, x2: MAP_WIDTH - 62, y2: 330, class: "map-corridor-wall", "data-map-layer": "corridor-wall" }),
+  );
+  children.forEach((location, index) => {
+    const pos = positions.get(location.id);
+    if (pos === undefined) return;
+    const [x, y] = pos;
+    const doorY = y < MAP_CENTER_Y ? 255 : 345;
+    svg.append(svgElement("path", {
+      d: `M ${x} ${doorY} V ${y < MAP_CENTER_Y ? y + 14 : y - 14}`,
+      class: "map-corridor-branch",
+      "data-map-layer": "corridor-branch",
+      "data-location-id": location.id,
+    }));
+    svg.append(svgElement("path", {
+      d: `M ${x - 16} ${doorY} V ${doorY + (y < MAP_CENTER_Y ? 14 : -14)} A 16 16 0 0 1 ${x} ${doorY + (y < MAP_CENTER_Y ? 30 : -30)}`,
+      class: "map-corridor-door",
+      "data-map-layer": "corridor-door",
+      "data-door-index": index,
+    }));
+  });
+}
+
 function renderMap(state: WorldState): HTMLElement {
   const panel = element("section", "panel map-panel");
   const scopeName = state.map.scope_location?.name ?? state.world.name;
@@ -1198,6 +1238,8 @@ function renderMap(state: WorldState): HTMLElement {
     || state.map.scope_location?.name.toLocaleLowerCase() === "main street";
   const isRoadScope = state.map.scope_location?.kind === "route"
     || state.map.scope_location?.name.toLocaleLowerCase().includes("road");
+  const isCorridorScope = state.map.scope_location?.map_form === "corridor"
+    || /\b(corridor|hallway|passage)\b/i.test(state.map.scope_location?.name ?? "");
   const isGateScope = state.map.scope_location?.map_form === "gate"
     || /\bgates?\b/i.test(state.map.scope_location?.name ?? "");
   const isFarmScope = state.map.scope_location?.map_form === "farm"
@@ -1205,9 +1247,11 @@ function renderMap(state: WorldState): HTMLElement {
   const positions = state.map.scope_location === null
     ? orientedMapPositions(ordered)
     : new Map([
-        ...(isStreetScope
-          ? streetMapPositions(children)
-          : centerMapPositions(children)),
+        ...(isCorridorScope
+          ? corridorMapPositions(children)
+          : isStreetScope
+            ? streetMapPositions(children)
+            : centerMapPositions(children)),
         ...edgeMapPositions(siblings),
       ]);
   const siblingLabels = state.map.scope_location === null
@@ -1256,6 +1300,7 @@ function renderMap(state: WorldState): HTMLElement {
         }),
       );
     }
+    if (isCorridorScope) appendCorridorDecoration(svg, children, positions);
     if (isRoadScope) appendRoadDecoration(svg);
     if (isGateScope) appendGateDecoration(svg);
     if (isFarmScope) appendFarmDecoration(svg);

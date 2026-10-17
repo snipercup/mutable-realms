@@ -57,6 +57,7 @@ def test_startup_migrates_database_and_readiness_checks_schema(tmp_path: Path) -
             24,
             25,
             26,
+            27,
         ]
 
 

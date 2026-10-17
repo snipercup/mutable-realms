@@ -265,7 +265,6 @@ def test_expansion_rejects_invalid_orientation_metadata(tmp_path: Path) -> None:
         propose_location_expansion(path, **{**base, "map_form": "castle"})
 
 
-
 def test_expansion_accepts_gate_map_form(tmp_path: Path) -> None:
     path = _world(tmp_path)
 
@@ -284,9 +283,12 @@ def test_expansion_accepts_gate_map_form(tmp_path: Path) -> None:
 
     assert result["world_revision"] == 1
     with connect_database(path) as connection:
-        assert connection.execute(
-            "SELECT map_form FROM location_metadata WHERE location_id = 'west-gate'"
-        ).fetchone()[0] == "gate"
+        assert (
+            connection.execute(
+                "SELECT map_form FROM location_metadata WHERE location_id = 'west-gate'"
+            ).fetchone()[0]
+            == "gate"
+        )
 
 
 def test_expansion_accepts_farm_map_form(tmp_path: Path) -> None:
@@ -307,9 +309,38 @@ def test_expansion_accepts_farm_map_form(tmp_path: Path) -> None:
 
     assert result["world_revision"] == 1
     with connect_database(path) as connection:
-        assert connection.execute(
-            "SELECT map_form FROM location_metadata WHERE location_id = 'reedbank-farm'"
-        ).fetchone()[0] == "farm"
+        assert (
+            connection.execute(
+                "SELECT map_form FROM location_metadata WHERE location_id = 'reedbank-farm'"
+            ).fetchone()[0]
+            == "farm"
+        )
+
+
+def test_expansion_accepts_corridor_map_form(tmp_path: Path) -> None:
+    path = _world(tmp_path)
+
+    result = propose_location_expansion(
+        path,
+        world_id="world-a",
+        operation_id="expand-corridor-1",
+        expected_revision=0,
+        proposal_id="corridor-proposal-1",
+        location_id="service-corridor",
+        anchor_location_id="harbor",
+        name="Service Corridor",
+        connect_to_anchor=True,
+        map_form="corridor",
+    )
+
+    assert result["world_revision"] == 1
+    with connect_database(path) as connection:
+        assert (
+            connection.execute(
+                "SELECT map_form FROM location_metadata WHERE location_id = 'service-corridor'"
+            ).fetchone()[0]
+            == "corridor"
+        )
 
 
 def test_expansion_moves_actor_into_new_location_atomically(tmp_path: Path) -> None:

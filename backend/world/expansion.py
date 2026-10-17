@@ -37,6 +37,7 @@ _ALLOWED_MAP_FORMS = frozenset(
         "water",
         "gate",
         "farm",
+        "corridor",
         "landmark",
     }
 )
@@ -137,9 +138,7 @@ def propose_location_expansion(
     if map_form is not None and map_form not in _ALLOWED_MAP_FORMS:
         raise ExpansionConflict(f"invalid map form: {map_form}")
     if move_actor_to_location and actor_entity_id is None:
-        raise ExpansionConflict(
-            "actor_entity_id is required when move_actor_to_location is true"
-        )
+        raise ExpansionConflict("actor_entity_id is required when move_actor_to_location is true")
     request = {
         "actor_entity_id": actor_entity_id,
         "anchor_location_id": anchor_location_id,
@@ -217,8 +216,7 @@ def propose_location_expansion(
                 raise ExpansionNotFound(f"parent location not found: {parent_location_id}")
             if region_id is not None:
                 region = connection.execute(
-                    "SELECT region_id FROM world_regions "
-                    "WHERE world_id = ? AND region_id = ?",
+                    "SELECT region_id FROM world_regions WHERE world_id = ? AND region_id = ?",
                     (world_id, region_id),
                 ).fetchone()
                 if region is None:
@@ -263,8 +261,7 @@ def propose_location_expansion(
             )
             if region_id is not None:
                 connection.execute(
-                    "UPDATE world_regions SET location_id = ? "
-                    "WHERE world_id = ? AND region_id = ?",
+                    "UPDATE world_regions SET location_id = ? WHERE world_id = ? AND region_id = ?",
                     (location_id, world_id, region_id),
                 )
             if direction is not None or range_band is not None or map_form is not None:
@@ -312,9 +309,7 @@ def propose_location_expansion(
                 if actor is None:
                     raise ExpansionNotFound(f"actor not found: {actor_entity_id}")
                 if actor["character_id"] is None:
-                    raise ExpansionConflict(
-                        f"actor is missing character state: {actor_entity_id}"
-                    )
+                    raise ExpansionConflict(f"actor is missing character state: {actor_entity_id}")
                 if actor["location_id"] != anchor_location_id:
                     raise ExpansionConflict(
                         f"actor is not at the anchor location: {anchor_location_id}"

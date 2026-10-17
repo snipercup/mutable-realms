@@ -43,6 +43,7 @@ def test_migrate_creates_versioned_schema_and_is_idempotent(tmp_path: Path) -> N
         24,
         25,
         26,
+        27,
     ]
     assert second == []
 
@@ -84,6 +85,7 @@ def test_migrate_creates_versioned_schema_and_is_idempotent(tmp_path: Path) -> N
         (24, "gate_map_form"),
         (25, "farm_map_form"),
         (26, "lore_entries"),
+        (27, "corridor_map_form"),
     ]
     assert {
         "worlds",
@@ -147,6 +149,7 @@ def test_generalization_migration_preserves_existing_ward_data(tmp_path: Path) -
         24,
         25,
         26,
+        27,
     ]
 
     with connect_database(database_path) as connection:

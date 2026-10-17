@@ -346,7 +346,9 @@ def test_hermes_narrator_start_parses_allowlisted_map_form(
             '{"name":"North Gate","description":"Gate.","parent_name":null,'
             '"link_to_start":false,"map_form":"gate"},'
             '{"name":"Reedbank Farm","description":"Farm.","parent_name":null,'
-            '"link_to_start":false,"map_form":"farm"}],'
+            '"link_to_start":false,"map_form":"farm"},'
+            '{"name":"Service Corridor","description":"Enclosed passage.","parent_name":null,'
+            '"link_to_start":false,"map_form":"corridor"}],'
             '"narration":"You arrive."}'
         )
         stderr = ""
@@ -361,6 +363,7 @@ def test_hermes_narrator_start_parses_allowlisted_map_form(
         "building",
         "gate",
         "farm",
+        "corridor",
     ]
 
 

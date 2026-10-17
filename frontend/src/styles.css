@@ -176,6 +176,11 @@ h1, h2, h3, p { margin: 0; }
 .map-farm-barn-detail { fill: none; stroke: #d3a274; stroke-width: 5; stroke-linejoin: round; }
 .map-farm-fence { fill: none; stroke: #c5a06e; stroke-width: 3; stroke-linecap: round; opacity: .9; }
 .map-farm-tree { fill: #2d6143; stroke: #82ad70; stroke-width: 3; }
+.map-corridor-floor { fill: #28313d; stroke: #738297; stroke-width: 3; }
+.map-corridor-wall { stroke: #9aa8b8; stroke-width: 5; stroke-linecap: square; }
+.map-corridor-branch { stroke: #68788a; stroke-width: 3; }
+.map-corridor-door { fill: none; stroke: #c28e59; stroke-width: 2.5; }
+.map-node-shape[data-map-form="corridor"] { fill: #34404d; stroke: #aab8c7; }
 .map-node-circle { fill: #1b2740; stroke: #5a6f94; stroke-width: 2; }
 .map-node-shape { fill: #1b2740; stroke: #5a6f94; stroke-width: 2; }
 .map-node-shape[data-map-form="street"] { fill: #253c5c; }

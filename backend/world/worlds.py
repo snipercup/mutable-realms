@@ -718,6 +718,8 @@ def instance_player_character(
             "forest",
             "water",
             "gate",
+            "farm",
+            "corridor",
             "landmark",
         }:
             raise WorldAdminConflict("start location map_form is invalid")

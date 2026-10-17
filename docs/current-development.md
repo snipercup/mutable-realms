@@ -4,15 +4,16 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Bounded narrator world-start prompts — complete
+### Corridor map graphics — complete
 
-**Goal:** start lore-rich worlds without overflowing the OS argument limit or sending the entire lore catalogue to the narrator.
+**Goal:** replace circle-like generic markers and hard-to-read labels for corridor scopes with a simple, reusable SVG floor plan.
 
-**Scope:** pass start and turn prompts through Hermes `--query-file -` on stdin; include only bounded opening-scene-relevant fixed lore in the start prompt, while retaining story directives, region framework, and explicit lore search/read tools. No migrations or changes to existing worlds.
+**Scope:** add an allowlisted `corridor` form for narrator-created/start/expanded locations; use hallway-like scope names as a legacy fallback; render a central hall, door branches, and two-sided sublocation layout; add migration `0027` without rewriting existing world data.
 
-**Verification:** the original Cyberpunk start prompt was 148,902 bytes and failed subprocess launch with `OSError: [Errno 7] Argument list too long`. The revised prompt is 22,497 bytes. A controlled narrator response against an isolated copy of the live database returned HTTP 201, placed Fate at Charter Hill, and advanced the copied Cyberpunk world from revision 1 to 2; the original live world was not started. Automated regression tests cover bounded lore selection and stdin delivery for both start and turn.
+**Verification:** Cyberpunk HTTP map confirms the existing scope has a null `map_form` and ten direct children. Browser verification shows one corridor floor, ten door branches, and twelve individually labeled map nodes; labels no longer overlap. Focused expansion/migration tests passed. Full test suite must be rerun after migration addition.
 
-**Suggested commit message:** `Fix world start for lore-rich scenarios`
+**Suggested commit message:** `Add corridor floor-plan map graphics`
+
 
 ## Recently completed
 

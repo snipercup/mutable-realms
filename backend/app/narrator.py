@@ -125,6 +125,7 @@ _START_MAP_FORMS = {
     "water",
     "gate",
     "farm",
+    "corridor",
     "landmark",
 }
 _START_REGION_ID_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -422,7 +423,8 @@ def build_world_start_prompt(
         "south, southwest, west, northwest, or null; common abbreviations such "
         "as N/NE/E/SE/S/SW/W/NW are also accepted), range_band (short, mid, "
         "long, or null), map_form (building, street, district, city, mine, forest, "
-        "water, gate, landmark, or null), and region_id (the id of the world region "
+        "water, gate, farm, corridor, landmark, or null), and region_id "
+        "(the id of the world region "
         "framework node this location belongs to, e.g. a city or kingdom "
         "region from the supplied World state, or null when no region "
         "applies); the optional top-level regions array declares new region "
@@ -434,8 +436,10 @@ def build_world_start_prompt(
         "region that does not exist; "
         "The top-level legacy field is location_description only when locations "
         "is omitted. The top-level locations array and narration are required. "
-        "link_to_start explicitly requests a local physical movement link. The "
-        "location belongs to this world, not to the reusable character definition. "
+        "link_to_start explicitly requests a local physical movement link. "
+        "Use map_form corridor for a named enclosed corridor, hallway, or passage; "
+        "the map renderer supplies its floor plan and connected doors. "
+        "The location belongs to this world, not to the reusable character definition. "
         "For Aerthalon, when the opening scene places the player on the way to "
         "or in front of the Adventurer's Guild in Elaris, use Main Street as "
         "the start location and place the Adventurer's Guild beneath it.\n\n"
