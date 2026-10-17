@@ -119,8 +119,10 @@ def test_build_narration_prompt_embeds_selected_world_context() -> None:
         },
         "world_elements": [
             {"element_type": "ai_instructions", "content": "Use simple words first."},
-            {"element_type": "opening_scene", "content":
-             "You arrive at the gates of the guild city."},
+            {
+                "element_type": "opening_scene",
+                "content": "You arrive at the gates of the guild city.",
+            },
             {"element_type": "author_note", "content": "Fate is a wandering diplomat."},
             {"element_type": "plot_essentials", "content": "The guild matters."},
         ],
@@ -130,9 +132,7 @@ def test_build_narration_prompt_embeds_selected_world_context() -> None:
     prompt = build_narration_prompt("world-of-earthalon", "fate", "Enter the guild hall.", context)
 
     assert "Use simple words first." in prompt
-    assert prompt.index("Use simple words first.") < prompt.index(
-        "Fate is a wandering diplomat."
-    )
+    assert prompt.index("Use simple words first.") < prompt.index("Fate is a wandering diplomat.")
     assert prompt.index("Fate is a wandering diplomat.") < prompt.index("The guild matters.")
     assert prompt.index("The guild matters.") < prompt.index(
         "You arrive at the gates of the guild city."
@@ -249,6 +249,87 @@ def test_build_world_start_prompt_requires_bounded_contextual_layout() -> None:
     assert "region_id" in prompt
     assert "3 to 16 locations" in prompt
     assert "at least 10 direct child locations" in prompt
+
+
+def test_hermes_narrator_turn_sends_prompt_over_stdin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["input"] = kwargs.get("input")
+        return subprocess.CompletedProcess(command, 0, stdout="You enter the square.", stderr="")
+
+    monkeypatch.setattr("backend.app.narrator.subprocess.run", fake_run)
+    narration = HermesNarrator()("cyberpunk", "cyberpunk-player", "I look around.")
+
+    assert narration == "You enter the square."
+    assert captured["command"][-2:] == ["--query-file", "-"]
+    assert "I look around." in captured["input"]
+
+
+def test_world_start_prompt_selects_relevant_lore_without_dumping_encyclopedia() -> None:
+    world = {
+        "id": "cyberpunk",
+        "elements": [{"element_type": "opening_scene", "content": "You arrive in Westbrook."}],
+        "regions": [{"region_id": "westbrook", "title": "Westbrook", "level": "district"}],
+        "lore": [
+            {
+                "lore_id": "tyger-claws",
+                "category": "faction",
+                "title": "Tyger Claws",
+                "content": "The Tyger Claws operate in Westbrook.",
+                "keywords": ["Westbrook"],
+            },
+            *(
+                {
+                    "lore_id": f"unrelated-{index}",
+                    "category": "character",
+                    "title": f"Unrelated {index}",
+                    "content": "x" * 1000,
+                    "keywords": [],
+                }
+                for index in range(200)
+            ),
+        ],
+    }
+    prompt = build_world_start_prompt("cyberpunk", world, {"id": "fate", "name": "Fate"})
+
+    assert "The Tyger Claws operate in Westbrook." in prompt
+    assert "Unrelated 199" not in prompt
+    assert len(prompt.encode()) < 30_000
+    assert len(world["lore"]) == 201
+
+
+def test_hermes_narrator_start_sends_prompt_over_stdin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["input"] = kwargs.get("input")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=(
+                '{"start_location_name":"Westbrook","locations":['
+                '{"name":"Westbrook","description":"Street.","parent_name":null,'
+                '"link_to_start":false},'
+                '{"name":"Shop","description":"Shop.","parent_name":"Westbrook",'
+                '"link_to_start":false},'
+                '{"name":"Square","description":"Square.","parent_name":null,'
+                '"link_to_start":false}],"narration":"You arrive."}'
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr("backend.app.narrator.subprocess.run", fake_run)
+    HermesNarrator().start("cyberpunk", {"id": "cyberpunk"}, {"id": "fate"})
+
+    assert captured["command"][-2:] == ["--query-file", "-"]
+    assert "World id: cyberpunk" in captured["input"]
 
 
 def test_hermes_narrator_start_parses_allowlisted_map_form(
@@ -672,6 +753,8 @@ def test_hermes_narrator_uses_separate_start_timeout_and_logs_timeout(
             )
 
     assert error.value.category == "narrator_timeout"
+    assert len(calls) == 1
+    assert "World id: world-a" in str(calls[0].pop("input"))
     assert calls == [{"capture_output": True, "text": True, "timeout": 240, "check": False}]
     assert "world_id=world-a" in caplog.text
     assert "timeout_seconds=240.0" in caplog.text
@@ -864,10 +947,10 @@ def test_hermes_narrator_start_accepts_nested_location_description_alias(
         returncode = 0
         stdout = (
             '{"start_location_name":"Elaris Street","locations":['
-                '{"name":"Elaris Street","location_description":"Street.",'
-                '"parent_name":null,"link_to_start":true},'
-                '{"name":"Guild","location_description":"Guild.",'
-                '"parent_name":"Elaris Street","link_to_start":false},'
+            '{"name":"Elaris Street","location_description":"Street.",'
+            '"parent_name":null,"link_to_start":true},'
+            '{"name":"Guild","location_description":"Guild.",'
+            '"parent_name":"Elaris Street","link_to_start":false},'
             '{"name":"North Road","location_description":"Road.",'
             '"parent_name":null,"link_to_start":false}],'
             '"narration":"You arrive."}'

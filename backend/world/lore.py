@@ -402,19 +402,14 @@ def remove_world_lore(
     )
 
 
-def relevant_world_lore(
-    connection: sqlite3.Connection, *, world_id: str, terms: list[str]
+def select_relevant_lore(
+    entries: list[dict[str, Any]], *, terms: list[str]
 ) -> list[dict[str, Any]]:
-    rows = connection.execute(
-        "SELECT lore_id, category, title, content, keywords_json "
-        "FROM world_lore WHERE world_id = ? ORDER BY title, lore_id",
-        (world_id,),
-    ).fetchall()
+    """Select a bounded working set from scenario-independent world lore."""
     haystack = " ".join(term for term in terms if term).casefold()
     result: list[dict[str, Any]] = []
     used = 0
-    for row in rows:
-        item = _lore_row(row)
+    for item in sorted(entries, key=lambda entry: (entry["title"], entry["lore_id"])):
         matches = [item["title"], *item["keywords"]]
         if not any(value.casefold() in haystack for value in matches if value):
             continue
@@ -424,3 +419,14 @@ def relevant_world_lore(
         result.append(item)
         used += size
     return result
+
+
+def relevant_world_lore(
+    connection: sqlite3.Connection, *, world_id: str, terms: list[str]
+) -> list[dict[str, Any]]:
+    rows = connection.execute(
+        "SELECT lore_id, category, title, content, keywords_json "
+        "FROM world_lore WHERE world_id = ? ORDER BY title, lore_id",
+        (world_id,),
+    ).fetchall()
+    return select_relevant_lore([_lore_row(row) for row in rows], terms=terms)

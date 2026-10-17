@@ -4,22 +4,22 @@ Mutable Realms develops one idea at a time. This document tracks the single acti
 
 ## Active idea
 
-### Scenario and world lore entries — in progress
+### Bounded narrator world-start prompts — complete
 
-**Goal:** let authors maintain fixed, reusable lore (factions, characters, items, or other categories) without putting an entire scenario encyclopedia into every narration prompt. Lore is scenario-authored and copied into worlds; world copies can diverge during play.
+**Goal:** start lore-rich worlds without overflowing the OS argument limit or sending the entire lore catalogue to the narrator.
 
-**Scope:** additive scenario/world lore tables with stable kebab-case IDs, category, title, content, and optional keywords; idempotent scenario CRUD plus revision-checked world CRUD; scenario-to-world copy semantics; bounded deterministic relevant-lore context selected from the current location, its region chain, and present entities; explicit bounded narrator search/read tools for lore outside that working set; HTTP and Manage-view authoring/editing/deletion; tests and documentation. Lore remains independent records with no required relationship graph.
+**Scope:** pass start and turn prompts through Hermes `--query-file -` on stdin; include only bounded opening-scene-relevant fixed lore in the start prompt, while retaining story directives, region framework, and explicit lore search/read tools. No migrations or changes to existing worlds.
 
-**Out of scope:** automatic generation of lore, inference of new lore facts from narration, a lore graph, full-text/vector infrastructure, and indiscriminate prompt injection of all entries.
+**Verification:** the original Cyberpunk start prompt was 148,902 bytes and failed subprocess launch with `OSError: [Errno 7] Argument list too long`. The revised prompt is 22,497 bytes. A controlled narrator response against an isolated copy of the live database returned HTTP 201, placed Fate at Charter Hill, and advanced the copied Cyberpunk world from revision 1 to 2; the original live world was not started. Automated regression tests cover bounded lore selection and stdin delivery for both start and turn.
 
-**Verification:** `338` backend tests pass; `npm run lint`, `npm run frontend-build`, and `git diff --check` pass. A live migration applied `0026` to the scenario database, then the idempotent scenario service wrote and read back `cyberpunk-2077` / `tyger-claws` with category `faction` and its explicit Westbrook/Japantown/Arasaka keywords. Focused tests cover scenario-to-world copying, world-only divergence, stale-revision rejection, search, and bounded context selection. A parent-first instancing regression test confirms multi-level hierarchies where child IDs sort before parents; an isolated copy of the live Cyberpunk scenario instanced via HTTP with 12 regions, 217 lore entries, five verified parent links, and no foreign-key violations.
-
-**Suggested commit message:** `Add scoped scenario and world lore entries`
+**Suggested commit message:** `Fix world start for lore-rich scenarios`
 
 ## Recently completed
 
 | Idea | Completed | Commit |
 | --- | --- | --- |
+| Insert scenario regions parent-first when instancing worlds (supports child IDs that sort before their parents) | 2026-10-14 | `199c457` |
+| Scenario and world lore entries (authored scenario lore copied to worlds, bounded context retrieval, narrator/HTTP/Manage CRUD) | 2026-10-14 | `5c53b55` |
 | Semantic map decoration — deterministic SVG scenery for `gate` and `farm` scoped locations (migrations `0024`/`0025` allowlists, start + expansion acceptance, node shapes, scope decoration layers, legacy name fallback; presentation-only, no state mutations) | 2026-10-12 | `924f5d5` · `aea6f8f` |
 | Reduce the narrator's turn output cap from 200 to 150 tokens (prompt instruction + SOUL rule + deterministic sentence-safe truncation, all three layers + docs + tests) | 2026-08-21 | `62994bc` |
 | Show the copied region framework in the world editor (Manage view; world detail API already returned `regions`, frontend now types + renders them with source line, hierarchy indentation, and materialization status) | 2026-08-21 | `d22767b` |

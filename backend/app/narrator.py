@@ -31,6 +31,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from backend.world.lore import select_relevant_lore
+
 # (world_id, player_id, player_action, context) -> player-facing narration text.
 # ``context`` is the selected world's authoritative WorldContext dict (or None
 # when the world has no player yet).
@@ -376,6 +378,24 @@ def build_world_start_prompt(
     world_id: str, world: dict[str, Any], character: dict[str, Any]
 ) -> str:
     """Compose the strict structured prompt used before a player exists."""
+    opening_scene = next(
+        (
+            element["content"]
+            for element in world.get("elements", [])
+            if element["element_type"] == "opening_scene"
+        ),
+        "",
+    )
+    relevant_lore = select_relevant_lore(
+        world.get("lore", []),
+        terms=[
+            opening_scene,
+            world.get("description") or "",
+            character.get("name") or "",
+            character.get("basic_info") or "",
+        ],
+    )
+    world_state = {key: value for key, value in world.items() if key != "lore"}
     return (
         "You are starting a new Mutable Realms world. The supplied world and "
         "character data are authoritative. Infer the player's physical starting "
@@ -421,7 +441,10 @@ def build_world_start_prompt(
         "the start location and place the Adventurer's Guild beneath it.\n\n"
         f"World id: {world_id}\n"
         f"{_format_story_directives(world)}\n\n"
-        f"World state: {json.dumps(world, sort_keys=True)}\n"
+        f"World state: {json.dumps(world_state, sort_keys=True)}\n"
+        f"Relevant fixed lore (authoritative): {json.dumps(relevant_lore, sort_keys=True)}\n"
+        "Other fixed lore can be found with world_lore_search and world_lore_read "
+        f"using world_id={world_id}; do not invent lore facts.\n"
         f"Reusable character: {json.dumps(character, sort_keys=True)}\n\n"
         "The narration should welcome the player into the chosen location, in "
         "second person and present tense. Do not mention JSON, tools, revisions, "
@@ -1008,12 +1031,13 @@ class HermesNarrator:
             self.profile,
             "chat",
             "-Q",
-            "-q",
-            prompt,
+            "--query-file",
+            "-",
         ]
         try:
             completed = subprocess.run(
                 command,
+                input=prompt,
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,
@@ -1037,11 +1061,12 @@ class HermesNarrator:
     ) -> NarratorStartResult:
         """Ask the agent for a structured opening before a player exists."""
         prompt = build_world_start_prompt(world_id, world, character)
-        command = ["hermes", "--profile", self.profile, "chat", "-Q", "-q", prompt]
+        command = ["hermes", "--profile", self.profile, "chat", "-Q", "--query-file", "-"]
         started_at = time.monotonic()
         try:
             completed = subprocess.run(
                 command,
+                input=prompt,
                 capture_output=True,
                 text=True,
                 timeout=self.start_timeout,
